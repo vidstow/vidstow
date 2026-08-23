@@ -5145,8 +5145,9 @@ type BrowserSourceCheck struct {
 }
 
 // BrowserSourceDependencies is a bounded, non-secret preview shown before a
-// source is forgotten. Counts cover only non-terminal jobs that would need
-// user action; collection parents are counted separately for clear UX.
+// source is forgotten. Job counts cover only non-terminal work that would need
+// user action; Active also includes in-flight analysis and source-check reads.
+// Collection parents are counted separately for clear UX.
 type BrowserSourceDependencies struct {
 	BindingRef  string `json:"bindingRef"`
 	Label       string `json:"label"`

@@ -14,7 +14,7 @@ than runtime assets.
 | 05 | `05-playlist-explicit-outcomes.png` | Stable per-occurrence Ready/Auth required/Unavailable/Invalid outcomes, independent duplicate occurrences, approved count, source order, and the 500-occurrence safety bound. |
 | 06 | `06-queue-collection-recovery.png` | Exact parent counts and bound source remain visible; one child can require isolated recovery without recreating completed siblings. |
 | 07 | `07-settings-browser-access.png` | Configure, check, and forget controls; a successful local check does not attest YouTube login. |
-| 08 | `08-forget-blocked-active.png` | Forgetting cannot remove authority underneath an active operation; the user must pause first. |
+| 08 | `08-forget-blocked-active.png` | Forgetting cannot remove authority underneath active work; pause active downloads or wait for a source check/analysis to finish. |
 | 09 | `09-action-required-decision.png` | A temporarily unusable bound source offers explicit retry, removal, cleanup, or public restart decisions. |
 | 10 | `10-bound-source-unavailable.png` | A missing source is never replaced by the currently selected Settings profile or by anonymous access. |
 | 11 | `11-windows-browser-sources.png` | Windows exposes backend-discovered Chrome, Chromium, Edge, Brave, Vivaldi, Opera, and Firefox sources under the same product contract. |
