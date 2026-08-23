@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -158,10 +159,29 @@ func TestDiscoveryRejectsSymlinksAndRemovedProfiles(t *testing.T) {
 	}
 }
 
-func TestMissingPlatformDirectoriesNeverUseRelativeDiscovery(t *testing.T) {
-	for _, platform := range []string{"linux", "windows"} {
-		if options := supportedOptionsIn(sourceEnvironment{platform: platform}); len(options) != 0 {
-			t.Fatalf("%s empty environment advertised relative sources: %#v", platform, options)
+func TestDiscoveryIgnoresNonProfileClutterWithinProfileBound(t *testing.T) {
+	home := t.TempDir()
+	environment := environmentAt("linux", home)
+	root := filepath.Join(environment.configHome, "google-chrome")
+	writeCookieDatabase(t, filepath.Join(root, "Default"))
+	for index := 0; index < maxProfiles+20; index++ {
+		writeRegular(t, filepath.Join(root, "state-"+strconv.Itoa(index)))
+	}
+	options := supportedOptionsIn(environment)
+	if len(options) != 1 || options[0].Browser != BrowserChrome || options[0].ProfileLabel != "Default" {
+		t.Fatalf("profile hidden by unrelated browser files: %#v", options)
+	}
+}
+
+func TestMissingOrRelativePlatformDirectoriesNeverUseRelativeDiscovery(t *testing.T) {
+	for _, environment := range []sourceEnvironment{
+		{platform: "linux"},
+		{platform: "linux", home: "relative-home", configHome: "relative-config"},
+		{platform: "windows"},
+		{platform: "windows", home: "relative-home", localAppData: "relative-local", roamingAppData: "relative-roaming"},
+	} {
+		if options := supportedOptionsIn(environment); len(options) != 0 {
+			t.Fatalf("%s unsafe environment advertised relative sources: %#v", environment.platform, options)
 		}
 	}
 	options := supportedOptionsIn(sourceEnvironment{platform: "darwin"})

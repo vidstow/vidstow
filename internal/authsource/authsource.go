@@ -229,15 +229,20 @@ func currentEnvironment() sourceEnvironment {
 	home, _ := os.UserHomeDir()
 	environment := environmentAt(runtime.GOOS, home)
 	if runtime.GOOS == "linux" {
-		if configured := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); configured != "" {
+		if configured := os.Getenv("XDG_CONFIG_HOME"); configured != "" {
 			environment.configHome = configured
 		}
 	}
 	if runtime.GOOS == "windows" {
-		if local := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); local != "" {
+		// The engine resolves Windows browser roots from these environment
+		// variables, not from the user's home directory. Do not advertise a
+		// home-derived source that the operation could later resolve elsewhere.
+		environment.localAppData = ""
+		environment.roamingAppData = ""
+		if local := os.Getenv("LOCALAPPDATA"); filepath.IsAbs(local) {
 			environment.localAppData = local
 		}
-		if roaming := strings.TrimSpace(os.Getenv("APPDATA")); roaming != "" {
+		if roaming := os.Getenv("APPDATA"); filepath.IsAbs(roaming) {
 			environment.roamingAppData = roaming
 		}
 	}
@@ -435,7 +440,7 @@ func firefoxRoots(environment sourceEnvironment) []string {
 }
 
 func joinRoot(base string, elements ...string) string {
-	if strings.TrimSpace(base) == "" {
+	if base == "" || !filepath.IsAbs(base) {
 		return ""
 	}
 	return filepath.Join(append([]string{base}, elements...)...)
@@ -525,15 +530,18 @@ func safeChildDirectories(root string) []os.DirEntry {
 		return nil
 	}
 	entries, err := os.ReadDir(root)
-	if err != nil || len(entries) > maxProfiles {
+	if err != nil {
 		return nil
 	}
-	out := make([]os.DirEntry, 0, len(entries))
+	out := make([]os.DirEntry, 0, min(len(entries), maxProfiles))
 	for _, entry := range entries {
 		if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() || !safeBasename(entry.Name()) {
 			continue
 		}
 		out = append(out, entry)
+		if len(out) > maxProfiles {
+			return nil
+		}
 	}
 	return out
 }

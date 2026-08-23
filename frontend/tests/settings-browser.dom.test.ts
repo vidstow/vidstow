@@ -54,9 +54,9 @@ describe('Settings browser access', () => {
     await user.click(await screen.findByRole('button', { name: 'Forget…' }));
     await waitFor(() => expect(PreviewForgetBrowserSource).toHaveBeenCalledWith('binding-chrome'));
     const confirmation = get(modal);
-    expect(confirmation?.title).toBe('Pause downloads using Chrome — Default');
+    expect(confirmation?.title).toBe('Browser source is in use');
     expect(confirmation?.message).toContain('3 downloads in 1 collection');
-    expect(confirmation?.message).toContain('1 active download must be paused first');
+    expect(confirmation?.message).toContain('Wait for 1 active operation to finish, or pause active downloads, first');
     expect(confirmation?.actions).toBeUndefined();
   });
 });

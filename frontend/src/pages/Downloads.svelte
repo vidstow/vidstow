@@ -183,10 +183,10 @@
                 <button
                   type="button"
                   class="app-btn"
-                  aria-label="Show in Finder"
+                  aria-label="Show in folder"
                   disabled={entry.fileMissing}
                   on:click={() => reveal(entry)}
-                >Show in Finder</button>
+                >Show in folder</button>
               </div>
 
               {#if selected?.id === entry.id}

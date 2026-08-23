@@ -477,6 +477,7 @@ type Manager struct {
 	all                  map[string]*jobState
 	order                []string
 	active               map[string]*worker
+	authOperations       map[string]int
 	concurrency          int
 	processing           chan struct{}
 	queueRevision        uint64
@@ -586,6 +587,43 @@ func (m *Manager) prepareOperationRequest(intent jobmodel.AuthIntent, request en
 	return request, nil
 }
 
+// beginAuthenticatedOperation closes the race between preparing a non-job
+// operation and forgetting its source. Downloads already retain a live worker
+// under m.mu; analyses and explicit source checks use this guard instead.
+func (m *Manager) beginAuthenticatedOperation(intent jobmodel.AuthIntent) (func(), error) {
+	if !intent.RequiresAuthenticatedExecution {
+		return func() {}, nil
+	}
+	m.mu.Lock()
+	if m.closing || m.closed {
+		m.mu.Unlock()
+		return nil, ErrClosed
+	}
+	if m.stateStore == nil {
+		m.mu.Unlock()
+		return nil, authsource.NewError("source-unavailable")
+	}
+	if _, err := resolveEnabledAuthBinding(m.stateStore.Snapshot(), intent); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	m.authOperations[intent.AuthSourceBindingRef]++
+	m.mu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			m.mu.Lock()
+			if remaining := m.authOperations[intent.AuthSourceBindingRef] - 1; remaining > 0 {
+				m.authOperations[intent.AuthSourceBindingRef] = remaining
+			} else {
+				delete(m.authOperations, intent.AuthSourceBindingRef)
+			}
+			m.mu.Unlock()
+		})
+	}, nil
+}
+
 func resolveEnabledAuthBinding(state jobmodel.State, intent jobmodel.AuthIntent) (authsource.Binding, error) {
 	if !state.Settings.BrowserAccessEnabled || state.Settings.BrowserAccessConsentVersion != authsource.CurrentConsentVersion {
 		return authsource.Binding{}, authsource.NewError("consent-required")
@@ -663,6 +701,7 @@ func New(client *engine.Client, listener Listener) *Manager {
 		resolveBrowserSpec:   authsource.CookiesFromBrowser,
 		all:                  make(map[string]*jobState),
 		active:               make(map[string]*worker),
+		authOperations:       make(map[string]int),
 		concurrency:          DefaultDownloadConcurrency,
 		processing:           make(chan struct{}, MaxProcessingConcurrency),
 		queueCommandToken:    uuid.NewString(),
@@ -754,6 +793,7 @@ func (m *Manager) PreviewForgetAuthSource(bindingRef string) (BrowserSourceDepen
 		}
 	}
 	preview.Collections = len(affectedCollections)
+	preview.Active += m.authOperations[bindingRef]
 	return preview, nil
 }
 
@@ -771,6 +811,9 @@ func (m *Manager) ForgetAuthSource(bindingRef string) (int, error) {
 	}
 	if m.stateStore == nil {
 		return 0, errors.New("jobs: State v2 store is not configured")
+	}
+	if m.authOperations[bindingRef] > 0 {
+		return 0, errors.New("wait for active browser-source operations to finish before forgetting it")
 	}
 	for _, state := range m.all {
 		if state.durable.AuthIntent.AuthSourceBindingRef == bindingRef && (state.worker != nil || state.settling || state.commanding || state.snap.Status == StatusActive || state.snap.Status == StatusPausing || state.snap.Status == StatusCanceling) {
@@ -5218,6 +5261,11 @@ func (m *Manager) AnalyzePlaylistAuthenticated(ctx context.Context, rawURL, bind
 	if err != nil {
 		return PlaylistSummary{}, err
 	}
+	releaseSource, err := m.beginAuthenticatedOperation(intent)
+	if err != nil {
+		return PlaylistSummary{}, err
+	}
+	defer releaseSource()
 	result, err := runner(analysisCtx, request)
 	if err != nil {
 		return PlaylistSummary{}, err
@@ -5641,12 +5689,20 @@ func (m *Manager) CheckBrowserSource(ctx context.Context, bindingRef string) (Br
 	}
 	label := authsource.Label(binding.Descriptor)
 	m.mu.Lock()
-	resolver, checker := m.resolveBrowserSpec, m.checkBrowserCookies
-	closing := m.closing || m.closed
-	m.mu.Unlock()
-	if closing {
+	if m.closing || m.closed {
+		m.mu.Unlock()
 		return BrowserSourceCheck{}, ErrClosed
 	}
+	resolver, checker, lifecycleCtx := m.resolveBrowserSpec, m.checkBrowserCookies, m.lifecycleCtx
+	m.analysisWG.Add(1)
+	m.mu.Unlock()
+	checkCtx, cancel := context.WithCancel(ctx)
+	stopLifecycle := context.AfterFunc(lifecycleCtx, cancel)
+	defer func() {
+		stopLifecycle()
+		cancel()
+		m.analysisWG.Done()
+	}()
 	if resolver == nil || checker == nil {
 		return browserSourceCheckResult("unsupported", label, false, false), nil
 	}
@@ -5654,7 +5710,12 @@ func (m *Manager) CheckBrowserSource(ctx context.Context, bindingRef string) (Br
 	if err != nil || spec == "" {
 		return browserSourceCheckResult("source-missing", label, false, false), nil
 	}
-	check, err := checker(ctx, spec)
+	releaseSource, err := m.beginAuthenticatedOperation(intent)
+	if err != nil {
+		return browserSourceCheckResult("source-missing", label, false, false), nil
+	}
+	defer releaseSource()
+	check, err := checker(checkCtx, spec)
 	if err != nil {
 		var checkErr *engine.BrowserCookieCheckError
 		if errors.As(err, &checkErr) {
@@ -5735,6 +5796,11 @@ func (m *Manager) analyzeWithIntent(ctx context.Context, rawURL string, intent j
 	if err != nil {
 		return InfoSummary{}, nil, err
 	}
+	releaseSource, err := m.beginAuthenticatedOperation(intent)
+	if err != nil {
+		return InfoSummary{}, nil, err
+	}
+	defer releaseSource()
 	result, err := runner(analysisCtx, request)
 	if err != nil {
 		return InfoSummary{}, nil, err

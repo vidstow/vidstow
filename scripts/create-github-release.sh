@@ -117,8 +117,8 @@ attached to this release.
 
 VidStow accepts on-demand YouTube video, Short, existing-playlist, and bounded
 public-only 2–20 URL batch workflows exposed by its UI. Public-only access is
-the default; macOS users may explicitly supply a configured local browser
-session for media they are authorized to access. It does not support channels,
+the default; users may explicitly supply a configured local browser session
+for media they are authorized to access. It does not support channels,
 search, library browsing, live streams, DRM, or access-control circumvention.
 Pause/Resume does not guarantee universal byte reuse; saved bytes are reused
 only when the engine can validate their identity.

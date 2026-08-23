@@ -47,7 +47,7 @@
   async function showFolder() {
     if (!folder) return;
     try { await api.fs.reveal(folder); }
-    catch (err) { showError(err, 'Could not show the folder in Finder'); }
+    catch (err) { showError(err, 'Could not show the download folder'); }
   }
 
   async function locateFFmpeg() {
@@ -123,10 +123,10 @@
       const impact = await api.browserAccess.previewForget(source.bindingRef);
       const jobs = `${impact.jobs} ${impact.jobs === 1 ? 'download' : 'downloads'}`;
       const collections = `${impact.collections} ${impact.collections === 1 ? 'collection' : 'collections'}`;
-      const activeWarning = impact.active ? ` ${impact.active} active ${impact.active === 1 ? 'download must' : 'downloads must'} be paused first.` : '';
+      const activeWarning = impact.active ? ` Wait for ${impact.active} active ${impact.active === 1 ? 'operation' : 'operations'} to finish, or pause active downloads, first.` : '';
       modal.set({
         kind: 'confirm',
-        title: impact.active ? `Pause downloads using ${source.label}` : `Forget ${source.label}?`,
+        title: impact.active ? `Browser source is in use` : `Forget ${source.label}?`,
         message: `This source is bound to ${jobs} in ${collections}. Non-terminal downloads will move to Action required.${activeWarning} VidStow does not store cookie values.`,
         actions: impact.active ? undefined : [{ label: 'Forget browser source', primary: true, action: () => forgetBrowserSource(source.bindingRef) }],
       });
@@ -173,7 +173,7 @@
         <span class="mono" title={folder}>{folder || 'Not set'}</span>
       </div>
       <div class="actions">
-        <button type="button" class="app-btn" disabled={!folder} on:click={showFolder}>Show in Finder</button>
+        <button type="button" class="app-btn" disabled={!folder} on:click={showFolder}>Show in folder</button>
         <button type="button" class="app-btn primary" on:click={pickFolder}>Change…</button>
       </div>
     </div>

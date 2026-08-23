@@ -81,6 +81,47 @@ func TestAuthenticatedAnalysisInjectsExactSourceOnceAndBindsAuthority(t *testing
 	}
 }
 
+func TestForgetWaitsForInFlightAuthenticatedAnalysis(t *testing.T) {
+	store, _, _ := newV2TestStore(t)
+	installAuthBindings(store, "chrome-binding")
+	manager := New(nil, nil)
+	installDarwinBrowserSpecResolver(manager)
+	t.Cleanup(func() { _ = manager.Close() })
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if request.CookiesFromBrowser != "chrome" || !request.ScopeBrowserCookiesToURL {
+			t.Fatalf("authenticated request = %#v", request)
+		}
+		close(started)
+		<-release
+		return analysisFixtureResult(), nil
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := manager.AnalyzeAuthenticated(context.Background(), "https://www.youtube.com/watch?v=fixture0001", "chrome-binding")
+		result <- err
+	}()
+	<-started
+	preview, err := manager.PreviewForgetAuthSource("chrome-binding")
+	if err != nil || preview.Active != 1 {
+		t.Fatalf("active operation preview = %#v, %v", preview, err)
+	}
+	if _, err := manager.ForgetAuthSource("chrome-binding"); err == nil || !strings.Contains(err.Error(), "active browser-source operations") {
+		t.Fatalf("forget during analysis error = %v", err)
+	}
+	close(release)
+	if err := <-result; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.ForgetAuthSource("chrome-binding"); err != nil {
+		t.Fatalf("forget after analysis: %v", err)
+	}
+}
+
 func TestRendererAnalysisAuthorityInvalidatesOnAccessOrSourceChange(t *testing.T) {
 	store, _, _ := newV2TestStore(t)
 	installAuthBindings(store, "safari-binding")
@@ -788,6 +829,39 @@ func TestBrowserSourceCheckReturnsOnlyBoundedStatus(t *testing.T) {
 	check, err = manager.CheckBrowserSource(context.Background(), "chrome-binding")
 	if err != nil || check.Status != "source-empty" || check.Ready || !strings.Contains(check.Message, "cannot determine whether YouTube is signed in") {
 		t.Fatalf("empty source check = %#v, %v", check, err)
+	}
+}
+
+func TestManagerCloseCancelsAndJoinsBrowserSourceCheck(t *testing.T) {
+	store, _, _ := newV2TestStore(t)
+	installAuthBindings(store, "chrome-binding")
+	manager := New(nil, nil)
+	installDarwinBrowserSpecResolver(manager)
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	manager.checkBrowserCookies = func(ctx context.Context, _ string) (engine.BrowserCookieCheck, error) {
+		close(started)
+		<-ctx.Done()
+		return engine.BrowserCookieCheck{}, ctx.Err()
+	}
+	result := make(chan BrowserSourceCheck, 1)
+	errs := make(chan error, 1)
+	go func() {
+		check, err := manager.CheckBrowserSource(context.Background(), "chrome-binding")
+		result <- check
+		errs <- err
+	}()
+	<-started
+	if err := manager.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-errs; err != nil {
+		t.Fatal(err)
+	}
+	if check := <-result; check.Status != "canceled" || check.Ready {
+		t.Fatalf("check after manager close = %#v", check)
 	}
 }
 

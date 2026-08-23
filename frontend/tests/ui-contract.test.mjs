@@ -134,7 +134,7 @@ test('download history actions remain native accessible buttons', async () => {
   const downloads = await read('../src/pages/Downloads.svelte');
   assert.doesNotMatch(downloads, /role="(?:table|row|cell)"/);
   assert.match(downloads, /<button[^>]+aria-label="Open downloaded file"/);
-  assert.match(downloads, /<button[^>]+aria-label="Show in Finder"/);
+  assert.match(downloads, /<button[^>]+aria-label="Show in folder"/);
   assert.match(downloads, /aria-label="Remove from history"/);
   assert.match(downloads, /aria-label="Delete downloaded file"/);
   assert.match(downloads, /await api\.fs\.open\(entry\.absolutePath\)/);
