@@ -43,7 +43,13 @@ trap 'rm -f "$temporary_path"' EXIT HUP INT TERM
 printf '%s\n' "package-js-helper: building sibling helper ($helper_name)"
 (
   cd "$repo_dir"
-  CGO_ENABLED=0 go build -trimpath -o "$temporary_path" github.com/tejasa97/ytdlp-go/cmd/ytdlp-js-helper
+  if [ "$(uname -s)" = "Darwin" ]; then
+    # The macOS helper uses its pinned, bare QuickJS runtime for current
+    # YouTube EJS workloads; other targets retain the pure-Go fallback.
+    CGO_ENABLED=1 go build -trimpath -o "$temporary_path" github.com/tejasa97/ytdlp-go/cmd/ytdlp-js-helper
+  else
+    CGO_ENABLED=0 go build -trimpath -o "$temporary_path" github.com/tejasa97/ytdlp-go/cmd/ytdlp-js-helper
+  fi
 )
 chmod 755 "$temporary_path" 2>/dev/null || true
 mv -f "$temporary_path" "$helper_path"
