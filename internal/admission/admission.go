@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/tejasa97/vidstow/internal/authsource"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/jobs"
 	"github.com/tejasa97/vidstow/internal/outputplan"
@@ -64,6 +65,13 @@ type Dependencies struct {
 type Request struct {
 	Queue    jobs.Request
 	Metadata value.Info
+	// ResolvedPlan and AuthIntent are backend-only analysis authority. They
+	// never decode from renderer input. A nil plan preserves existing public
+	// collection and legacy single-item admission paths.
+	ResolvedPlan       *outputplan.Plan
+	AuthIntent         jobmodel.AuthIntent
+	SourceIndex        int
+	SourceOccurrenceID string
 }
 
 // Result reports the durable admission facts needed by the caller to wire the
@@ -140,9 +148,15 @@ func (c *Coordinator) Admit(ctx context.Context, root *reservationfs.Root, reque
 	if request.Queue.PlanID == "" {
 		return Result{}, errors.New("admission: output plan ID is required")
 	}
-	plan, err := c.deps.Resolver.ResolvePlan(request.Queue.VideoID, request.Queue.PlanID)
-	if err != nil {
-		return Result{}, fmt.Errorf("admission: resolve output plan: %w", err)
+	var plan outputplan.Plan
+	var err error
+	if request.ResolvedPlan != nil {
+		plan = *request.ResolvedPlan
+	} else {
+		plan, err = c.deps.Resolver.ResolvePlan(request.Queue.VideoID, request.Queue.PlanID)
+		if err != nil {
+			return Result{}, fmt.Errorf("admission: resolve output plan: %w", err)
+		}
 	}
 	if err := validateResolvedPlan(plan, request.Queue.PlanID); err != nil {
 		return Result{}, err
@@ -240,6 +254,9 @@ func (c *Coordinator) Admit(ctx context.Context, root *reservationfs.Root, reque
 	var committedReservation jobmodel.ReservationSet
 	var admittedOutput jobs.AdmittedOutput
 	err = c.deps.Store.Transaction(nil, func(state *jobmodel.State) error {
+		if err := validateAuthIntent(*state, request.AuthIntent); err != nil {
+			return err
+		}
 		active := activeReservations(*state)
 		selected, selectErr := selector.Select(ctx, reservation.SelectionRequest{
 			GroupID: jobID,
@@ -273,6 +290,7 @@ func (c *Coordinator) Admit(ctx context.Context, root *reservationfs.Root, reque
 			OutputRoot:   rootRef,
 			Reservation:  committedReservation,
 			RetryMode:    jobmodel.RetryModeNone,
+			AuthIntent:   request.AuthIntent,
 			CreatedAt:    now,
 			UpdatedAt:    now,
 		}
@@ -296,6 +314,24 @@ func (c *Coordinator) Admit(ctx context.Context, root *reservationfs.Root, reque
 		return Result{Job: committedJob, Plan: plan, Reservation: committedReservation, Artifacts: artifacts}, fmt.Errorf("admission: FIFO manager returned job %q for admitted job %q", admittedID, jobID)
 	}
 	return Result{Job: committedJob, Plan: plan, Reservation: committedReservation, Artifacts: artifacts}, nil
+}
+
+func validateAuthIntent(state jobmodel.State, intent jobmodel.AuthIntent) error {
+	if intent.RequiresAuthenticatedExecution != (intent.AuthSourceBindingRef != "") {
+		return errors.New("admission: invalid browser access authority")
+	}
+	if !intent.RequiresAuthenticatedExecution {
+		return nil
+	}
+	if !state.Settings.BrowserAccessEnabled || state.Settings.BrowserAccessConsentVersion != authsource.CurrentConsentVersion {
+		return errors.New("admission: browser access requires current consent")
+	}
+	for _, binding := range state.AuthSourceBindings {
+		if binding.ID == intent.AuthSourceBindingRef && binding.Enabled && authsource.ValidateDescriptor(binding.Descriptor) == nil {
+			return nil
+		}
+	}
+	return errors.New("admission: browser source is unavailable")
 }
 
 func primaryOutput(set jobmodel.ReservationSet) (jobs.AdmittedOutput, error) {

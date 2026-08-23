@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/tejasa97/vidstow/internal/ffmpegdetect"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/jobs"
+	"github.com/tejasa97/vidstow/internal/outputplan"
 	"github.com/tejasa97/vidstow/internal/recovery"
 	"github.com/tejasa97/vidstow/internal/reservationfs"
 	"github.com/tejasa97/vidstow/internal/store"
@@ -352,6 +354,99 @@ func TestLocalDiagnosticsRecordsStartupFailureAndCopiesSanitizedEvent(t *testing
 	}
 }
 
+func TestAuthenticatedEngineErrorCanaryNeverReachesAppDiagnosticsReportOutboxOrHistory(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	app := NewApp()
+	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
+	if app.store == nil || app.jobs == nil || app.diagnostics == nil || app.diagnosticOutbox == nil {
+		t.Fatalf("startup did not initialize privacy surfaces: %#v", app)
+	}
+	defer func() {
+		app.stopCleanup(context.Background())
+		_ = app.jobs.Close(context.Background())
+		_ = app.store.Close()
+	}()
+
+	const canary = "RAW_ENGINE_AUTH_ERROR_COOKIE_AND_SIGNED_URL_CANARY"
+	injected := false
+	analyzeWithBrowserSource = func(_ *jobs.Manager, _ context.Context, _, _ string) (jobs.InfoSummary, error) {
+		injected = true
+		return jobs.InfoSummary{}, &engine.Error{Category: engine.ErrorAuthentication, Err: errors.New(canary)}
+	}
+	_, surfacedErr := app.AnalyzeURLWithBrowserSource("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "browser-binding")
+	if !injected || surfacedErr == nil {
+		t.Fatalf("seeded engine error was not exercised: injected=%v err=%v", injected, surfacedErr)
+	}
+	if strings.Contains(surfacedErr.Error(), canary) || !strings.Contains(surfacedErr.Error(), "selected browser session") {
+		t.Fatalf("App error projection = %q", surfacedErr)
+	}
+	analyzeWithBrowserSource = func(_ *jobs.Manager, _ context.Context, _, _ string) (jobs.InfoSummary, error) {
+		return jobs.InfoSummary{}, &engine.Error{Category: engine.ErrorAuthentication, Err: engine.ErrBrowserCookieScopeEmpty}
+	}
+	_, scopeErr := app.AnalyzeURLWithBrowserSource("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "browser-binding")
+	if scopeErr == nil || !strings.Contains(scopeErr.Error(), "no YouTube browser data") || strings.Contains(strings.ToLower(scopeErr.Error()), "cookie") {
+		t.Fatalf("scoped browser error projection = %v", scopeErr)
+	}
+	analyzeWithBrowserSource = func(_ *jobs.Manager, _ context.Context, _, _ string) (jobs.InfoSummary, error) {
+		return jobs.InfoSummary{}, context.DeadlineExceeded
+	}
+	_, timeoutErr := app.AnalyzeURLWithBrowserSource("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "browser-binding")
+	if timeoutErr == nil || !strings.Contains(timeoutErr.Error(), "permission prompt") || strings.Contains(strings.ToLower(timeoutErr.Error()), "cookie") {
+		t.Fatalf("browser prompt timeout projection = %v", timeoutErr)
+	}
+
+	settings := app.store.Settings()
+	settings.AutomaticDiagnostics = "enabled"
+	if err := app.store.SetSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	app.diagnosticMu.Lock()
+	app.diagnosticForcedOff = false
+	app.diagnosticMu.Unlock()
+	app.recordDiagnosticProblem("seeded-auth-failure", diagnostics.Problem{
+		Stage: "extraction", Category: "authentication_required", Outcome: "terminal", RetryBucket: "none",
+	})
+	var report string
+	clipboardSetText = func(_ context.Context, text string) error {
+		report = text
+		return nil
+	}
+	if _, err := app.CopyDiagnostics(); err != nil {
+		t.Fatal(err)
+	}
+	diagnosticHistory, err := app.diagnostics.Recent()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbox, err := app.diagnosticOutbox.Batch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	surfaces := map[string]any{
+		"app-error":          surfacedErr.Error(),
+		"diagnostic-history": diagnosticHistory,
+		"diagnostic-report":  report,
+		"diagnostic-outbox":  outbox,
+		"download-history":   app.ListDownloads(),
+	}
+	encoded, err := json.Marshal(surfaces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), canary) {
+		t.Fatalf("App-facing surfaces retained raw engine canary: %s", encoded)
+	}
+	for _, curated := range []string{"authentication_required", "YouTube did not return this media with the selected browser session"} {
+		if !strings.Contains(string(encoded), curated) {
+			t.Fatalf("App-facing surfaces lack curated value %q: %s", curated, encoded)
+		}
+	}
+	if len(diagnosticHistory) != 1 || len(outbox) != 1 || len(app.ListDownloads()) != 0 {
+		t.Fatalf("privacy surface seeds = diagnostics:%d outbox:%d history:%d", len(diagnosticHistory), len(outbox), len(app.ListDownloads()))
+	}
+}
+
 func TestAutomaticDiagnosticsRequiresConsentAndDisableClearsOutbox(t *testing.T) {
 	restore := installAppTestSeams(t)
 	defer restore()
@@ -587,6 +682,20 @@ func TestStartDownloadRejectsMalformedPreAdmissionRequestWithoutDiagnostic(t *te
 	}()
 	if _, err := app.StartDownload(jobs.Request{URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}); err == nil {
 		t.Fatal("StartDownload accepted a request without analyzed metadata")
+	}
+	resolverCalled := false
+	resolveAnalysisAuthority = func(*jobs.Manager, string, string, string, string) (outputplan.Plan, jobmodel.AuthIntent, error) {
+		resolverCalled = true
+		return outputplan.Plan{}, jobmodel.AuthIntent{}, nil
+	}
+	if _, err := app.StartDownload(jobs.Request{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", VideoID: "dQw4w9WgXcQ", Title: "Demo",
+		PlanID: "plan-1", OutputDir: secureAppTempDir(t),
+	}); err == nil {
+		t.Fatal("StartDownload accepted renderer admission without analysis authority")
+	}
+	if resolverCalled {
+		t.Fatal("missing authority reached backend plan resolution")
 	}
 	events, err := app.diagnostics.Recent()
 	if err != nil {
@@ -914,7 +1023,8 @@ func installAppTestSeams(t *testing.T) func() {
 	oldPrepare := prepareStartupStateRoots
 	oldReconcile := reconcileStartupState
 	oldRestore := restoreStartupManager
-	oldResolveDownloadPlan := resolveDownloadPlan
+	oldResolveAnalysisAuthority := resolveAnalysisAuthority
+	oldAnalyzeWithBrowserSource := analyzeWithBrowserSource
 	oldCleanup := startStartupCleanup
 	oldLog := logAppErrorf
 	oldEmit := emitAppEvent
@@ -933,7 +1043,8 @@ func installAppTestSeams(t *testing.T) func() {
 		prepareStartupStateRoots = oldPrepare
 		reconcileStartupState = oldReconcile
 		restoreStartupManager = oldRestore
-		resolveDownloadPlan = oldResolveDownloadPlan
+		resolveAnalysisAuthority = oldResolveAnalysisAuthority
+		analyzeWithBrowserSource = oldAnalyzeWithBrowserSource
 		startStartupCleanup = oldCleanup
 		logAppErrorf = oldLog
 		emitAppEvent = oldEmit

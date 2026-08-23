@@ -2,7 +2,11 @@
 // has no dependency on the live jobs manager or engine implementation.
 package jobmodel
 
-import "time"
+import (
+	"time"
+
+	"github.com/tejasa97/vidstow/internal/authsource"
+)
 
 const StateVersion = 2
 
@@ -59,25 +63,36 @@ const (
 // Settings has no restoration preference. Interrupted jobs are restored as
 // paused by the product contract, not by preference.
 type Settings struct {
-	DownloadFolder        string `json:"downloadFolder"`
-	FFmpegPath            string `json:"ffmpegPath"`
-	WindowWidth           int    `json:"windowWidth"`
-	WindowHeight          int    `json:"windowHeight"`
-	DownloadConcurrency   int    `json:"downloadConcurrency"`
-	PerVideoSubfolder     bool   `json:"perVideoSubfolder"`
-	ConfirmBeforeDownload bool   `json:"confirmBeforeDownload"`
-	AutomaticDiagnostics  string `json:"automaticDiagnostics,omitempty"`
+	DownloadFolder              string `json:"downloadFolder"`
+	FFmpegPath                  string `json:"ffmpegPath"`
+	WindowWidth                 int    `json:"windowWidth"`
+	WindowHeight                int    `json:"windowHeight"`
+	DownloadConcurrency         int    `json:"downloadConcurrency"`
+	PerVideoSubfolder           bool   `json:"perVideoSubfolder"`
+	ConfirmBeforeDownload       bool   `json:"confirmBeforeDownload"`
+	AutomaticDiagnostics        string `json:"automaticDiagnostics,omitempty"`
+	BrowserAccessEnabled        bool   `json:"browserAccessEnabled,omitempty"`
+	DefaultAuthSourceBindingRef string `json:"defaultAuthSourceBindingRef,omitempty"`
+	BrowserAccessConsentVersion int    `json:"browserAccessConsentVersion,omitempty"`
 }
 
 type State struct {
-	Version          int                 `json:"version"`
-	StoreRevision    uint64              `json:"storeRevision"`
-	NextQueueOrdinal uint64              `json:"nextQueueOrdinal"`
-	Settings         Settings            `json:"settings"`
-	Jobs             []DurableJob        `json:"jobs"`
-	Collections      []DurableCollection `json:"collections,omitempty"`
-	History          []HistoryEntry      `json:"history"`
-	Cleanup          []CleanupTombstone  `json:"cleanup"`
+	Version            int                  `json:"version"`
+	StoreRevision      uint64               `json:"storeRevision"`
+	NextQueueOrdinal   uint64               `json:"nextQueueOrdinal"`
+	Settings           Settings             `json:"settings"`
+	AuthSourceBindings []authsource.Binding `json:"authSourceBindings,omitempty"`
+	Jobs               []DurableJob         `json:"jobs"`
+	Collections        []DurableCollection  `json:"collections,omitempty"`
+	History            []HistoryEntry       `json:"history"`
+	Cleanup            []CleanupTombstone   `json:"cleanup"`
+}
+
+// AuthIntent is reusable non-secret operation authority. A zero value is
+// explicitly public; authenticated work always retains one exact binding.
+type AuthIntent struct {
+	RequiresAuthenticatedExecution bool   `json:"requiresAuthenticatedExecution,omitempty"`
+	AuthSourceBindingRef           string `json:"authSourceBindingRef,omitempty"`
 }
 
 // JobPrecondition identifies the exact durable row a lifecycle operation
@@ -105,24 +120,33 @@ const (
 )
 
 type DurableCollection struct {
-	ID          string         `json:"id"`
-	Revision    uint64         `json:"revision"`
-	Kind        CollectionKind `json:"kind"`
-	PlaylistID  string         `json:"playlistId,omitempty"`
-	SourceURL   string         `json:"sourceUrl,omitempty"`
-	Title       string         `json:"title"`
-	Channel     string         `json:"channel,omitempty"`
-	Thumbnail   string         `json:"thumbnail,omitempty"`
-	Policy      string         `json:"policy"`
-	ChildJobIDs []string       `json:"childJobIds"`
-	CreatedAt   time.Time      `json:"createdAt"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
+	ID           string         `json:"id"`
+	Revision     uint64         `json:"revision"`
+	Kind         CollectionKind `json:"kind"`
+	PlaylistID   string         `json:"playlistId,omitempty"`
+	SourceURL    string         `json:"sourceUrl,omitempty"`
+	Title        string         `json:"title"`
+	Channel      string         `json:"channel,omitempty"`
+	Thumbnail    string         `json:"thumbnail,omitempty"`
+	Policy       string         `json:"policy"`
+	AuthIntent   AuthIntent     `json:"authIntent,omitempty"`
+	Discovered   int            `json:"discovered,omitempty"`
+	Ready        int            `json:"ready,omitempty"`
+	AuthRequired int            `json:"authRequired,omitempty"`
+	Unavailable  int            `json:"unavailable,omitempty"`
+	Invalid      int            `json:"invalid,omitempty"`
+	Approved     int            `json:"approved,omitempty"`
+	ChildJobIDs  []string       `json:"childJobIds"`
+	CreatedAt    time.Time      `json:"createdAt"`
+	UpdatedAt    time.Time      `json:"updatedAt"`
 }
 
 type DurableJob struct {
 	ID                 string           `json:"id"`
 	CollectionID       string           `json:"collectionId,omitempty"`
 	CollectionIndex    int              `json:"collectionIndex,omitempty"`
+	SourceIndex        int              `json:"sourceIndex,omitempty"`
+	SourceOccurrenceID string           `json:"sourceOccurrenceId,omitempty"`
 	Revision           uint64           `json:"revision"`
 	AttemptID          string           `json:"attemptId"`
 	SessionID          string           `json:"sessionId"`
@@ -135,6 +159,7 @@ type DurableJob struct {
 	OutputRoot         OutputRootRef    `json:"outputRoot"`
 	Reservation        ReservationSet   `json:"reservation"`
 	RetryMode          RetryMode        `json:"retryMode"`
+	AuthIntent         AuthIntent       `json:"authIntent,omitempty"`
 	ActionRequiredCode string           `json:"actionRequiredCode,omitempty"`
 	LastErrorCode      string           `json:"lastErrorCode,omitempty"`
 	// Retry escalation bookkeeping for mid-transfer failures. Strict-schema
@@ -224,6 +249,7 @@ type HistoryEntry struct {
 // CloneState returns a complete, independent copy for transactional mutation.
 func CloneState(in State) State {
 	out := in
+	out.AuthSourceBindings = append([]authsource.Binding(nil), in.AuthSourceBindings...)
 	out.Jobs = append([]DurableJob(nil), in.Jobs...)
 	out.Collections = append([]DurableCollection(nil), in.Collections...)
 	for i := range out.Collections {

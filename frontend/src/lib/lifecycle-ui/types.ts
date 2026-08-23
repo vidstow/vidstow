@@ -78,6 +78,8 @@ export interface LifecycleJobViewModel {
   title: string;
   metadata?: string;
   thumbnailUrl?: string;
+  accessMode?: 'public' | 'browser-session';
+  browserSourceLabel?: string;
   lifecycle: DurableLifecycle;
   phase?: PresentationPhase;
   desired?: DesiredState;
@@ -123,10 +125,19 @@ export interface QueueCollectionViewModel {
   metadata?: string;
   thumbnailUrl?: string;
   policy: string;
+  accessMode?: 'public' | 'browser-session';
+  browserSourceLabel?: string;
+  discovered?: number;
+  ready?: number;
+  authRequired?: number;
+  unavailable?: number;
+  invalid?: number;
+  approved?: number;
   childJobIds: string[];
   total: number;
   completed: number;
   failed: number;
+  actionRequired?: number;
   canceled: number;
   active: number;
   pending: number;
@@ -189,6 +200,10 @@ export interface ActionRequiredReviewViewModel {
   canDiscard: boolean;
   canRemove: boolean;
   canRetryCleanup: boolean;
+  accessMode?: 'public' | 'browser-session';
+  browserSourceLabel?: string;
+  retryFreshLabel?: string;
+  startOverLabel?: string;
 }
 
 /** Mirrors the bridge queue contract without importing legacy JobSnapshot. */

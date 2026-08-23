@@ -15,6 +15,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/tejasa97/vidstow/internal/authsource"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 )
 
@@ -561,6 +562,7 @@ func readStateV2(path string) (decodedState, bool, error) {
 		name string
 		max  int
 	}{
+		{name: "authSourceBindings", max: maxAuthSourceBindings},
 		{name: "jobs", max: maxJobs},
 		{name: "collections", max: maxCollections},
 		{name: "history", max: maxHistory},
@@ -727,10 +729,11 @@ func defaultStateV2() jobmodel.State {
 			DownloadConcurrency: 2,
 			PerVideoSubfolder:   true,
 		},
-		Jobs:        []jobmodel.DurableJob{},
-		Collections: []jobmodel.DurableCollection{},
-		History:     []jobmodel.HistoryEntry{},
-		Cleanup:     []jobmodel.CleanupTombstone{},
+		AuthSourceBindings: []authsource.Binding{},
+		Jobs:               []jobmodel.DurableJob{},
+		Collections:        []jobmodel.DurableCollection{},
+		History:            []jobmodel.HistoryEntry{},
+		Cleanup:            []jobmodel.CleanupTombstone{},
 	}
 }
 
@@ -767,8 +770,24 @@ func validateState(state jobmodel.State) error {
 	if !validSettings(state.Settings) || state.Settings.DownloadConcurrency < 1 || state.Settings.DownloadConcurrency > 10 {
 		return errors.New("store: invalid download concurrency")
 	}
-	if len(state.Jobs) > maxJobs || len(state.Collections) > maxCollections || len(state.History) > maxHistory || len(state.Cleanup) > maxCleanup {
+	if len(state.AuthSourceBindings) > maxAuthSourceBindings || len(state.Jobs) > maxJobs || len(state.Collections) > maxCollections || len(state.History) > maxHistory || len(state.Cleanup) > maxCleanup {
 		return errors.New("store: state collection exceeds limit")
+	}
+	bindings := make(map[string]authsource.Binding, len(state.AuthSourceBindings))
+	for _, binding := range state.AuthSourceBindings {
+		if !validID(binding.ID) || authsource.ValidateDescriptor(binding.Descriptor) != nil {
+			return errors.New("store: invalid browser source binding")
+		}
+		if _, duplicate := bindings[binding.ID]; duplicate {
+			return errors.New("store: duplicate browser source binding")
+		}
+		bindings[binding.ID] = binding
+	}
+	if ref := state.Settings.DefaultAuthSourceBindingRef; ref != "" {
+		binding, ok := bindings[ref]
+		if !ok || !binding.Enabled || !state.Settings.BrowserAccessEnabled {
+			return errors.New("store: invalid default browser source binding")
+		}
 	}
 	seen, attempts, sessions, ordinals, cleanupSessions := map[string]struct{}{}, map[string]struct{}{}, map[string]string{}, map[uint64]struct{}{}, map[string]struct{}{}
 	jobsByID := map[string]jobmodel.DurableJob{}
@@ -795,6 +814,10 @@ func validateState(state jobmodel.State) error {
 		if (job.CollectionID == "") != (job.CollectionIndex == 0) || job.CollectionIndex < 0 || job.CollectionIndex > maxCollectionChildren || (job.CollectionID != "" && !validID(job.CollectionID)) {
 			return errors.New("store: invalid durable collection membership")
 		}
+		hasOccurrence := job.SourceIndex != 0 || job.SourceOccurrenceID != ""
+		if hasOccurrence && (job.CollectionID == "" || job.SourceIndex <= 0 || job.SourceIndex > maxCollectionChildren || !validID(job.SourceOccurrenceID)) {
+			return errors.New("store: invalid durable source occurrence")
+		}
 		if job.CollectionID != "" {
 			members := collectionJobs[job.CollectionID]
 			if members == nil {
@@ -812,6 +835,17 @@ func validateState(state jobmodel.State) error {
 		}
 		if !validRequest(job.Request) || !validPlan(job.Plan) || !validText(job.ActionRequiredCode, maxShortText, job.Lifecycle == jobmodel.LifecycleActionRequired) || (job.Lifecycle != jobmodel.LifecycleActionRequired && job.ActionRequiredCode != "") || !validText(job.LastErrorCode, maxShortText, false) {
 			return errors.New("store: unsafe persisted request or plan")
+		}
+		if job.AuthIntent.RequiresAuthenticatedExecution != (job.AuthIntent.AuthSourceBindingRef != "") {
+			return errors.New("store: invalid authenticated job intent")
+		}
+		if job.AuthIntent.RequiresAuthenticatedExecution {
+			if !validID(job.AuthIntent.AuthSourceBindingRef) {
+				return errors.New("store: invalid authenticated job binding")
+			}
+			if _, ok := bindings[job.AuthIntent.AuthSourceBindingRef]; !ok {
+				return errors.New("store: authenticated job references missing binding")
+			}
 		}
 		if job.LastFailureCommittedBytes < 0 || job.ZeroProgressResumes < 0 || job.ZeroProgressResumes > maxRetryEscalationCounter || job.SessionRestarts < 0 || job.SessionRestarts > maxRetryEscalationCounter {
 			return errors.New("store: invalid retry escalation counters")
@@ -844,6 +878,28 @@ func validateState(state jobmodel.State) error {
 			len(collection.ChildJobIDs) == 0 || len(collection.ChildJobIDs) > maxCollectionChildren {
 			return errors.New("store: invalid durable collection")
 		}
+		if collection.Discovered < 0 || collection.Discovered > maxCollectionChildren || collection.Ready < 0 || collection.Ready > maxCollectionChildren ||
+			collection.AuthRequired < 0 || collection.AuthRequired > maxCollectionChildren || collection.Unavailable < 0 || collection.Unavailable > maxCollectionChildren ||
+			collection.Invalid < 0 || collection.Invalid > maxCollectionChildren || collection.Approved < 0 || collection.Approved > maxCollectionChildren {
+			return errors.New("store: invalid collection outcome count")
+		}
+		if collection.AuthIntent.RequiresAuthenticatedExecution != (collection.AuthIntent.AuthSourceBindingRef != "") {
+			return errors.New("store: invalid authenticated collection intent")
+		}
+		if collection.AuthIntent.RequiresAuthenticatedExecution {
+			if !validID(collection.AuthIntent.AuthSourceBindingRef) {
+				return errors.New("store: invalid authenticated collection binding")
+			}
+			if _, ok := bindings[collection.AuthIntent.AuthSourceBindingRef]; !ok {
+				return errors.New("store: authenticated collection references missing binding")
+			}
+			if collection.Discovered <= 0 || collection.Ready <= 0 || collection.Approved != len(collection.ChildJobIDs) || collection.Approved > collection.Ready ||
+				collection.Discovered != collection.Ready+collection.AuthRequired+collection.Unavailable+collection.Invalid {
+				return errors.New("store: invalid authenticated collection counts")
+			}
+		} else if collection.Discovered != 0 || collection.Ready != 0 || collection.AuthRequired != 0 || collection.Unavailable != 0 || collection.Invalid != 0 || collection.Approved != 0 {
+			return errors.New("store: public collection has authenticated review counts")
+		}
 		if _, duplicate := seenCollections[collection.ID]; duplicate {
 			return errors.New("store: duplicate collection id")
 		}
@@ -852,11 +908,24 @@ func validateState(state jobmodel.State) error {
 		}
 		seenCollections[collection.ID] = struct{}{}
 		members := collectionJobs[collection.ID]
-		lastIndex := 0
+		lastIndex, lastSourceIndex := 0, 0
+		seenOccurrences := make(map[string]struct{}, len(collection.ChildJobIDs))
 		for _, childID := range collection.ChildJobIDs {
 			child, ok := jobsByID[childID]
-			if !ok || child.CollectionID != collection.ID || child.CollectionIndex <= lastIndex || members[child.CollectionIndex] != childID {
+			if !ok || child.CollectionID != collection.ID || child.CollectionIndex <= lastIndex || members[child.CollectionIndex] != childID || child.AuthIntent != collection.AuthIntent {
 				return errors.New("store: collection child membership mismatch")
+			}
+			if collection.AuthIntent.RequiresAuthenticatedExecution {
+				if child.SourceIndex <= lastSourceIndex || !validID(child.SourceOccurrenceID) {
+					return errors.New("store: authenticated collection source order mismatch")
+				}
+				if _, duplicate := seenOccurrences[child.SourceOccurrenceID]; duplicate {
+					return errors.New("store: duplicate authenticated collection occurrence")
+				}
+				seenOccurrences[child.SourceOccurrenceID] = struct{}{}
+				lastSourceIndex = child.SourceIndex
+			} else if child.SourceIndex != 0 || child.SourceOccurrenceID != "" {
+				return errors.New("store: public collection has authenticated occurrence")
 			}
 			lastIndex = child.CollectionIndex
 		}
@@ -1003,6 +1072,7 @@ func writeTempFile(target string, data []byte) (string, error) {
 
 const (
 	maxStateBytes             = 8 << 20
+	maxAuthSourceBindings     = 128
 	maxJobs                   = 10_000
 	maxCollections            = 2_000
 	maxCollectionChildren     = 500
@@ -1129,7 +1199,11 @@ func validHistory(h jobmodel.HistoryEntry) bool {
 
 func validSettings(s jobmodel.Settings) bool {
 	validDiagnostics := s.AutomaticDiagnostics == "" || s.AutomaticDiagnostics == "enabled" || s.AutomaticDiagnostics == "disabled"
-	return validDiagnostics && validText(s.DownloadFolder, maxPathBytes, false) && validText(s.FFmpegPath, maxPathBytes, false) && s.WindowWidth >= 0 && s.WindowWidth <= 10000 && s.WindowHeight >= 0 && s.WindowHeight <= 10000
+	validBrowserSettings := validIDBounded(s.DefaultAuthSourceBindingRef, maxIDBytes, false) && s.BrowserAccessConsentVersion >= 0 && s.BrowserAccessConsentVersion <= authsource.CurrentConsentVersion
+	if !s.BrowserAccessEnabled && (s.DefaultAuthSourceBindingRef != "" || s.BrowserAccessConsentVersion != 0) {
+		validBrowserSettings = false
+	}
+	return validDiagnostics && validBrowserSettings && validText(s.DownloadFolder, maxPathBytes, false) && validText(s.FFmpegPath, maxPathBytes, false) && s.WindowWidth >= 0 && s.WindowWidth <= 10000 && s.WindowHeight >= 0 && s.WindowHeight <= 10000
 }
 func validatePreconditionsInput(values []JobPrecondition) error {
 	if len(values) > maxPreconditions {

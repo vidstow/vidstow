@@ -109,8 +109,8 @@ describe('backend-authored capabilities', () => {
           jobs: [],
           collections: [{
             id: 'batch-1', kind: 'batch', title: 'Batch download · 2 videos', thumbnailUrl: 'https://example.invalid/batch.jpg',
-            policy: 'video:720p', childJobIds: [], total: 2, completed: 0, failed: 0, canceled: 0,
-            active: 2, pending: 0, paused: 0, progress: 0.5, progressLabel: '0 of 2 complete',
+            policy: 'video:720p', childJobIds: [], total: 2, completed: 0, failed: 0, actionRequired: 1, canceled: 0,
+            active: 1, pending: 0, paused: 0, progress: 0.5, progressLabel: '0 of 2 complete',
             capabilities: {}, commandToken: 'batch-token',
           }],
         }),
@@ -119,6 +119,7 @@ describe('backend-authored capabilities', () => {
 
     expect(screen.getByText('Batch download · 2 videos')).toBeInTheDocument();
     expect(screen.getByText('video:720p')).toBeInTheDocument();
+    expect(screen.getByText('1 action required')).toBeInTheDocument();
     expect(container.querySelector('.parent-row > .thumbnail')).not.toBeInTheDocument();
   });
 
@@ -188,6 +189,19 @@ describe('backend-authored capabilities', () => {
     expect(onPause).not.toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Downloading, occupies an active slot')).toBeInTheDocument();
+  });
+
+  test('browser-session rows keep the safe bound source visible', () => {
+    render(LifecycleJobRow, {
+      props: {
+        job: {
+          id: 'auth-1', title: 'Signed-in source', lifecycle: 'paused', occupiesSlot: false,
+          accessMode: 'browser-session', browserSourceLabel: 'Chrome — Default', capabilities: {},
+        },
+      },
+    });
+    expect(screen.getByText('Browser session · Chrome — Default')).toBeInTheDocument();
+    expect(screen.queryByText(/profile|cookie|binding/i)).not.toBeInTheDocument();
   });
 
   test('row actions require an opaque token and echo it without deriving authority', async () => {
@@ -300,6 +314,23 @@ describe('action-required recovery', () => {
     preservationNotice: 'Removing the row leaves saved data on disk.', canStartOver: true,
     canRetryRecovery: true, canRetryFreshLink: true, canDiscard: true, canRemove: true, canRetryCleanup: false,
   };
+
+  test('uses backend-authored browser-source recovery labels without implying confirmation', () => {
+    render(ActionRequiredReviewDialog, {
+      props: {
+        open: true,
+        review: {
+          ...review,
+          accessMode: 'browser-session', browserSourceLabel: 'Chrome — Default',
+          retryFreshLabel: 'Refresh Chrome — Default and retry', startOverLabel: 'Start over publicly from Home',
+        },
+      },
+    });
+    expect(screen.getByText('Browser session · Chrome — Default')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh Chrome — Default and retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start over publicly from Home' })).toBeInTheDocument();
+    expect(screen.queryByText(/signed-in session confirmed/i)).not.toBeInTheDocument();
+  });
 
   test('offers a fresh Home analysis while clearly preserving the original row', async () => {
     const onStartOver = vi.fn();

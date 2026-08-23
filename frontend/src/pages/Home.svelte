@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { createEventDispatcher, onDestroy } from 'svelte';
+  import { createEventDispatcher, onDestroy, onMount } from 'svelte';
   import { api } from '../lib/api.js';
   import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
   import { formatBytes, formatViewCount, shortTitle } from '../lib/format.js';
-  import type { BatchAnalysisView, InfoSummary, OutputPlan, PlaylistSummary, Quality, UrlCheckResult } from '../lib/types.js';
+  import type { BatchAnalysisView, BrowserSourceCheck, BrowserSourceOption, BrowserSourceStatus, InfoSummary, OutputPlan, PlaylistEntryOutcome, PlaylistSummary, Quality, UrlCheckResult } from '../lib/types.js';
 
   const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'downloads' | 'settings' | 'about' }>();
 
@@ -33,9 +33,20 @@
   let rangeEnd = '';
   let selectAllBox: HTMLInputElement | undefined;
   let linkedPlaylist: UrlCheckResult | null = null;
+  let browserOptions: BrowserSourceOption[] = [];
+  let browserSources: BrowserSourceStatus[] = [];
+  let accessMode: 'public' | 'browser-session' = 'public';
+  let selectedBindingRef = '';
+  let setupOpen = false;
+  let setupOptionId = '';
+  let browserConsent = false;
+  let browserBusy = false;
+  let browserCheck: BrowserSourceCheck | null = null;
+  const BROWSER_CONSENT_VERSION = 1;
   const PLAYLIST_ADMIT_CAP = 500;
   const batchExpiryTimer = setInterval(() => batchNow = Date.now(), 1000);
   onDestroy(() => clearInterval(batchExpiryTimer));
+  onMount(refreshBrowserAccess);
 
   $: folder = $settings.downloadFolder || folder;
   $: plans = preview?.plans ?? [];
@@ -43,7 +54,7 @@
   $: selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
   $: query = search.trim().toLowerCase();
   $: filteredEntries = playlist?.entries.filter((entry) => !query || entry.title.toLowerCase().includes(query)) ?? [];
-  $: availableCount = playlist?.available ?? 0;
+  $: availableCount = playlist?.ready ?? playlist?.available ?? 0;
   $: playlistFirstIndex = playlist?.entries[0]?.index ?? 1;
   $: playlistLastIndex = playlist?.entries.at(-1)?.index ?? playlist?.entryCount ?? 1;
   $: allAvailableSelected = availableCount > 0 && selectedItems.size === availableCount;
@@ -53,6 +64,8 @@
   $: batchExpiry = batchReview?.expiresAt ? Date.parse(batchReview.expiresAt) : Number.NaN;
   $: batchTokenValid = !!batchReview?.token && Number.isFinite(batchExpiry) && batchExpiry > batchNow;
   $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy;
+  $: selectedBrowserSource = browserSources.find((source) => source.bindingRef === selectedBindingRef && source.enabled) ?? null;
+  $: effectiveBrowserAccess = accessMode === 'browser-session' && !!selectedBrowserSource;
   $: if (selectAllBox && playlist) {
     selectAllBox.indeterminate = selectedItems.size > 0 && selectedItems.size < availableCount;
   }
@@ -82,6 +95,22 @@
     (event.currentTarget as HTMLImageElement).style.display = 'none';
   };
 
+  async function refreshBrowserAccess() {
+    try {
+      const [options, sources] = await Promise.all([api.browserAccess.options(), api.browserAccess.sources()]);
+      browserOptions = options;
+      browserSources = sources.filter((source) => source.enabled);
+      if (!setupOptionId || !browserOptions.some((option) => option.id === setupOptionId)) setupOptionId = browserOptions[0]?.id ?? '';
+      if (selectedBindingRef && !browserSources.some((source) => source.bindingRef === selectedBindingRef)) {
+        selectedBindingRef = '';
+        accessMode = 'public';
+      }
+    } catch {
+      browserOptions = [];
+      browserSources = [];
+    }
+  }
+
   function clearAnalysis() {
     preview = null;
     playlist = null;
@@ -102,6 +131,59 @@
 
   function setInputMode(mode: 'single' | 'batch') {
     inputMode = mode;
+  }
+
+  function setPublicAccess() {
+    if (accessMode === 'public') return;
+    accessMode = 'public';
+    selectedBindingRef = '';
+    browserCheck = null;
+    analysisGeneration += 1;
+    clearAnalysis();
+  }
+
+  function selectBrowserSource(bindingRef: string) {
+    if (!browserSources.some((source) => source.bindingRef === bindingRef && source.enabled)) return;
+    accessMode = 'browser-session';
+    selectedBindingRef = bindingRef;
+    browserCheck = null;
+    setupOpen = false;
+    analysisGeneration += 1;
+    clearAnalysis();
+  }
+
+  function updateAccess(event: Event) {
+    const value = (event.currentTarget as HTMLSelectElement).value;
+    if (value === 'public') setPublicAccess();
+    else selectBrowserSource(value);
+  }
+
+  function offerBrowserAccess() {
+    modal.set(null);
+    setupOpen = browserSources.length === 0;
+    showBanner('info', browserSources.length ? 'Choose a configured browser session from Access.' : 'Configure a browser profile, then try again.');
+  }
+
+  async function configureBrowserAccess() {
+    if (!setupOptionId || !browserConsent || browserBusy) return;
+    browserBusy = true;
+    browserCheck = null;
+    try {
+      const source = await api.browserAccess.configure(setupOptionId, BROWSER_CONSENT_VERSION);
+      await refreshBrowserAccess();
+      selectedBindingRef = source.bindingRef;
+      const check = await api.browserAccess.check(source.bindingRef);
+      browserCheck = check;
+      if (check.ready) {
+        accessMode = 'browser-session';
+        setupOpen = false;
+        showBanner('success', check.partial ? 'Browser source is usable with limited coverage' : 'Browser source is ready');
+      }
+    } catch (err) {
+      browserCheck = { status: 'import-failed', label: 'Check failed', message: errorMessage(err, 'VidStow could not check this browser source.'), ready: false, partial: false };
+    } finally {
+      browserBusy = false;
+    }
   }
 
   function updateBatchText(event: Event) {
@@ -166,16 +248,20 @@
     clearAnalysis();
     if (target.kind === 'playlist') {
       const canonicalURL = target.playlistUrl!;
-      const summary = await api.analyse.playlist(canonicalURL);
+      const summary = effectiveBrowserAccess
+        ? await api.analyse.playlistWithBrowserSource(canonicalURL, selectedBindingRef)
+        : await api.analyse.playlist(canonicalURL);
       if (requestGeneration !== analysisGeneration) return;
       url = canonicalURL;
       playlist = summary;
-      selectedItems = new Set(summary.entries.filter((entry) => entry.available).map((entry) => entry.index));
+      selectedItems = new Set(summary.entries.filter(entryIsReady).map((entry) => entry.index));
       rangeStart = summary.entries[0]?.index ? String(summary.entries[0].index) : '1';
       rangeEnd = summary.entries.at(-1)?.index ? String(summary.entries.at(-1)!.index) : String(summary.entryCount);
     } else {
       const canonicalURL = target.videoUrl!;
-      const summary = await api.analyse.url(canonicalURL);
+      const summary = effectiveBrowserAccess
+        ? await api.analyse.urlWithBrowserSource(canonicalURL, selectedBindingRef)
+        : await api.analyse.url(canonicalURL);
       if (requestGeneration !== analysisGeneration) return;
       url = canonicalURL;
       preview = summary;
@@ -183,6 +269,11 @@
       selectedPlanId = recommended?.id ?? '';
       tab = recommended?.kind ?? 'video';
     }
+  }
+
+  function analysisErrorTitle(message: string): string {
+    if (!effectiveBrowserAccess) return 'Unsupported URL';
+    return message.includes('timed out') ? 'Browser access timed out' : 'Browser-session analysis failed';
   }
 
   async function analyze() {
@@ -210,11 +301,17 @@
       }
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
-      modal.set({
-        kind: 'error',
-        title: 'Unsupported URL',
-        message: errorMessage(err, 'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.'),
-      });
+      const message = errorMessage(err, 'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.');
+      if (!effectiveBrowserAccess && message === 'browser-access-required') {
+        modal.set({
+          kind: 'confirm',
+          title: 'This item needs sign-in',
+          message: 'Public access was not enough. You can explicitly try a browser profile where you are already signed in. VidStow will not save your cookies or password.',
+          actions: [{ label: 'Use browser session', primary: true, action: offerBrowserAccess }],
+        });
+      } else {
+        modal.set({ kind: 'error', title: analysisErrorTitle(message), message });
+      }
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
     }
@@ -227,11 +324,17 @@
       await action();
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
-      modal.set({
-        kind: 'error',
-        title: 'Could not analyze link',
-        message: errorMessage(err, 'Could not analyze this link.'),
-      });
+      const message = errorMessage(err, 'Could not analyze this link.');
+      if (!effectiveBrowserAccess && message === 'browser-access-required') {
+        modal.set({
+          kind: 'confirm',
+          title: 'This item needs sign-in',
+          message: 'Public access was not enough. You can explicitly choose a browser profile where you are already signed in. VidStow will not save your cookies or password.',
+          actions: [{ label: 'Use browser session', primary: true, action: offerBrowserAccess }],
+        });
+      } else {
+        modal.set({ kind: 'error', title: effectiveBrowserAccess ? analysisErrorTitle(message) : 'Could not analyze link', message });
+      }
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
     }
@@ -270,8 +373,23 @@
     selectedItems = next;
   }
 
+  function entryIsReady(entry: PlaylistSummary['entries'][number]) {
+    return entry.outcome ? entry.outcome === 'ready' : entry.available;
+  }
+
+  function entryOutcome(entry: PlaylistSummary['entries'][number]): PlaylistEntryOutcome {
+    return entry.outcome ?? (entry.available ? 'ready' : 'unavailable');
+  }
+
   function selectAll() {
-    selectedItems = new Set(playlist?.entries.filter((entry) => entry.available).map((entry) => entry.index) ?? []);
+    selectedItems = new Set(playlist?.entries.filter(entryIsReady).map((entry) => entry.index) ?? []);
+  }
+
+  function outcomeLabel(outcome: PlaylistEntryOutcome) {
+    if (outcome === 'auth-required') return 'Auth required';
+    if (outcome === 'unavailable') return 'Unavailable';
+    if (outcome === 'invalid') return 'Invalid';
+    return 'Ready';
   }
 
   function clearSelection() {
@@ -295,7 +413,7 @@
     const high = Math.max(start, end);
     selectedItems = new Set(
       playlist.entries
-        .filter((entry) => entry.available && entry.index >= low && entry.index <= high)
+        .filter((entry) => entryIsReady(entry) && entry.index >= low && entry.index <= high)
         .map((entry) => entry.index),
     );
   }
@@ -332,6 +450,7 @@
           title: preview!.title,
           channel: preview!.channel,
           planId: selectedPlan!.id,
+          analysisAuthority: preview!.analysisAuthority,
           outputDir: folder,
           duration: preview!.duration,
           thumbnail: preview!.thumbnail,
@@ -367,12 +486,19 @@
     }
     const start = async () => {
       try {
+        const selected = [...selectedItems].sort((a, b) => a - b);
+        const authenticated = !!playlist!.reviewAuthority && playlist!.browserAccess?.mode === 'browser-session';
+        const selectedOccurrences = authenticated
+          ? playlist!.entries.filter((entry) => selectedItems.has(entry.index)).map((entry) => entry.occurrenceId).filter((value): value is string => !!value)
+          : undefined;
         await api.jobs.startPlaylist({
           url: playlist!.url,
           playlistId: playlist!.id,
           quality,
           audioBitrate,
-          selectedItems: [...selectedItems].sort((a, b) => a - b),
+          selectedItems: authenticated ? [] : selected,
+          reviewAuthority: authenticated ? playlist!.reviewAuthority : undefined,
+          selectedOccurrences,
         });
         showBanner('success', `Added ${selectedItems.size} videos to queue`);
       } catch (err) {
@@ -502,6 +628,43 @@
       <button class="app-btn primary" type="submit" disabled={busy || !url.trim()}>{busy ? 'Analyzing…' : 'Analyze'}</button>
     </form>
 
+    <div class="access-bar">
+      <label for="media-access">Access</label>
+      <select id="media-access" value={effectiveBrowserAccess ? selectedBindingRef : 'public'} on:change={updateAccess}>
+        <option value="public">Public only</option>
+        {#each browserSources as source (source.bindingRef)}
+          <option value={source.bindingRef}>Browser session · {source.label}</option>
+        {/each}
+      </select>
+      <button type="button" class="access-link" on:click={() => setupOpen = !setupOpen}>{setupOpen ? 'Close setup' : 'Set up browser access…'}</button>
+      <small>Browser access is used only when you explicitly select it.</small>
+    </div>
+
+    {#if setupOpen}
+      <section class="browser-setup" aria-labelledby="browser-setup-title">
+        <div>
+          <h2 id="browser-setup-title">Use a signed-in browser session</h2>
+          <p>This can expose your signed-in YouTube account to download requests. YouTube may rate-limit or challenge the account. Use it only for media you are authorized to access.</p>
+          <p>VidStow reads the selected browser cookie store for each operation. It does not ask for your password and does not persist cookie values. Your operating system or browser may ask for permission or credential-store access.</p>
+        </div>
+        <label for="browser-source-option">Browser profile</label>
+        <select id="browser-source-option" bind:value={setupOptionId} disabled={browserBusy || !browserOptions.length}>
+          {#each browserOptions as option (option.id)}
+            <option value={option.id}>{option.label}</option>
+          {/each}
+        </select>
+        <label class="browser-consent">
+          <input type="checkbox" bind:checked={browserConsent} disabled={browserBusy} />
+          I authorize VidStow to read this browser’s cookies for requests I start.
+        </label>
+        <button type="button" class="app-btn primary" on:click={configureBrowserAccess} disabled={browserBusy || !setupOptionId || !browserConsent}>
+          {browserBusy ? 'Checking…' : 'Configure and check'}
+        </button>
+        {#if !browserOptions.length}<p class="check-result warning">No supported local browser profile was found.</p>{/if}
+        {#if browserCheck}<p class="check-result" class:ok={browserCheck.ready} role="status"><strong>{browserCheck.label}</strong> · {browserCheck.message}</p>{/if}
+      </section>
+    {/if}
+
   {#if playlist}
     <section class="workspace" aria-label="Playlist">
       <header class="identity">
@@ -516,7 +679,11 @@
             · {playlist.entryCount} videos
             {#if playlist.unavailable} · {playlist.unavailable} unavailable{/if}
           </span>
-          <small aria-live="polite">{selectedItems.size} of {availableCount} selected</small>
+          <small aria-live="polite">{selectedItems.size} of {availableCount} Ready selected</small>
+          <small class="access-badge">{playlist.browserAccess?.mode === 'browser-session' ? `Browser session supplied · ${playlist.browserAccess.label}` : 'Public only'}</small>
+          {#if playlist.browserAccess?.mode === 'browser-session'}
+            <small>{playlist.ready} Ready · {playlist.authRequired} Auth required · {playlist.unavailable} Unavailable · {playlist.invalid} Invalid</small>
+          {/if}
           {#if playlistAtCap}
             <small class="cap-note">VidStow can review up to {PLAYLIST_ADMIT_CAP} videos from a playlist.</small>
           {/if}
@@ -566,9 +733,9 @@
       </div>
 
       <div class="entry-list" role="list">
-        {#each filteredEntries as entry (entry.index)}
-          <label class="entry" class:unavailable={!entry.available} class:selected={selectedItems.has(entry.index)} role="listitem">
-            <input type="checkbox" checked={selectedItems.has(entry.index)} disabled={!entry.available} on:change={() => toggle(entry.index)} />
+        {#each filteredEntries as entry (entry.occurrenceId || entry.index)}
+          <label class="entry" class:unavailable={!entryIsReady(entry)} class:selected={selectedItems.has(entry.index)} role="listitem">
+            <input type="checkbox" checked={selectedItems.has(entry.index)} disabled={!entryIsReady(entry)} on:change={() => toggle(entry.index)} />
             <span class="number">{entry.index}</span>
             <span class="mini">
               {#if entry.thumbnail || entry.videoId}
@@ -576,11 +743,9 @@
               {/if}
             </span>
             <strong title={entry.title}>{entry.title}</strong>
-            {#if !entry.available}
-              <span class="meta">Unavailable</span>
-            {:else if entry.duration}
-              <span class="meta">{entry.duration}</span>
-            {/if}
+            <span class="entry-state" data-outcome={entryOutcome(entry)} title={entry.reasonCode || ''}>
+              {outcomeLabel(entryOutcome(entry))}{#if entryIsReady(entry) && entry.duration} · {entry.duration}{/if}
+            </span>
           </label>
         {:else}
           <div class="empty-list">{query ? 'No videos match that search.' : 'No videos in this playlist.'}</div>
@@ -610,6 +775,7 @@
           <strong title={preview.title}>{preview.title}</strong>
           <span>{preview.channel || 'YouTube'}{#if preview.mediaType === 'short'} · <em>Short</em>{/if}</span>
           <small>{preview.duration || 'Duration unavailable'}{preview.viewCount ? ` · ${formatViewCount(preview.viewCount)} views` : ''}</small>
+          <small class="access-badge">{preview.browserAccess?.mode === 'browser-session' ? `Browser session supplied · ${preview.browserAccess.label}` : 'Public only'}</small>
           {#if linkedPlaylist?.playlistUrl}
             <button type="button" class="ghost review-playlist" on:click={reviewLinkedPlaylist}>Review the playlist instead</button>
           {/if}
@@ -798,6 +964,37 @@
   }
   .analyze-bar input { height: 40px; }
   .analyze-bar .app-btn { min-height: 40px; }
+  .access-bar {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 36px;
+    padding: 0 2px;
+    color: var(--text-secondary);
+    font-size: var(--fs-xs);
+  }
+  .access-bar label { font-weight: 700; color: var(--text-primary); }
+  .access-bar select { height: 32px; max-width: 310px; padding: 0 9px; font-size: var(--fs-xs); }
+  .access-bar small { margin-left: auto; color: var(--text-muted); }
+  .access-link { padding: 0; color: var(--accent-600); font-size: var(--fs-xs); font-weight: 650; }
+  .browser-setup {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(210px, 300px) auto;
+    align-items: end;
+    gap: 10px 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--status-warning);
+    border-radius: var(--r-md);
+    background: var(--status-warning-soft);
+  }
+  .browser-setup > div { grid-column: 1 / -1; }
+  .browser-setup h2 { margin: 0 0 5px; font-size: var(--fs-md); }
+  .browser-setup p { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.5; }
+  .browser-setup > label:not(.browser-consent) { grid-column: 1 / -1; font-size: var(--fs-xs); font-weight: 650; }
+  .browser-setup select { height: 38px; }
+  .browser-consent { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: var(--fs-xs); }
+  .check-result { grid-column: 1 / -1; padding: 8px 10px; border-radius: var(--r-sm); background: var(--status-danger-soft); color: var(--status-danger) !important; }
+  .check-result.ok { background: var(--status-success-soft); color: var(--status-success) !important; }
   .ghost {
     min-height: 32px;
     padding: 0 10px;
@@ -876,6 +1073,15 @@
     color: var(--text-secondary);
   }
   .identity-copy small { color: var(--text-secondary); font-weight: 550; }
+  .identity-copy .access-badge {
+    align-self: flex-start;
+    margin-top: 2px;
+    padding: 3px 7px;
+    border-radius: var(--r-full);
+    background: var(--accent-soft);
+    color: var(--accent-600);
+    font-weight: 700;
+  }
 
   .policy {
     display: grid;
@@ -985,11 +1191,15 @@
     opacity: 0.55;
     cursor: default;
   }
-  .entry .number, .entry .meta {
+  .entry .number, .entry-state {
     font-size: var(--fs-xs);
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
   }
+  .entry-state { padding: 3px 7px; border-radius: var(--r-full); white-space: nowrap; font-weight: 650; }
+  .entry-state[data-outcome='ready'] { color: var(--status-success); background: var(--status-success-soft); }
+  .entry-state[data-outcome='auth-required'] { color: var(--status-warning); background: var(--status-warning-soft); }
+  .entry-state[data-outcome='unavailable'], .entry-state[data-outcome='invalid'] { color: var(--status-danger); background: var(--status-danger-soft); }
   .entry strong { font-size: var(--fs-sm); font-weight: 550; }
   .mini {
     width: 64px;
@@ -1123,6 +1333,10 @@
   }
 
   @media (max-width: 860px) {
+    .access-bar { flex-wrap: wrap; }
+    .access-bar small { width: 100%; margin-left: 0; }
+    .browser-setup { grid-template-columns: 1fr; }
+    .browser-setup > * { grid-column: 1 !important; }
     .batch-policy { grid-template-columns: 1fr auto; }
     .batch-policy select { grid-column: 1 / -1; width: 100%; }
     .identity { grid-template-columns: 72px 1fr; }

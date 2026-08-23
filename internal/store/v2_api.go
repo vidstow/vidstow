@@ -41,14 +41,17 @@ func (s *V2Store) Settings() Settings {
 	}
 	state := s.Snapshot()
 	return Settings{
-		DownloadFolder:        state.Settings.DownloadFolder,
-		FFmpegPath:            state.Settings.FFmpegPath,
-		WindowWidth:           state.Settings.WindowWidth,
-		WindowHeight:          state.Settings.WindowHeight,
-		DownloadConcurrency:   state.Settings.DownloadConcurrency,
-		PerVideoSubfolder:     state.Settings.PerVideoSubfolder,
-		ConfirmBeforeDownload: state.Settings.ConfirmBeforeDownload,
-		AutomaticDiagnostics:  state.Settings.AutomaticDiagnostics,
+		DownloadFolder:              state.Settings.DownloadFolder,
+		FFmpegPath:                  state.Settings.FFmpegPath,
+		WindowWidth:                 state.Settings.WindowWidth,
+		WindowHeight:                state.Settings.WindowHeight,
+		DownloadConcurrency:         state.Settings.DownloadConcurrency,
+		PerVideoSubfolder:           state.Settings.PerVideoSubfolder,
+		ConfirmBeforeDownload:       state.Settings.ConfirmBeforeDownload,
+		AutomaticDiagnostics:        state.Settings.AutomaticDiagnostics,
+		BrowserAccessEnabled:        state.Settings.BrowserAccessEnabled,
+		DefaultAuthSourceBindingRef: state.Settings.DefaultAuthSourceBindingRef,
+		BrowserAccessConsentVersion: state.Settings.BrowserAccessConsentVersion,
 	}
 }
 
@@ -80,6 +83,12 @@ func (s *V2Store) SetSettings(next Settings) error {
 		settings.DownloadConcurrency = defaultStateV2().Settings.DownloadConcurrency
 	}
 	return s.Transaction(nil, func(state *jobmodel.State) error {
+		// Browser access is changed only through its dedicated backend-owned
+		// contract. Legacy/frontend whole-settings updates cannot disable,
+		// rebind, or rewrite authenticated job authority by omission.
+		settings.BrowserAccessEnabled = state.Settings.BrowserAccessEnabled
+		settings.DefaultAuthSourceBindingRef = state.Settings.DefaultAuthSourceBindingRef
+		settings.BrowserAccessConsentVersion = state.Settings.BrowserAccessConsentVersion
 		state.Settings = settings
 		return nil
 	})

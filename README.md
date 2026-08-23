@@ -4,7 +4,7 @@
 
 # VidStow
 
-### Download public YouTube videos with a focused desktop queue.
+### Download public or authorized YouTube media with a focused desktop queue.
 
 A local desktop application built with Go, Wails, and Svelte.
 
@@ -15,7 +15,7 @@ A local desktop application built with Go, Wails, and Svelte.
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](frontend/package.json)
 [![Engine](https://img.shields.io/badge/youtube__dlp-pinned-20232A)](go.mod)
 
-[Download](#download) · [Features](#features) · [Screenshots](#screenshots) · [Project status](#project-status) · [Run locally](#run-locally) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
+[Download](#download) · [Features](#features) · [Browser access](#browser-session-access) · [Screenshots](#screenshots) · [Project status](#project-status) · [Platform policy](docs/PLATFORM_SUPPORT.md) · [Run locally](#run-locally) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
 
 <video src="docs/assets/demo-walkthrough.mp4" width="800" autoplay muted loop playsinline controls>
   VidStow playlist walkthrough: paste a link, review entries, and follow the local queue.
@@ -24,9 +24,12 @@ A local desktop application built with Go, Wails, and Svelte.
 </div>
 
 > [!IMPORTANT]
-> VidStow is beta software for public, on-demand YouTube video, Short, and playlist URLs.
-> Channels, search, live streams, authenticated downloads, and other
-> sites are outside the supported application scope.
+> VidStow is beta software for on-demand YouTube video, Short, and existing playlist URLs.
+> Public access is the default. An explicitly selected supported local browser
+> session can be supplied for media the signed-in user is authorized to access.
+> Browser support follows the pinned engine's Windows, macOS, and Linux matrix.
+> Channels, search, library browsing, live streams, and other sites are outside
+> the supported application scope.
 
 ## Download
 
@@ -52,21 +55,35 @@ The cask installs FFmpeg and FFprobe automatically. Upgrade later with
 VidStow can alternatively be built from the Apache-2.0 source using the
 [local build instructions](#run-locally).
 
-Windows, Linux, and macOS Intel packages are outside the supported release
-scope. See the [release guide](docs/RELEASE.md) for artifact packaging and
-verification details.
+The current published distribution is macOS Apple Silicon only. That is an
+artifact-availability boundary, not a product-development boundary: VidStow
+code and features target supported Windows, macOS, and Linux architectures even
+when an installer is not yet published for them. See the normative
+[platform development and distribution policy](docs/PLATFORM_SUPPORT.md) and
+the [release guide](docs/RELEASE.md) for the current artifact packaging and
+verification matrix.
 
 ## Features
 
 - **Analyze before downloading** — inspect the title, thumbnail, duration,
   channel, and available output choices.
-- **Flexible link input** — paste, type, or drag and drop a public YouTube video,
-  Short, or playlist URL. Links containing both a video and a playlist can be
-  reviewed as either.
+- **Flexible link input** — paste, type, or drag and drop a YouTube video,
+  Short, or existing playlist URL. Links containing both a video and a playlist
+  can be reviewed as either.
+- **Explicit browser-session access** — choose a supported backend-discovered
+  browser profile or cookie store for a request you start. Public-only access
+  remains the default; VidStow never silently substitutes a different profile
+  or retries an authenticated request anonymously. Imported cookies are scoped
+  to YouTube's registrable site and are not supplied to unrelated redirect
+  hosts.
 - **Focused output choices** — choose best available video, capped resolutions,
   original audio, or MP3 when the analyzed media supports those choices.
-- **Playlist review** — select up to 500 available entries, apply a bounded
-  range, and admit the collection as one expandable parent with individual jobs.
+- **Playlist review** — select up to 500 Ready entries, apply a bounded range,
+  and admit the collection as one expandable parent with individual jobs.
+  Browser-session reviews preserve source order and show every occurrence as
+  Ready, Auth required, Unavailable, or Invalid instead of silently skipping it.
+  If a 501st authenticated occurrence is exposed, VidStow rejects the review
+  visibly rather than presenting the first 500 as complete.
 - **Reliable batch downloads** — review 2–20 individual video or Short URLs at
   once, identify invalid and duplicate lines, then atomically admit every ready
   item under one durable expandable queue parent.
@@ -101,6 +118,70 @@ Cancel requests engine-session discard. If cleanup cannot be proved complete,
 the application retains a cleanup obligation or reports that user action is
 required instead of claiming success.
 
+## Browser-session access
+
+Browser-session access lets VidStow supply an explicitly selected local browser
+session to YouTube for a video, Short, or existing playlist that the signed-in
+user is authorized to access. It does not bypass DRM, grant access, or prove
+that YouTube accepted the session. A successful public download may simply mean
+the media never required authentication.
+
+| Platform | Browser sources |
+| --- | --- |
+| macOS | Chrome, Firefox, Safari |
+| Windows | Chrome, Chromium, Edge, Brave, Vivaldi, Opera, Firefox |
+| Linux | Chrome, Chromium, Brave, Firefox |
+
+This is a feature-compatibility matrix, independent of the smaller current
+binary-distribution matrix.
+
+### Set up and use a source
+
+1. Sign in to YouTube in a supported local browser source.
+2. In **Settings**, choose a backend-discovered browser/profile, check the
+   consent box, then select **Configure and check**.
+3. Return to **Home** and explicitly choose that source for the URL. Every new
+   URL still starts in **Public only** mode.
+4. Review the source badge and media or playlist outcomes before adding work to
+   the queue.
+
+A source check proves only that VidStow can read the selected local store. It
+does not contact YouTube to attest login state or media entitlement. Platform
+credential controls may appear: for example, Chrome can cause macOS Keychain to
+request access to the **Chrome Safe Storage** key, while Windows and Linux use
+their supported native decryption boundaries. Denying or cancelling safely
+stops the check. VidStow does not weaken operating-system protection or cache a
+credential-store key.
+
+### Durable behavior and recovery
+
+Each admitted authenticated job keeps one opaque, non-secret binding to the
+validated browser/profile descriptor. Analysis, initial download, isolated
+retry, and restart recovery resolve that exact source again. Changing Settings
+never rebinds existing jobs. If the source disappears, permission is denied, or
+YouTube rejects the session, VidStow shows **Action required** rather than
+silently choosing another profile or falling back to public access.
+
+Authenticated playlist review preserves upstream occurrence order and exposes
+one visible outcome per occurrence: **Ready**, **Auth required**,
+**Unavailable**, or **Invalid**. Only selected Ready occurrences are admitted,
+in one atomic parent/child transaction. The parent count equals the admitted
+child set. A 501st exposed occurrence rejects the review instead of silently
+presenting a partial 500-entry result.
+
+### Privacy and account safety
+
+- Cookie-store access is read-only and operation-scoped.
+- Cookie values, credentials, browser paths, account identity, and signed media
+  URLs are not stored in State v2, jobs, diagnostics, or telemetry.
+- Imported cookies are restricted to YouTube's registrable site and are not
+  supplied to unrelated redirect hosts.
+- Forgetting a configured source removes VidStow's non-secret binding only. If
+  active jobs use it, VidStow first asks you to pause them.
+- Use this feature only for media you own or are authorized to download. A
+  browser session can expose your signed-in account to requests, and platform
+  rules or account protections may still deny the operation.
+
 ## Screenshots
 
 <table>
@@ -112,7 +193,7 @@ required instead of claiming success.
     </td>
     <td width="50%">
       <strong>Playlist review</strong><br>
-      Search a playlist, select entries, apply a range, and choose one output policy.<br><br>
+      Review a playlist, select entries, apply a range, and choose one output policy.<br><br>
       <img src="docs/assets/screenshots/playlist-review.png" alt="VidStow reviewing selected entries from the Blender Open Movies playlist">
     </td>
   </tr>
@@ -138,6 +219,72 @@ required instead of claiming success.
   </tr>
 </table>
 
+### Authenticated browser-session UX
+
+These Penpot exports document the implemented consent, review, queue, and
+recovery contract. The pull request includes the complete twelve-state design
+walkthrough, including public default, remediation, source-forgetting, Windows,
+and Linux states.
+
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Explicit setup and consent</strong><br>
+      Browser access is optional, no source is selected silently, and the check
+      remains disabled until the user authorizes it.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/02-browser-setup-consent.png" alt="Penpot design showing explicit Chrome profile selection and browser-cookie consent">
+    </td>
+    <td width="50%">
+      <strong>Single-media review</strong><br>
+      The result identifies request mode and exact source without claiming that
+      YouTube required or accepted the session.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/04-video-review-session-supplied.png" alt="Penpot design showing a video review with the supplied Chrome profile badge">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Deterministic playlist outcomes</strong><br>
+      Every exposed occurrence has a visible outcome; selected Ready children
+      are admitted in source order.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/05-playlist-explicit-outcomes.png" alt="Penpot design showing Ready, Auth required, Unavailable, and Invalid playlist outcomes">
+    </td>
+    <td width="50%">
+      <strong>Bound collection recovery</strong><br>
+      Parent counts and the exact browser/profile binding remain visible while
+      one child is recovered independently.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/06-queue-collection-recovery.png" alt="Penpot design showing an authenticated playlist collection and isolated child recovery">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Browser access settings</strong><br>
+      Source discovery, consent, checking, and forgetting are explicit; public
+      access remains the Home default.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/07-settings-browser-access.png" alt="Penpot design showing configured browser access in Settings">
+    </td>
+    <td width="50%">
+      <strong>Action required</strong><br>
+      An unusable bound source stops for a decision instead of switching
+      profiles or retrying anonymously.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/09-action-required-decision.png" alt="Penpot design showing the recovery decisions for a browser-session job">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Windows source discovery</strong><br>
+      The Windows variant exposes every browser family supported by the pinned
+      engine without changing the consent or recovery contract.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/11-windows-browser-sources.png" alt="Penpot design showing supported Windows browser sources">
+    </td>
+    <td width="50%">
+      <strong>Linux source discovery</strong><br>
+      The Linux variant discovers its supported browser families while keeping
+      generated release availability separate from product support.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/12-linux-browser-sources.png" alt="Penpot design showing supported Linux browser sources">
+    </td>
+  </tr>
+</table>
+
 ## Project status
 
 VidStow is beta software. Supported behavior is bounded by the exact
@@ -145,11 +292,11 @@ application and engine versions and by artifact-specific validation.
 
 | Area | Supported boundary |
 | --- | --- |
-| Product | Beta; focused public YouTube video, Short, playlist, and 2–20 URL batch workflow |
-| Package | [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5) installs on Apple Silicon through the [`vidstow/tap`](https://github.com/vidstow/homebrew-tap) Homebrew cask |
+| Product | Beta; cross-platform focused YouTube video, Short, existing playlist, and public-only 2–20 URL batch workflow; optional browser-session access follows the pinned engine's OS/browser matrix |
+| Distribution | [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5) currently installs on macOS Apple Silicon through the [`vidstow/tap`](https://github.com/vidstow/homebrew-tap) Homebrew cask; this does not narrow source or feature compatibility |
 | Source | Apache-2.0 source and self-build instructions |
 | Queue | State v2 persistence, revision-checked lifecycle transitions, FIFO admission, and startup reconciliation |
-| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins `github.com/tejasa97/ytdlp-go v0.3.0` |
+| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins the reviewed hardening commit exposed as `v0.3.1-0.20260823191038-318793743304` |
 | Resume | Session reuse is evidence-dependent; no universal transfer continuation or guaranteed byte reuse |
 | Updates | Manual downloads from GitHub Releases |
 
@@ -229,7 +376,8 @@ VidStow stores application state in the operating system's per-user
 configuration directory. State v2 can include:
 
 - settings, including the selected download folder and an optional FFmpeg path;
-- canonical public YouTube watch URLs and video IDs;
+- opaque, non-secret descriptors for explicitly configured browser profiles;
+- canonical YouTube watch URLs and video IDs;
 - display metadata such as title, channel, duration, and selected quality;
 - job, attempt, session, queue, lifecycle, reservation, and cleanup records;
 - completed-download history, including output paths and media metadata; and
@@ -248,11 +396,20 @@ sent.
 Engine session work is stored beneath an engine-owned hidden directory in the
 selected output root.
 
-State v2 must not persist media delivery URLs, request headers, cookies,
-credentials, signed query parameters, or media encryption keys. VidStow does
-not require a hosted account and does not provide cloud sync. Normal operation
-contacts YouTube and its media or thumbnail hosts. If automatic diagnostics are
-explicitly enabled, VidStow also contacts `diagnostics.vidstow.workers.dev` to
+State v2 must not persist media delivery URLs, request headers, cookie values,
+credentials, signed query parameters, or media encryption keys. Browser-cookie
+access is read-only and operation-scoped; browser-store access is closed and
+temporary material is released according to the pinned engine contract. A
+queued authenticated job retains only its exact opaque browser/profile binding.
+If that source later disappears, the job becomes **Action required** rather than
+using another configured profile or falling back to public access. The operating
+system or browser may show permission or credential-store prompts during source
+access.
+
+VidStow does not require a hosted account and does not provide cloud sync.
+Normal operation contacts YouTube and its media or thumbnail hosts. If
+automatic diagnostics are explicitly enabled, VidStow also contacts
+`diagnostics.vidstow.workers.dev` to
 submit the bounded reports described above. VidStow may start the locally
 installed FFmpeg/FFprobe tools when the selected output requires them.
 
@@ -287,7 +444,8 @@ intentionally not tracked.
 
 VidStow does not support:
 
-- channels, search, live streams, or authenticated workflows;
+- channels, search, library browsing, live streams, or browser-session access
+  outside the explicit video, Short, and existing-playlist workflow;
 - sites other than YouTube;
 - DRM decryption or access-control circumvention;
 - universal resumability or byte reuse when media equivalence is unproved;

@@ -1,17 +1,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
-  import { settings, ffmpeg, showBanner, showError } from '../lib/stores.js';
-  import type { Settings } from '../lib/types.js';
+  import { errorMessage, modal, settings, ffmpeg, showBanner, showError } from '../lib/stores.js';
+  import type { BrowserSourceCheck, BrowserSourceOption, BrowserSourceStatus, Settings } from '../lib/types.js';
   import QueueSettingsCard from '../lib/lifecycle-ui/QueueSettingsCard.svelte';
 
   let folder = '';
   let ffmpegPath = '';
   let saving = false;
+  let browserOptions: BrowserSourceOption[] = [];
+  let browserSources: BrowserSourceStatus[] = [];
+  let browserOptionId = '';
+  let browserConsent = false;
+  let browserBusy = false;
+  let browserCheck: BrowserSourceCheck | null = null;
+  const BROWSER_CONSENT_VERSION = 1;
 
   onMount(() => {
     folder = $settings.downloadFolder || '';
     ffmpegPath = $settings.ffmpegPath || $ffmpeg.path || '';
+    void refreshBrowserAccess();
   });
   $: displayedFFmpegPath = ffmpegPath || $ffmpeg.path || '';
   $: concurrency = $settings.downloadConcurrency;
@@ -39,7 +47,7 @@
   async function showFolder() {
     if (!folder) return;
     try { await api.fs.reveal(folder); }
-    catch (err) { showError(err, 'Could not show the folder in Finder'); }
+    catch (err) { showError(err, 'Could not show the download folder'); }
   }
 
   async function locateFFmpeg() {
@@ -72,6 +80,71 @@
     await update({ ...$settings, downloadConcurrency: value });
   }
 
+  async function refreshBrowserAccess() {
+    try {
+      const [options, sources] = await Promise.all([api.browserAccess.options(), api.browserAccess.sources()]);
+      browserOptions = options;
+      browserSources = sources;
+      if (!browserOptionId || !options.some((option) => option.id === browserOptionId)) browserOptionId = options[0]?.id ?? '';
+    } catch (err) {
+      showError(err, 'Could not load browser access settings');
+    }
+  }
+
+  async function configureBrowserSource() {
+    if (!browserOptionId || !browserConsent || browserBusy) return;
+    browserBusy = true;
+    browserCheck = null;
+    try {
+      const source = await api.browserAccess.configure(browserOptionId, BROWSER_CONSENT_VERSION);
+      browserCheck = await api.browserAccess.check(source.bindingRef);
+      await refreshBrowserAccess();
+      if (browserCheck.ready) showBanner('success', browserCheck.partial ? 'Browser source is usable with limited coverage' : 'Browser source is ready');
+    } catch (err) {
+      browserCheck = { status: 'import-failed', label: 'Check failed', message: errorMessage(err, 'VidStow could not check this browser source.'), ready: false, partial: false };
+    } finally {
+      browserBusy = false;
+    }
+  }
+
+  async function checkBrowserSource(bindingRef: string) {
+    if (browserBusy) return;
+    browserBusy = true;
+    browserCheck = null;
+    try { browserCheck = await api.browserAccess.check(bindingRef); }
+    catch (err) { browserCheck = { status: 'import-failed', label: 'Check failed', message: errorMessage(err, 'VidStow could not check this browser source.'), ready: false, partial: false }; }
+    finally { browserBusy = false; }
+  }
+
+  async function confirmForgetBrowserSource(source: BrowserSourceStatus) {
+    if (browserBusy) return;
+    browserBusy = true;
+    try {
+      const impact = await api.browserAccess.previewForget(source.bindingRef);
+      const jobs = `${impact.jobs} ${impact.jobs === 1 ? 'download' : 'downloads'}`;
+      const collections = `${impact.collections} ${impact.collections === 1 ? 'collection' : 'collections'}`;
+      const activeWarning = impact.active ? ` Wait for ${impact.active} active ${impact.active === 1 ? 'operation' : 'operations'} to finish, or pause active downloads, first.` : '';
+      modal.set({
+        kind: 'confirm',
+        title: impact.active ? `Browser source is in use` : `Forget ${source.label}?`,
+        message: `This source is bound to ${jobs} in ${collections}. Non-terminal downloads will move to Action required.${activeWarning} VidStow does not store cookie values.`,
+        actions: impact.active ? undefined : [{ label: 'Forget browser source', primary: true, action: () => forgetBrowserSource(source.bindingRef) }],
+      });
+    } catch (err) { showError(err, 'Could not check browser source dependencies'); }
+    finally { browserBusy = false; }
+  }
+
+  async function forgetBrowserSource(bindingRef: string) {
+    browserBusy = true;
+    try {
+      const affected = await api.browserAccess.forget(bindingRef);
+      await refreshBrowserAccess();
+      browserCheck = null;
+      showBanner('success', affected ? `Browser source forgotten; ${affected} queued ${affected === 1 ? 'download needs' : 'downloads need'} action` : 'Browser source forgotten');
+    } catch (err) { showError(err, 'Could not forget browser source'); }
+    finally { browserBusy = false; }
+  }
+
   async function setAutomaticDiagnostics(value: 'enabled' | 'disabled') {
     try {
       settings.set(await api.settings.setAutomaticDiagnostics(value));
@@ -100,7 +173,7 @@
         <span class="mono" title={folder}>{folder || 'Not set'}</span>
       </div>
       <div class="actions">
-        <button type="button" class="app-btn" disabled={!folder} on:click={showFolder}>Show in Finder</button>
+        <button type="button" class="app-btn" disabled={!folder} on:click={showFolder}>Show in folder</button>
         <button type="button" class="app-btn primary" on:click={pickFolder}>Change…</button>
       </div>
     </div>
@@ -127,6 +200,54 @@
     />
     {#if concurrency > 4}
       <p class="warning">More than 4 simultaneous downloads may reduce stability or trigger rate limits.</p>
+    {/if}
+  </section>
+
+  <section class="group browser-access-group" aria-labelledby="browser-access-title">
+    <h2 id="browser-access-title">Browser access</h2>
+
+    <div class="browser-warning">
+      <strong>Use only when public access is not enough</strong>
+      <p>A browser session can expose your signed-in YouTube account to requests. YouTube may rate-limit or challenge the account. Only download media you are authorized to access.</p>
+      <p>VidStow never asks for your password and does not persist cookie values. It reads the selected browser store only for operations you explicitly start. Your operating system or browser may show a permission or credential-store prompt.</p>
+    </div>
+
+    <div class="setting browser-configure">
+      <div class="copy">
+        <strong>Add a browser profile</strong>
+        <span>Supported local browser profiles for this operating system are discovered by the backend. Paths cannot be entered by the web interface.</span>
+      </div>
+      <div class="browser-form">
+        <select bind:value={browserOptionId} aria-label="Browser profile" disabled={browserBusy || !browserOptions.length}>
+          {#each browserOptions as option (option.id)}<option value={option.id}>{option.label}</option>{/each}
+        </select>
+        <label class="consent"><input type="checkbox" bind:checked={browserConsent} disabled={browserBusy} /> I authorize VidStow to read this browser’s cookies for requests I start.</label>
+        <button type="button" class="app-btn primary" on:click={configureBrowserSource} disabled={browserBusy || !browserOptionId || !browserConsent}>{browserBusy ? 'Checking…' : 'Configure and check'}</button>
+      </div>
+    </div>
+
+    {#if !browserOptions.length}
+      <p class="browser-empty">No supported local browser profile was found.</p>
+    {/if}
+
+    {#each browserSources as source (source.bindingRef)}
+      <div class="setting">
+        <div class="copy">
+          <strong>{source.label}</strong>
+          <span>{source.enabled ? 'Available for explicit browser-session requests.' : 'Forgotten and unavailable to new requests.'}</span>
+        </div>
+        <div class="actions">
+          <em class="badge" class:ok={source.enabled}>{source.enabled ? 'Configured' : 'Forgotten'}</em>
+          {#if source.enabled}
+            <button type="button" class="app-btn" on:click={() => checkBrowserSource(source.bindingRef)} disabled={browserBusy}>Check</button>
+            <button type="button" class="app-btn" on:click={() => confirmForgetBrowserSource(source)} disabled={browserBusy}>Forget…</button>
+          {/if}
+        </div>
+      </div>
+    {/each}
+
+    {#if browserCheck}
+      <p class="browser-result" class:ok={browserCheck.ready} role="status"><strong>{browserCheck.label}</strong> · {browserCheck.message}</p>
     {/if}
   </section>
 
@@ -223,6 +344,22 @@
     border-top: 1px solid var(--border-subtle);
   }
   .group > h2 + .setting { border-top: 0; }
+  .browser-warning {
+    margin: 8px 0;
+    padding: 11px 12px;
+    border-radius: var(--r-md);
+    background: var(--status-warning-soft);
+    color: var(--text-primary);
+  }
+  .browser-warning strong { font-size: var(--fs-sm); }
+  .browser-warning p { margin: 4px 0 0; color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.5; }
+  .browser-form { width: min(460px, 100%); display: grid; gap: 8px; }
+  .browser-form select { height: 38px; }
+  .browser-form .consent { display: flex; align-items: flex-start; gap: 8px; color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.4; }
+  .browser-form .consent input { margin: 2px 0 0; flex-shrink: 0; }
+  .browser-form .app-btn { justify-self: end; }
+  .browser-result, .browser-empty { margin: 4px 0 8px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--status-danger-soft); color: var(--status-danger); font-size: var(--fs-xs); }
+  .browser-result.ok { background: var(--status-success-soft); color: var(--status-success); }
   .copy { min-width: 0; flex: 1; }
   .copy strong, .copy span, .copy small { display: block; }
   .copy strong { font-size: var(--fs-sm); color: var(--text-primary); font-weight: 600; }

@@ -4,10 +4,10 @@ go 1.25.12
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/tejasa97/ytdlp-go v0.3.0
+	github.com/tejasa97/ytdlp-go v0.3.1-0.20260823194827-f8bc2eb8a564
 	github.com/wailsapp/wails/v2 v2.13.0
 	golang.org/x/sys v0.45.0
-	golang.org/x/text v0.37.0
+	golang.org/x/text v0.39.0
 )
 
 require (

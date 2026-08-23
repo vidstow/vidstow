@@ -5,6 +5,10 @@ VidStow was extracted with filtered history from the apps/desktop subtree
 of github.com/tejasa97/ytdlp-go (formerly github.com/tejasa97/youtube_dlp).
 Relevant commit authorship is preserved in this repository's Git history.
 
-VidStow depends on github.com/tejasa97/ytdlp-go v0.3.0. Names and marks
-of YouTube and Google belong to their respective owners; no affiliation,
-endorsement, or sponsorship is implied.
+VidStow depends on github.com/tejasa97/ytdlp-go. The macOS application bundle
+includes the isolated ytdlp-go JavaScript helper and its pinned QuickJS-go and
+QuickJS-ng components. Applicable license texts and third-party notices are
+included under Contents/Resources/legal in the application bundle.
+
+Names and marks of YouTube and Google belong to their respective owners; no
+affiliation, endorsement, or sponsorship is implied.

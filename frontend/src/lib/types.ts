@@ -57,6 +57,7 @@ export interface JobSnapshot {
   approxBytes?: number;
   sizeApproximate?: boolean;
   requiresFfmpeg?: boolean;
+  requiresAuthenticatedExecution?: boolean;
   canPause?: boolean;
   processing?: boolean;
   outputDir: string;
@@ -112,6 +113,9 @@ export interface Settings {
   perVideoSubfolder: boolean;
   confirmBeforeDownload: boolean;
   automaticDiagnostics: '' | 'enabled' | 'disabled';
+  browserAccessEnabled?: boolean;
+  defaultAuthSourceBindingRef?: string;
+  browserAccessConsentVersion?: number;
 }
 
 export interface UrlCheckResult {
@@ -123,13 +127,18 @@ export interface UrlCheckResult {
   playlistUrl?: string;
 }
 
+export type PlaylistEntryOutcome = 'ready' | 'auth-required' | 'unavailable' | 'invalid';
+
 export interface PlaylistEntrySummary {
   index: number;
+  occurrenceId?: string;
   videoId: string;
   url: string;
   title: string;
   duration?: string;
   thumbnail?: string;
+  outcome: PlaylistEntryOutcome;
+  reasonCode?: string;
   available: boolean;
 }
 
@@ -141,7 +150,13 @@ export interface PlaylistSummary {
   thumbnail: string;
   entryCount: number;
   available: number;
+  ready: number;
+  authRequired: number;
   unavailable: number;
+  invalid: number;
+  reviewAuthority?: string;
+  admissible: boolean;
+  browserAccess: { mode: 'public' | 'browser-session'; label: string };
   entries: PlaylistEntrySummary[];
 }
 
@@ -159,6 +174,42 @@ export interface InfoSummary {
   mediaType?: string;
   access: AccessSummary;
   plans: OutputPlan[];
+  analysisAuthority?: string;
+  browserAccess: { mode: 'public' | 'browser-session'; label: string };
+}
+
+export type BrowserSourceBrowser = 'chrome' | 'chromium' | 'edge' | 'brave' | 'vivaldi' | 'opera' | 'firefox' | 'safari';
+
+export interface BrowserSourceOption {
+  id: string;
+  browser: BrowserSourceBrowser;
+  label: string;
+  profileLabel?: string;
+  containerLabel?: string;
+}
+
+export interface BrowserSourceStatus {
+  bindingRef: string;
+  browser: BrowserSourceBrowser;
+  label: string;
+  enabled: boolean;
+  default: boolean;
+}
+
+export interface BrowserSourceDependencies {
+  bindingRef: string;
+  label: string;
+  jobs: number;
+  collections: number;
+  active: number;
+}
+
+export interface BrowserSourceCheck {
+  status: 'ready' | 'partial' | 'consent-required' | 'sign-in-missing' | 'permission-denied' | 'source-missing' | 'source-unsafe' | 'unsupported' | 'canceled' | 'import-failed';
+  label: string;
+  message: string;
+  ready: boolean;
+  partial: boolean;
 }
 
 export interface AccessSummary {

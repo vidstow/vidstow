@@ -46,6 +46,9 @@
 
       <div class="dialog-body">
         <p>{review.message}</p>
+        {#if review.accessMode === 'browser-session'}
+          <p class="browser-access">Browser session · {review.browserSourceLabel ?? 'Browser source'}</p>
+        {/if}
         <div class="preservation">
           <strong>What happens to the saved data?</strong>
           <p>{review.preservationNotice}</p>
@@ -71,11 +74,11 @@
           <button type="button" class="app-btn" disabled={busy} onclick={() => onRetryRecovery?.()}>Try recovery again</button>
         {/if}
         {#if review.canRetryFreshLink}
-          <button type="button" class="app-btn" disabled={busy} onclick={() => onRetryFreshLink?.()}>Retry with fresh link</button>
+          <button type="button" class="app-btn" disabled={busy} onclick={() => onRetryFreshLink?.()}>{review.retryFreshLabel ?? 'Retry with fresh link'}</button>
         {/if}
         {#if review.canStartOver}
           <button type="button" class="app-btn primary" data-autofocus disabled={busy} onclick={() => onStartOver?.()}>
-            {busy ? 'Working…' : 'Start over from Home'}
+            {busy ? 'Working…' : (review.startOverLabel ?? 'Start over from Home')}
           </button>
         {/if}
       </footer>
@@ -94,6 +97,7 @@
   .close-button:hover { background: var(--surface-hover); }
   .dialog-body { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-3) var(--sp-6) var(--sp-4); }
   .dialog-body > p { margin: 0; color: var(--text-primary); line-height: 1.55; }
+  .browser-access { align-self: flex-start; padding: 3px 9px; border: 1px solid var(--accent-400); border-radius: var(--r-full); color: var(--accent-600); background: var(--accent-soft); font-size: var(--fs-xs); font-weight: 650; }
   .preservation { padding: var(--sp-4); border: 1px solid var(--border-default); border-radius: var(--r-md); background: var(--surface-sunken); }
   .preservation strong { font-size: var(--fs-sm); }
   .preservation p, .next-step { margin: var(--sp-1) 0 0; color: var(--text-secondary) !important; font-size: var(--fs-sm); line-height: 1.5; }

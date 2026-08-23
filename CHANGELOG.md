@@ -14,14 +14,30 @@ does not exist yet.
 
 ### Added
 
-- No entries yet.
+- Explicit cross-platform browser-session access for individual YouTube videos,
+  Shorts, and existing playlists using backend-discovered sources supported by
+  the pinned engine: Chrome/Firefox/Safari on macOS;
+  Chrome/Chromium/Edge/Brave/Vivaldi/Opera/Firefox on Windows; and
+  Chrome/Chromium/Brave/Firefox on Linux. Public-only access remains the default, consent is required, and
+  cookie values are never persisted by VidStow.
+- Authenticated playlist review with visible per-occurrence Ready, Auth required,
+  Unavailable, and Invalid outcomes, stable source ordering, atomic admission of
+  selected Ready children, exact parent counts, and durable source binding.
 
 ### Changed
 
-- No entries yet.
+- Packaged macOS builds include the ytdlp-go and JavaScript-runtime license
+  notices used by the bundled helper.
 
 ### Fixed
 
+- Browser-session analysis allows a bounded five-minute owner-interaction
+  window for operating-system or browser permission prompts and reports delayed
+  approval as a browser access timeout rather than an unsupported URL.
+- Authenticated playlists that expose more than 500 occurrences are rejected
+  visibly instead of presenting a silently truncated review.
+- Updated reachable Unicode normalization code to the patched
+  `golang.org/x/text` release.
 - Action-required downloads can be dismissed from the queue without retrying
   or deleting their preserved temporary data. Rows with pending cleanup remain
   visible until that cleanup settles.

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 import Home from '../src/pages/Home.svelte';
-import { pendingUrl, settings } from '../src/lib/stores.js';
+import { modal, pendingUrl, settings } from '../src/lib/stores.js';
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
@@ -27,12 +27,16 @@ function installBindings() {
   const AnalyzeURL = vi.fn(async (raw: string) => videoSummary(raw));
   const AnalyzeBatchURLs = vi.fn();
   const StartBatchDownload = vi.fn();
-  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload } } };
-  return { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload };
+  const GetBrowserSourceOptions = vi.fn(async (): Promise<any[]> => []);
+  const ListBrowserSources = vi.fn(async (): Promise<any[]> => []);
+  const StartPlaylistDownload = vi.fn();
+  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload, GetBrowserSourceOptions, ListBrowserSources, StartPlaylistDownload } } };
+  return { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload, GetBrowserSourceOptions, ListBrowserSources, StartPlaylistDownload };
 }
 
 describe('Home analysis authority', () => {
   beforeEach(() => {
+    modal.set(null);
     pendingUrl.set('');
     settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', confirmBeforeDownload: false }));
     installBindings();
@@ -244,6 +248,99 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Review URLs' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('This review expired');
     expect(screen.getByRole('button', { name: 'Start 2 downloads' })).toBeDisabled();
+  });
+
+  test('recommends browser access after public auth failure without silently choosing a profile', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeURL, ListBrowserSources } = installBindings();
+    ListBrowserSources.mockResolvedValue([
+      { bindingRef: 'binding-chrome', browser: 'chrome', label: 'Chrome — Default', enabled: true, default: true },
+      { bindingRef: 'binding-firefox', browser: 'firefox', label: 'Firefox — Work', enabled: true, default: false },
+    ]);
+    AnalyzeURL.mockRejectedValue(new Error('browser-access-required'));
+    render(Home);
+
+    const access = await screen.findByLabelText('Access');
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await waitFor(() => expect(get(modal)?.title).toBe('This item needs sign-in'));
+    const prompt = get(modal);
+    expect(prompt?.title).toBe('This item needs sign-in');
+    prompt?.actions?.[0].action();
+    expect(access).toHaveValue('public');
+  });
+
+  test('uses an explicitly selected browser binding for video analysis', async () => {
+    const user = userEvent.setup();
+    const { GetBrowserSourceOptions, ListBrowserSources } = installBindings();
+    GetBrowserSourceOptions.mockResolvedValue([{ id: 'chrome-default', browser: 'chrome', label: 'Chrome — Default' }]);
+    ListBrowserSources.mockResolvedValue([{ bindingRef: 'binding-chrome', browser: 'chrome', label: 'Chrome — Default', enabled: true, default: true }]);
+    const AnalyzeURLWithBrowserSource = vi.fn(async (raw: string) => ({ ...videoSummary(raw), browserAccess: { mode: 'browser-session', label: 'Chrome — Default' } }));
+    (window as any).go.main.App.AnalyzeURLWithBrowserSource = AnalyzeURLWithBrowserSource;
+    render(Home);
+
+    const access = await screen.findByLabelText('Access');
+    await user.selectOptions(access, 'binding-chrome');
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(AnalyzeURLWithBrowserSource).toHaveBeenCalledWith(firstURL, 'binding-chrome');
+    expect(screen.getByText('Browser session supplied · Chrome — Default')).toBeInTheDocument();
+  });
+
+  test('labels a delayed platform permission approval as a browser-access timeout', async () => {
+    const user = userEvent.setup();
+    const { GetBrowserSourceOptions, ListBrowserSources } = installBindings();
+    GetBrowserSourceOptions.mockResolvedValue([{ id: 'chrome-default', browser: 'chrome', label: 'Chrome — Default' }]);
+    ListBrowserSources.mockResolvedValue([{ bindingRef: 'binding-chrome', browser: 'chrome', label: 'Chrome — Default', enabled: true, default: true }]);
+    (window as any).go.main.App.AnalyzeURLWithBrowserSource = vi.fn(async () => {
+      throw new Error('browser-session analysis timed out while waiting for browser access or YouTube; approve any operating-system or browser permission prompt and try again');
+    });
+    render(Home);
+
+    await user.selectOptions(await screen.findByLabelText('Access'), 'binding-chrome');
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    await waitFor(() => expect(get(modal)?.title).toBe('Browser access timed out'));
+    expect(get(modal)?.message).toContain('permission prompt');
+  });
+
+  test('shows every authenticated playlist outcome and admits opaque Ready occurrences in source order', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    const { GetBrowserSourceOptions, ListBrowserSources, StartPlaylistDownload } = installBindings();
+    GetBrowserSourceOptions.mockResolvedValue([{ id: 'firefox-default', browser: 'firefox', label: 'Firefox — Default' }]);
+    ListBrowserSources.mockResolvedValue([{ bindingRef: 'binding-firefox', browser: 'firefox', label: 'Firefox — Default', enabled: true, default: true }]);
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({ kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture' }));
+    (window as any).go.main.App.AnalyzePlaylistWithBrowserSource = vi.fn(async () => ({
+      id: 'PLfixture', url: playlistURL, title: 'Mixed playlist', channel: 'Owner', thumbnail: '', entryCount: 4,
+      available: 1, ready: 1, authRequired: 1, unavailable: 1, invalid: 1, reviewAuthority: 'review-token', admissible: true,
+      browserAccess: { mode: 'browser-session', label: 'Firefox — Default' },
+      entries: [
+        { index: 1, occurrenceId: 'occ-ready', videoId: 'ready000001', url: 'https://www.youtube.com/watch?v=ready000001', title: 'Ready item', outcome: 'ready', available: true },
+        { index: 2, occurrenceId: 'occ-auth', videoId: '', url: '', title: 'Members item', outcome: 'auth-required', reasonCode: 'membership', available: false },
+        { index: 3, occurrenceId: 'occ-missing', videoId: '', url: '', title: 'Removed item', outcome: 'unavailable', reasonCode: 'unavailable', available: false },
+        { index: 4, occurrenceId: 'occ-invalid', videoId: '', url: '', title: 'Invalid item', outcome: 'invalid', reasonCode: 'invalid-entry', available: false },
+      ],
+    }));
+    StartPlaylistDownload.mockResolvedValue('collection-1');
+    render(Home);
+
+    await user.selectOptions(await screen.findByLabelText('Access'), 'binding-firefox');
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    expect(await screen.findByText('Mixed playlist')).toBeInTheDocument();
+    expect(screen.getAllByText('Auth required').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Unavailable').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Invalid').length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Add 1 Video to Queue' }));
+    await waitFor(() => expect(StartPlaylistDownload).toHaveBeenCalledWith({
+      url: playlistURL, playlistId: 'PLfixture', quality: '1080p', audioBitrate: 0,
+      selectedItems: [], reviewAuthority: 'review-token', selectedOccurrences: ['occ-ready'],
+    }));
   });
 
   test('switching output types selects a visible compatible plan', async () => {

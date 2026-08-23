@@ -61,12 +61,21 @@
           {collection.policy}
         {/if}
       </p>
+      {#if collection.accessMode === 'browser-session'}
+        <div class="collection-access">
+          <strong>Browser session · {collection.browserSourceLabel || 'Configured source'}</strong>
+          {#if collection.discovered}
+            <span>{collection.discovered} discovered · {collection.ready || 0} Ready · {collection.authRequired || 0} Auth required · {collection.unavailable || 0} Unavailable · {collection.invalid || 0} Invalid · {collection.approved || collection.total} approved</span>
+          {/if}
+        </div>
+      {/if}
       <div class="progress-line">
         <div class="track" role="progressbar" aria-label={`${collection.title} progress`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
           <span style={`width: ${progress}%`}></span>
         </div>
         <span>{collection.progressLabel}</span>
         {#if collection.failed}<strong class="failed">{collection.failed} failed</strong>{/if}
+        {#if collection.actionRequired}<strong class="attention">{collection.actionRequired} action required</strong>{/if}
         {#if collection.canceled}<strong>{collection.canceled} canceled</strong>{/if}
       </div>
     </div>
@@ -110,10 +119,14 @@
   .identity { min-width: 0; }
   h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); }
   p { margin: 3px 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-sm); }
+  .collection-access { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 9px; margin: 0 0 var(--sp-2); font-size: var(--fs-xs); }
+  .collection-access strong { padding: 3px 7px; border-radius: var(--r-full); background: var(--accent-soft); color: var(--accent-600); }
+  .collection-access span { color: var(--text-muted); }
   .progress-line { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
   .track { width: min(220px, 35vw); height: 6px; overflow: hidden; border-radius: var(--r-full); background: var(--surface-active); }
   .track span { display: block; height: 100%; border-radius: inherit; background: var(--accent-500); }
   .failed { color: var(--status-danger); }
+  .attention { color: var(--status-warning); }
   .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
   .children { margin-left: 48px; border-left: 3px solid var(--accent-soft); }
   .children :global(.job-row) { border-radius: 0; }
