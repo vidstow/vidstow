@@ -5708,7 +5708,11 @@ func (m *Manager) analyzeWithIntent(ctx context.Context, rawURL string, intent j
 		return InfoSummary{}, nil, err
 	}
 	if intent.RequiresAuthenticatedExecution {
-		summary.BrowserAccess = BrowserAccess{Mode: "browser-session", Label: "Browser session supplied"}
+		label := "Browser source"
+		if stateStore := m.stateStoreSnapshot(); stateStore != nil {
+			label = authSourceLabel(stateStore.Snapshot(), intent)
+		}
+		summary.BrowserAccess = BrowserAccess{Mode: "browser-session", Label: label}
 	} else {
 		summary.BrowserAccess = BrowserAccess{Mode: "public", Label: "Public access"}
 	}

@@ -160,8 +160,8 @@
 
   function offerBrowserAccess() {
     modal.set(null);
-    if (browserSources.length) selectBrowserSource(browserSources[0].bindingRef);
-    else setupOpen = true;
+    setupOpen = browserSources.length === 0;
+    showBanner('info', browserSources.length ? 'Choose a configured browser session from Access.' : 'Configure a browser profile, then try again.');
   }
 
   async function configureBrowserAccess() {
@@ -319,11 +319,17 @@
       await action();
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
-      modal.set({
-        kind: 'error',
-        title: 'Could not analyze link',
-        message: errorMessage(err, 'Could not analyze this link.'),
-      });
+      const message = errorMessage(err, 'Could not analyze this link.');
+      if (!effectiveBrowserAccess && message === 'browser-access-required') {
+        modal.set({
+          kind: 'confirm',
+          title: 'This item needs sign-in',
+          message: 'Public access was not enough. You can explicitly choose a browser profile where you are already signed in. VidStow will not save your cookies or password.',
+          actions: [{ label: 'Use browser session', primary: true, action: offerBrowserAccess }],
+        });
+      } else {
+        modal.set({ kind: 'error', title: 'Could not analyze link', message });
+      }
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
     }

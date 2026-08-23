@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 import Home from '../src/pages/Home.svelte';
-import { pendingUrl, settings } from '../src/lib/stores.js';
+import { modal, pendingUrl, settings } from '../src/lib/stores.js';
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
@@ -36,6 +36,7 @@ function installBindings() {
 
 describe('Home analysis authority', () => {
   beforeEach(() => {
+    modal.set(null);
     pendingUrl.set('');
     settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', confirmBeforeDownload: false }));
     installBindings();
@@ -247,6 +248,26 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Review URLs' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('This review expired');
     expect(screen.getByRole('button', { name: 'Start 2 downloads' })).toBeDisabled();
+  });
+
+  test('recommends browser access after public auth failure without silently choosing a profile', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeURL, ListBrowserSources } = installBindings();
+    ListBrowserSources.mockResolvedValue([
+      { bindingRef: 'binding-chrome', browser: 'chrome', label: 'Chrome — Default', enabled: true, default: true },
+      { bindingRef: 'binding-firefox', browser: 'firefox', label: 'Firefox — Work', enabled: true, default: false },
+    ]);
+    AnalyzeURL.mockRejectedValue(new Error('browser-access-required'));
+    render(Home);
+
+    const access = await screen.findByLabelText('Access');
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await waitFor(() => expect(get(modal)?.title).toBe('This item needs sign-in'));
+    const prompt = get(modal);
+    expect(prompt?.title).toBe('This item needs sign-in');
+    prompt?.actions?.[0].action();
+    expect(access).toHaveValue('public');
   });
 
   test('uses an explicitly selected browser binding for video analysis', async () => {

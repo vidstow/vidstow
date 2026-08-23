@@ -69,7 +69,7 @@ func TestAuthenticatedAnalysisInjectsExactSourceOnceAndBindsAuthority(t *testing
 	if len(requests) != 1 || requests[0].CookiesFromBrowser != "chrome" || requests[0].CookieFile != "" {
 		t.Fatalf("authenticated requests = %#v", requests)
 	}
-	if summary.BrowserAccess.Mode != "browser-session" || summary.BrowserAccess.Label != "Browser session supplied" || summary.AnalysisAuthority == "" {
+	if summary.BrowserAccess.Mode != "browser-session" || summary.BrowserAccess.Label != "Chrome — Default" || summary.AnalysisAuthority == "" {
 		t.Fatalf("authenticated summary = %#v", summary)
 	}
 	if _, err := manager.ResolvePlan("fixture0001", "stale-public-plan"); err == nil {
