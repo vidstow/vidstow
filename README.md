@@ -15,7 +15,7 @@ A local desktop application built with Go, Wails, and Svelte.
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](frontend/package.json)
 [![Engine](https://img.shields.io/badge/youtube__dlp-pinned-20232A)](go.mod)
 
-[Download](#download) · [Features](#features) · [Screenshots](#screenshots) · [Project status](#project-status) · [Run locally](#run-locally) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
+[Download](#download) · [Features](#features) · [Browser access](#browser-session-access-on-macos) · [Screenshots](#screenshots) · [Project status](#project-status) · [Run locally](#run-locally) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
 
 <video src="docs/assets/demo-walkthrough.mp4" width="800" autoplay muted loop playsinline controls>
   VidStow playlist walkthrough: paste a link, review entries, and follow the local queue.
@@ -113,6 +113,60 @@ Cancel requests engine-session discard. If cleanup cannot be proved complete,
 the application retains a cleanup obligation or reports that user action is
 required instead of claiming success.
 
+## Browser-session access on macOS
+
+Browser-session access lets VidStow supply an explicitly selected local browser
+session to YouTube for a video, Short, or existing playlist that the signed-in
+user is authorized to access. It does not bypass DRM, grant access, or prove
+that YouTube accepted the session. A successful public download may simply mean
+the media never required authentication.
+
+### Set up and use a source
+
+1. Sign in to YouTube in a supported local Chrome, Firefox, or Safari source.
+2. In **Settings**, choose a backend-discovered browser/profile, check the
+   consent box, then select **Configure and check**.
+3. Return to **Home** and explicitly choose that source for the URL. Every new
+   URL still starts in **Public only** mode.
+4. Review the source badge and media or playlist outcomes before adding work to
+   the queue.
+
+A source check proves only that VidStow can read the selected local store. It
+does not contact YouTube to attest login state or media entitlement. Chrome may
+cause macOS Keychain to request access to the **Chrome Safe Storage** key.
+Denying or cancelling safely stops the check. Choosing a one-time Keychain
+approval can cause the prompt to return on later operations; VidStow does not
+weaken that operating-system protection or cache the decryption key.
+
+### Durable behavior and recovery
+
+Each admitted authenticated job keeps one opaque, non-secret binding to the
+validated browser/profile descriptor. Analysis, initial download, isolated
+retry, and restart recovery resolve that exact source again. Changing Settings
+never rebinds existing jobs. If the source disappears, permission is denied, or
+YouTube rejects the session, VidStow shows **Action required** rather than
+silently choosing another profile or falling back to public access.
+
+Authenticated playlist review preserves upstream occurrence order and exposes
+one visible outcome per occurrence: **Ready**, **Auth required**,
+**Unavailable**, or **Invalid**. Only selected Ready occurrences are admitted,
+in one atomic parent/child transaction. The parent count equals the admitted
+child set. A 501st exposed occurrence rejects the review instead of silently
+presenting a partial 500-entry result.
+
+### Privacy and account safety
+
+- Cookie-store access is read-only and operation-scoped.
+- Cookie values, credentials, browser paths, account identity, and signed media
+  URLs are not stored in State v2, jobs, diagnostics, or telemetry.
+- Imported cookies are restricted to YouTube's registrable site and are not
+  supplied to unrelated redirect hosts.
+- Forgetting a configured source removes VidStow's non-secret binding only. If
+  active jobs use it, VidStow first asks you to pause them.
+- Use this feature only for media you own or are authorized to download. A
+  browser session can expose your signed-in account to requests, and platform
+  rules or account protections may still deny the operation.
+
 ## Screenshots
 
 <table>
@@ -124,7 +178,7 @@ required instead of claiming success.
     </td>
     <td width="50%">
       <strong>Playlist review</strong><br>
-      Search a playlist, select entries, apply a range, and choose one output policy.<br><br>
+      Review a playlist, select entries, apply a range, and choose one output policy.<br><br>
       <img src="docs/assets/screenshots/playlist-review.png" alt="VidStow reviewing selected entries from the Blender Open Movies playlist">
     </td>
   </tr>
@@ -150,6 +204,58 @@ required instead of claiming success.
   </tr>
 </table>
 
+### Authenticated browser-session UX
+
+These Penpot exports document the implemented consent, review, queue, and
+recovery contract. The pull request includes the complete ten-state design
+walkthrough, including public default, remediation, and source-forgetting
+states.
+
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Explicit setup and consent</strong><br>
+      Browser access is optional, no source is selected silently, and the check
+      remains disabled until the user authorizes it.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/02-browser-setup-consent.png" alt="Penpot design showing explicit Chrome profile selection and browser-cookie consent">
+    </td>
+    <td width="50%">
+      <strong>Single-media review</strong><br>
+      The result identifies request mode and exact source without claiming that
+      YouTube required or accepted the session.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/04-video-review-session-supplied.png" alt="Penpot design showing a video review with the supplied Chrome profile badge">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Deterministic playlist outcomes</strong><br>
+      Every exposed occurrence has a visible outcome; selected Ready children
+      are admitted in source order.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/05-playlist-explicit-outcomes.png" alt="Penpot design showing Ready, Auth required, Unavailable, and Invalid playlist outcomes">
+    </td>
+    <td width="50%">
+      <strong>Bound collection recovery</strong><br>
+      Parent counts and the exact browser/profile binding remain visible while
+      one child is recovered independently.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/06-queue-collection-recovery.png" alt="Penpot design showing an authenticated playlist collection and isolated child recovery">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>Browser access settings</strong><br>
+      Source discovery, consent, checking, and forgetting are explicit; public
+      access remains the Home default.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/07-settings-browser-access.png" alt="Penpot design showing configured browser access in Settings">
+    </td>
+    <td width="50%">
+      <strong>Action required</strong><br>
+      An unusable bound source stops for a decision instead of switching
+      profiles or retrying anonymously.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/09-action-required-decision.png" alt="Penpot design showing the recovery decisions for a browser-session job">
+    </td>
+  </tr>
+</table>
+
 ## Project status
 
 VidStow is beta software. Supported behavior is bounded by the exact
@@ -161,7 +267,7 @@ application and engine versions and by artifact-specific validation.
 | Package | [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5) installs on Apple Silicon through the [`vidstow/tap`](https://github.com/vidstow/homebrew-tap) Homebrew cask |
 | Source | Apache-2.0 source and self-build instructions |
 | Queue | State v2 persistence, revision-checked lifecycle transitions, FIFO admission, and startup reconciliation |
-| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins the reviewed commit exposed as `v0.3.1-0.20260823042903-d2fa5ce41a21` |
+| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins the reviewed hardening commit exposed as `v0.3.1-0.20260823140312-a952b51dca44` |
 | Resume | Session reuse is evidence-dependent; no universal transfer continuation or guaranteed byte reuse |
 | Updates | Manual downloads from GitHub Releases |
 
@@ -271,8 +377,9 @@ using another configured profile or falling back to public access. macOS or the
 browser may show permission or Keychain prompts during source access.
 
 VidStow does not require a hosted account and does not provide cloud sync.
-Normal operation contacts YouTube and its media or thumbnail hosts. If automatic diagnostics are
-explicitly enabled, VidStow also contacts `diagnostics.vidstow.workers.dev` to
+Normal operation contacts YouTube and its media or thumbnail hosts. If
+automatic diagnostics are explicitly enabled, VidStow also contacts
+`diagnostics.vidstow.workers.dev` to
 submit the bounded reports described above. VidStow may start the locally
 installed FFmpeg/FFprobe tools when the selected output requires them.
 
@@ -307,7 +414,8 @@ intentionally not tracked.
 
 VidStow does not support:
 
-- channels, search, library browsing, live streams, or browser-session access outside the explicit macOS video, Short, and existing-playlist workflow;
+- channels, search, library browsing, live streams, or browser-session access
+  outside the explicit macOS video, Short, and existing-playlist workflow;
 - sites other than YouTube;
 - DRM decryption or access-control circumvention;
 - universal resumability or byte reuse when media equivalence is unproved;
