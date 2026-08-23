@@ -26,13 +26,35 @@ export function queueDisplayItems(
   collections: QueueCollectionViewModel[] = [],
 ): QueueDisplayItem[] {
   const collectionById = new Map(collections.map((collection) => [collection.id, collection]));
-  const childrenByCollection = new Map<string, LifecycleJobViewModel[]>();
-
+  const rowChildrenByCollection = new Map<string, LifecycleJobViewModel[]>();
   for (const job of jobs) {
     if (!job.collectionId || !collectionById.has(job.collectionId)) continue;
-    const children = childrenByCollection.get(job.collectionId) ?? [];
+    const children = rowChildrenByCollection.get(job.collectionId) ?? [];
     children.push(job);
-    childrenByCollection.set(job.collectionId, children);
+    rowChildrenByCollection.set(job.collectionId, children);
+  }
+
+  // Keep each collection's durable child order even though the parent itself
+  // is positioned by its highest-priority child. Any unexpected child omitted
+  // from childJobIds remains visible after the known children.
+  const childrenByCollection = new Map<string, LifecycleJobViewModel[]>();
+  for (const collection of collections) {
+    const rowChildren = rowChildrenByCollection.get(collection.id) ?? [];
+    const childById = new Map(rowChildren.map((child) => [child.id, child]));
+    const seen = new Set<string>();
+    const children: LifecycleJobViewModel[] = [];
+    for (const childId of collection.childJobIds) {
+      const child = childById.get(childId);
+      if (!child || seen.has(childId)) continue;
+      seen.add(childId);
+      children.push(child);
+    }
+    for (const child of rowChildren) {
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      children.push(child);
+    }
+    childrenByCollection.set(collection.id, children);
   }
 
   const emittedCollections = new Set<string>();

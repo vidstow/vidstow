@@ -95,7 +95,7 @@ describe('queue display grouping', () => {
     ]);
   });
 
-  test('emits a mixed collection once and keeps its children in backend priority order', () => {
+  test('positions a mixed collection by priority while preserving durable child order', () => {
     const mixedCollection = collection('mixed-collection', ['completed-child', 'active-child']);
     const items = queueDisplayItems([
       job('active-child', 'active', mixedCollection.id),
@@ -110,7 +110,7 @@ describe('queue display grouping', () => {
     const grouped = items[0];
     expect(grouped.kind).toBe('collection');
     if (grouped.kind === 'collection') {
-      expect(grouped.children.map((child) => child.id)).toEqual(['active-child', 'completed-child']);
+      expect(grouped.children.map((child) => child.id)).toEqual(['completed-child', 'active-child']);
     }
   });
 
