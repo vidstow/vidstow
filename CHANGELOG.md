@@ -14,9 +14,11 @@ does not exist yet.
 
 ### Added
 
-- Explicit macOS browser-session access for individual YouTube videos, Shorts,
-  and existing playlists using backend-discovered Chrome, Firefox, and Safari
-  profiles. Public-only access remains the default, consent is required, and
+- Explicit cross-platform browser-session access for individual YouTube videos,
+  Shorts, and existing playlists using backend-discovered sources supported by
+  the pinned engine: Chrome/Firefox/Safari on macOS;
+  Chrome/Chromium/Edge/Brave/Vivaldi/Opera/Firefox on Windows; and
+  Chrome/Chromium/Brave/Firefox on Linux. Public-only access remains the default, consent is required, and
   cookie values are never persisted by VidStow.
 - Authenticated playlist review with visible per-occurrence Ready, Auth required,
   Unavailable, and Invalid outcomes, stable source ordering, atomic admission of
@@ -30,8 +32,8 @@ does not exist yet.
 ### Fixed
 
 - Browser-session analysis allows a bounded five-minute owner-interaction
-  window for macOS permission prompts and reports delayed approval as a browser
-  access timeout rather than an unsupported URL.
+  window for operating-system or browser permission prompts and reports delayed
+  approval as a browser access timeout rather than an unsupported URL.
 - Authenticated playlists that expose more than 500 occurrences are rejected
   visibly instead of presenting a silently truncated review.
 - Updated reachable Unicode normalization code to the patched

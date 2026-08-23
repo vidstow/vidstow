@@ -88,8 +88,8 @@ lifecycle authority.
 ## Authenticated operation authority
 
 Public-only access is the default. Browser-session access requires current
-consent and an explicit renderer selection from backend-discovered macOS
-sources. The renderer cannot submit browser paths or engine cookie
+consent and an explicit renderer selection from backend-discovered sources for
+the current Windows, macOS, or Linux platform. The renderer cannot submit browser paths or engine cookie
 specifications.
 
 Analysis, authenticated playlist review, initial download, retry, and restored

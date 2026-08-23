@@ -585,7 +585,7 @@ func (a *App) AnalyzeURL(raw string) (jobs.InfoSummary, error) {
 	return summary, nil
 }
 
-// GetBrowserSourceOptions returns only backend-authored macOS source choices.
+// GetBrowserSourceOptions returns only backend-authored source choices for the current platform.
 // Renderer paths, free-form profile names, and cookie material are never
 // accepted.
 func (a *App) GetBrowserSourceOptions() []authsource.Option {
@@ -650,7 +650,7 @@ func (a *App) AnalyzeURLWithBrowserSource(raw, bindingRef string) (jobs.InfoSumm
 	summary, err := analyzeWithBrowserSource(a.jobs, ctx, res.URL, bindingRef)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return jobs.InfoSummary{}, errors.New("browser-session analysis timed out while waiting for browser access or YouTube; approve any macOS permission prompt and try again")
+			return jobs.InfoSummary{}, errors.New("browser-session analysis timed out while waiting for browser access or YouTube; approve any operating-system or browser permission prompt and try again")
 		}
 		if _, ok := authsource.ErrorCode(err); ok {
 			return jobs.InfoSummary{}, errors.New("the selected browser source is unavailable; check browser access and try again")
@@ -690,7 +690,7 @@ func (a *App) AnalyzePlaylistWithBrowserSource(raw, bindingRef string) (jobs.Pla
 	summary, err := a.jobs.AnalyzePlaylistAuthenticated(ctx, res.PlaylistURL, bindingRef)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return jobs.PlaylistSummary{}, errors.New("browser-session playlist review timed out while waiting for browser access or YouTube; approve any macOS permission prompt and try again")
+			return jobs.PlaylistSummary{}, errors.New("browser-session playlist review timed out while waiting for browser access or YouTube; approve any operating-system or browser permission prompt and try again")
 		}
 		if errors.Is(err, jobs.ErrAuthenticatedPlaylistLimit) {
 			return jobs.PlaylistSummary{}, fmt.Errorf("this playlist exposes more than %d entries; VidStow will not create a partial authenticated review", jobs.MaxPlaylistEntries)

@@ -5681,7 +5681,7 @@ func browserSourceCheckResult(status, label string, ready, partial bool) Browser
 		"partial":           "Browser source is usable, but some browser data could not be read.",
 		"consent-required":  "Current browser access consent is required.",
 		"source-empty":      "No usable browser data was found in this profile. This local check cannot determine whether YouTube is signed in.",
-		"permission-denied": "VidStow could not access this browser source. Review macOS permissions and try again.",
+		"permission-denied": "VidStow could not access this browser source. Review operating-system or browser permissions and try again.",
 		"source-missing":    "This browser profile is no longer available.",
 		"source-unsafe":     "This browser source could not be read safely.",
 		"unsupported":       "This browser source is not supported on this build.",

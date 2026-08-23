@@ -178,9 +178,11 @@ export interface InfoSummary {
   browserAccess: { mode: 'public' | 'browser-session'; label: string };
 }
 
+export type BrowserSourceBrowser = 'chrome' | 'chromium' | 'edge' | 'brave' | 'vivaldi' | 'opera' | 'firefox' | 'safari';
+
 export interface BrowserSourceOption {
   id: string;
-  browser: 'chrome' | 'firefox' | 'safari';
+  browser: BrowserSourceBrowser;
   label: string;
   profileLabel?: string;
   containerLabel?: string;
@@ -188,7 +190,7 @@ export interface BrowserSourceOption {
 
 export interface BrowserSourceStatus {
   bindingRef: string;
-  browser: 'chrome' | 'firefox' | 'safari';
+  browser: BrowserSourceBrowser;
   label: string;
   enabled: boolean;
   default: boolean;

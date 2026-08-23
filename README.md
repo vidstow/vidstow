@@ -137,7 +137,7 @@ binary-distribution matrix.
 
 ### Set up and use a source
 
-1. Sign in to YouTube in a supported local Chrome, Firefox, or Safari source.
+1. Sign in to YouTube in a supported local browser source.
 2. In **Settings**, choose a backend-discovered browser/profile, check the
    consent box, then select **Configure and check**.
 3. Return to **Home** and explicitly choose that source for the URL. Every new
@@ -222,9 +222,9 @@ presenting a partial 500-entry result.
 ### Authenticated browser-session UX
 
 These Penpot exports document the implemented consent, review, queue, and
-recovery contract. The pull request includes the complete ten-state design
-walkthrough, including public default, remediation, and source-forgetting
-states.
+recovery contract. The pull request includes the complete twelve-state design
+walkthrough, including public default, remediation, source-forgetting, Windows,
+and Linux states.
 
 <table>
   <tr>
@@ -269,6 +269,20 @@ states.
       <img src="docs/assets/screenshots/authenticated-browser-cookies/09-action-required-decision.png" alt="Penpot design showing the recovery decisions for a browser-session job">
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <strong>Windows source discovery</strong><br>
+      The Windows variant exposes every browser family supported by the pinned
+      engine without changing the consent or recovery contract.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/11-windows-browser-sources.png" alt="Penpot design showing supported Windows browser sources">
+    </td>
+    <td width="50%">
+      <strong>Linux source discovery</strong><br>
+      The Linux variant discovers its supported browser families while keeping
+      generated release availability separate from product support.<br><br>
+      <img src="docs/assets/screenshots/authenticated-browser-cookies/12-linux-browser-sources.png" alt="Penpot design showing supported Linux browser sources">
+    </td>
+  </tr>
 </table>
 
 ## Project status
@@ -282,7 +296,7 @@ application and engine versions and by artifact-specific validation.
 | Distribution | [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5) currently installs on macOS Apple Silicon through the [`vidstow/tap`](https://github.com/vidstow/homebrew-tap) Homebrew cask; this does not narrow source or feature compatibility |
 | Source | Apache-2.0 source and self-build instructions |
 | Queue | State v2 persistence, revision-checked lifecycle transitions, FIFO admission, and startup reconciliation |
-| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins the reviewed hardening commit exposed as `v0.3.1-0.20260823140312-a952b51dca44` |
+| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins the reviewed hardening commit exposed as `v0.3.1-0.20260823191038-318793743304` |
 | Resume | Session reuse is evidence-dependent; no universal transfer continuation or guaranteed byte reuse |
 | Updates | Manual downloads from GitHub Releases |
 

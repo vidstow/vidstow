@@ -289,13 +289,13 @@ describe('Home analysis authority', () => {
     expect(screen.getByText('Browser session supplied · Chrome — Default')).toBeInTheDocument();
   });
 
-  test('labels a delayed Keychain approval as a browser-access timeout', async () => {
+  test('labels a delayed platform permission approval as a browser-access timeout', async () => {
     const user = userEvent.setup();
     const { GetBrowserSourceOptions, ListBrowserSources } = installBindings();
     GetBrowserSourceOptions.mockResolvedValue([{ id: 'chrome-default', browser: 'chrome', label: 'Chrome — Default' }]);
     ListBrowserSources.mockResolvedValue([{ bindingRef: 'binding-chrome', browser: 'chrome', label: 'Chrome — Default', enabled: true, default: true }]);
     (window as any).go.main.App.AnalyzeURLWithBrowserSource = vi.fn(async () => {
-      throw new Error('browser-session analysis timed out while waiting for browser access or YouTube; approve any macOS permission prompt and try again');
+      throw new Error('browser-session analysis timed out while waiting for browser access or YouTube; approve any operating-system or browser permission prompt and try again');
     });
     render(Home);
 

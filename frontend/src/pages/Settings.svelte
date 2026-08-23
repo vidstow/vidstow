@@ -209,13 +209,13 @@
     <div class="browser-warning">
       <strong>Use only when public access is not enough</strong>
       <p>A browser session can expose your signed-in YouTube account to requests. YouTube may rate-limit or challenge the account. Only download media you are authorized to access.</p>
-      <p>VidStow never asks for your password and does not persist cookie values. It reads the selected browser store only for operations you explicitly start. macOS or the browser may show a permission or Keychain prompt.</p>
+      <p>VidStow never asks for your password and does not persist cookie values. It reads the selected browser store only for operations you explicitly start. Your operating system or browser may show a permission or credential-store prompt.</p>
     </div>
 
     <div class="setting browser-configure">
       <div class="copy">
         <strong>Add a browser profile</strong>
-        <span>Supported local Chrome, Firefox, and Safari profiles are discovered by the backend. Paths cannot be entered by the web interface.</span>
+        <span>Supported local browser profiles for this operating system are discovered by the backend. Paths cannot be entered by the web interface.</span>
       </div>
       <div class="browser-form">
         <select bind:value={browserOptionId} aria-label="Browser profile" disabled={browserBusy || !browserOptions.length}>

@@ -645,7 +645,7 @@
         <div>
           <h2 id="browser-setup-title">Use a signed-in browser session</h2>
           <p>This can expose your signed-in YouTube account to download requests. YouTube may rate-limit or challenge the account. Use it only for media you are authorized to access.</p>
-          <p>VidStow reads the selected browser cookie store for each operation. It does not ask for your password and does not persist cookie values. macOS or your browser may ask for permission or Keychain access.</p>
+          <p>VidStow reads the selected browser cookie store for each operation. It does not ask for your password and does not persist cookie values. Your operating system or browser may ask for permission or credential-store access.</p>
         </div>
         <label for="browser-source-option">Browser profile</label>
         <select id="browser-source-option" bind:value={setupOptionId} disabled={browserBusy || !browserOptions.length}>
@@ -660,7 +660,7 @@
         <button type="button" class="app-btn primary" on:click={configureBrowserAccess} disabled={browserBusy || !setupOptionId || !browserConsent}>
           {browserBusy ? 'Checking…' : 'Configure and check'}
         </button>
-        {#if !browserOptions.length}<p class="check-result warning">No supported Chrome, Firefox, or Safari profile was found.</p>{/if}
+        {#if !browserOptions.length}<p class="check-result warning">No supported local browser profile was found.</p>{/if}
         {#if browserCheck}<p class="check-result" class:ok={browserCheck.ready} role="status"><strong>{browserCheck.label}</strong> · {browserCheck.message}</p>{/if}
       </section>
     {/if}

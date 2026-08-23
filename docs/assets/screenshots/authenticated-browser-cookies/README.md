@@ -1,6 +1,6 @@
 # Authenticated browser-session design walkthrough
 
-These PNGs are direct exports of the ten final boards on the Penpot page
+These PNGs are direct exports of the twelve final boards on the Penpot page
 `Authenticated Browser Cookies · Final UX`
 (`8e6408d8-b028-80e2-8008-86817ce6ef5a`). They are review artifacts rather
 than runtime assets.
@@ -17,6 +17,8 @@ than runtime assets.
 | 08 | `08-forget-blocked-active.png` | Forgetting cannot remove authority underneath an active operation; the user must pause first. |
 | 09 | `09-action-required-decision.png` | A temporarily unusable bound source offers explicit retry, removal, cleanup, or public restart decisions. |
 | 10 | `10-bound-source-unavailable.png` | A missing source is never replaced by the currently selected Settings profile or by anonymous access. |
+| 11 | `11-windows-browser-sources.png` | Windows exposes backend-discovered Chrome, Chromium, Edge, Brave, Vivaldi, Opera, and Firefox sources under the same product contract. |
+| 12 | `12-linux-browser-sources.png` | Linux exposes backend-discovered Chrome, Chromium, Brave, and Firefox sources under the same product contract. |
 
 All boards are 1180 × 760. The design page remains the editable source of truth;
 these checked-in exports make the reviewed states durable and visible in the

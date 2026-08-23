@@ -35,7 +35,7 @@ describe('Settings browser access', () => {
     const button = await screen.findByRole('button', { name: 'Configure and check' });
     expect(button).toBeDisabled();
     expect(screen.getByText(/does not persist cookie values/i)).toBeInTheDocument();
-    expect(screen.getByText(/permission or Keychain prompt/i)).toBeInTheDocument();
+    expect(screen.getByText(/permission or credential-store prompt/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('checkbox', { name: /I authorize VidStow/ }));
     expect(button).toBeEnabled();

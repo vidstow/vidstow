@@ -1,6 +1,7 @@
 package authsource
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -8,163 +9,243 @@ import (
 	"testing"
 )
 
-func TestDescriptorValidationRejectsRendererAuthority(t *testing.T) {
-	valid := Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserChrome}
-	if err := ValidateDescriptor(valid); err != nil {
-		t.Fatalf("valid default descriptor: %v", err)
+func TestDescriptorValidationUsesCrossPlatformBrowserMatrix(t *testing.T) {
+	valid := []Descriptor{
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserChrome},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserSafari},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "linux", Browser: BrowserChromium},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "linux", Browser: BrowserBrave, ProfileRef: opaqueRef("linux-profile")},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "windows", Browser: BrowserEdge},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "windows", Browser: BrowserOpera},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "windows", Browser: BrowserFirefox, ProfileRef: opaqueRef("firefox")},
 	}
-	if spec, err := cookiesFromBrowser(valid, "darwin"); err != nil || spec != "chrome" {
-		t.Fatalf("cookiesFromBrowser(darwin) = %q, %v", spec, err)
+	for _, descriptor := range valid {
+		if err := ValidateDescriptor(descriptor); err != nil {
+			t.Fatalf("valid descriptor rejected: %#v: %v", descriptor, err)
+		}
 	}
-	for _, descriptor := range []Descriptor{
-		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserChrome, ProfileRef: "/Users/private-canary/Profile"},
-		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserSafari, ProfileRef: "~/Library/Cookies/Cookies.binarycookies"},
-		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserFirefox},
-		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserFirefox, ContainerRef: "COOKIE_CANARY_7f2"},
-		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: "edge"},
-	} {
+	invalid := []Descriptor{
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserEdge},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "linux", Browser: BrowserSafari},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "windows", Browser: BrowserSafari},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "freebsd", Browser: BrowserChrome},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "windows", Browser: BrowserChrome, ProfileRef: `C:\Users\private\Default`},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "linux", Browser: BrowserFirefox},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "windows", Browser: BrowserOpera, ProfileRef: opaqueRef("profile")},
+		{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserSafari, ProfileRef: opaqueRef("profile")},
+	}
+	for _, descriptor := range invalid {
 		if err := ValidateDescriptor(descriptor); err == nil {
 			t.Fatalf("unsafe descriptor accepted: %#v", descriptor)
 		}
 	}
-	for _, option := range supportedOptions("darwin") {
-		if option.Browser == BrowserFirefox {
-			t.Fatalf("mutable bare Firefox option was advertised: %#v", option)
+}
+
+func TestDarwinDiscoveryAndMappingUseOpaqueRefs(t *testing.T) {
+	home := t.TempDir()
+	writeCookieDatabase(t, filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "Default"))
+	writeCookieDatabase(t, filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "Profile 1"))
+	firefox := filepath.Join(home, "Library", "Application Support", "Firefox", "Profiles", "abc.default-release")
+	writeFirefoxDatabase(t, firefox, true)
+	writeRegular(t, filepath.Join(home, "Library", "Cookies", "Cookies.binarycookies"))
+
+	environment := environmentAt("darwin", home)
+	assertSourceSpecs(t, environment, map[string]string{
+		"Chrome|Default|":      "chrome",
+		"Chrome|Profile 1|":    "chrome:Profile 1",
+		"Firefox|Default|":     "firefox:abc.default-release::none",
+		"Firefox|Default|Work": "firefox:abc.default-release::@7",
+		"Safari|Default|":      "safari",
+	})
+}
+
+func TestLinuxDiscoveryCoversEngineBrowserMatrix(t *testing.T) {
+	home := t.TempDir()
+	environment := environmentAt("linux", home)
+	for _, relative := range []string{
+		filepath.Join("google-chrome", "Default"),
+		filepath.Join("chromium", "Profile 2"),
+		filepath.Join("BraveSoftware", "Brave-Browser", "Default"),
+	} {
+		writeCookieDatabase(t, filepath.Join(environment.configHome, relative))
+	}
+	writeFirefoxDatabase(t, filepath.Join(home, ".mozilla", "firefox", "xyz.work"), true)
+
+	assertSourceSpecs(t, environment, map[string]string{
+		"Chrome|Default|":     "chrome",
+		"Chromium|Profile 2|": "chromium:Profile 2",
+		"Brave|Default|":      "brave",
+		"Firefox|work|":       "firefox:xyz.work::none",
+		"Firefox|work|Work":   "firefox:xyz.work::@7",
+	})
+	for _, option := range supportedOptionsIn(environment) {
+		if option.Browser == BrowserEdge || option.Browser == BrowserVivaldi || option.Browser == BrowserOpera || option.Browser == BrowserSafari {
+			t.Fatalf("unsupported Linux browser advertised: %#v", option)
 		}
 	}
 }
 
-func TestNamedProfileAndFirefoxContainerDiscoveryUsesOpaqueRefs(t *testing.T) {
+func TestWindowsDiscoveryCoversEngineBrowserMatrix(t *testing.T) {
 	home := t.TempDir()
-	chrome := filepath.Join(home, "Library", "Application Support", "Google", "Chrome", "Profile 1", "Network")
-	firefox := filepath.Join(home, "Library", "Application Support", "Firefox", "Profiles", "abc.default-release")
-	if err := os.MkdirAll(chrome, 0o700); err != nil {
-		t.Fatal(err)
+	environment := environmentAt("windows", home)
+	roots := map[Browser]string{
+		BrowserChrome:   filepath.Join(environment.localAppData, "Google", "Chrome", "User Data", "Default"),
+		BrowserChromium: filepath.Join(environment.localAppData, "Chromium", "User Data", "Default"),
+		BrowserEdge:     filepath.Join(environment.localAppData, "Microsoft", "Edge", "User Data", "Profile 3"),
+		BrowserBrave:    filepath.Join(environment.localAppData, "BraveSoftware", "Brave-Browser", "User Data", "Default"),
+		BrowserVivaldi:  filepath.Join(environment.localAppData, "Vivaldi", "User Data", "Default"),
+		BrowserOpera:    filepath.Join(environment.roamingAppData, "Opera Software", "Opera Stable"),
 	}
-	if err := os.WriteFile(filepath.Join(chrome, "Cookies"), []byte("fixture"), 0o600); err != nil {
-		t.Fatal(err)
+	for _, root := range roots {
+		writeCookieDatabase(t, root)
 	}
-	if err := os.MkdirAll(firefox, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(firefox, "cookies.sqlite"), []byte("fixture"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(firefox, "containers.json"), []byte(`{"identities":[{"name":"Work","userContextId":7}]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeFirefoxDatabase(t, filepath.Join(environment.roamingAppData, "Mozilla", "Firefox", "Profiles", "win.default-release"), false)
 
-	options := supportedOptionsAt("darwin", home)
-	if len(options) != 5 {
-		t.Fatalf("options = %#v; want two fixed plus Chrome, Firefox, and Firefox container", options)
-	}
-	var chromeID, firefoxID, containerID string
-	for _, option := range options {
-		if strings.Contains(option.ID, "/") || strings.Contains(option.ID, home) {
-			t.Fatalf("option leaked path: %#v", option)
-		}
-		switch {
-		case option.Browser == BrowserChrome && option.ProfileLabel == "Profile 1":
-			chromeID = option.ID
-		case option.Browser == BrowserFirefox && option.ContainerLabel == "":
-			firefoxID = option.ID
-		case option.Browser == BrowserFirefox && option.ContainerLabel == "Work":
-			containerID = option.ID
-		}
-	}
-	for _, test := range []struct {
-		id   string
-		want string
-	}{
-		{chromeID, "chrome:Profile 1"},
-		{firefoxID, "firefox:abc.default-release::none"},
-		{containerID, "firefox:abc.default-release::@7"},
-	} {
-		if test.id == "" {
-			t.Fatalf("missing discovered option for %q: %#v", test.want, options)
-		}
-		descriptor, err := descriptorForOptionAt(test.id, "darwin", home)
-		if err != nil {
-			t.Fatalf("descriptorForOptionAt(%q): %v", test.id, err)
-		}
-		if got, err := cookiesFromBrowserAt(descriptor, "darwin", home); err != nil || got != test.want {
-			t.Fatalf("cookiesFromBrowserAt(%q) = %q, %v; want %q", test.id, got, err, test.want)
+	assertSourceSpecs(t, environment, map[string]string{
+		"Chrome|Default|":   "chrome",
+		"Chromium|Default|": "chromium",
+		"Edge|Profile 3|":   "edge:Profile 3",
+		"Brave|Default|":    "brave",
+		"Vivaldi|Default|":  "vivaldi",
+		"Opera|Default|":    "opera",
+		"Firefox|Default|":  "firefox:win.default-release::none",
+	})
+}
+
+func TestFirefoxAmbiguousProfileNameIsNotAdvertised(t *testing.T) {
+	home := t.TempDir()
+	environment := environmentAt("linux", home)
+	writeFirefoxDatabase(t, filepath.Join(home, ".mozilla", "firefox", "same.default"), false)
+	writeFirefoxDatabase(t, filepath.Join(home, ".var", "app", "org.mozilla.firefox", ".mozilla", "firefox", "same.default"), false)
+	for _, option := range supportedOptionsIn(environment) {
+		if option.Browser == BrowserFirefox {
+			t.Fatalf("ambiguous Firefox profile advertised: %#v", option)
 		}
 	}
 }
 
 func TestDiscoveryRejectsSymlinksAndRemovedProfiles(t *testing.T) {
 	home := t.TempDir()
+	environment := environmentAt("linux", home)
 	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(outside, "Cookies"), []byte("fixture"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	root := filepath.Join(home, "Library", "Application Support", "Google", "Chrome")
+	writeCookieDatabase(t, outside)
+	root := filepath.Join(environment.configHome, "google-chrome")
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, filepath.Join(root, "Profile 2")); err != nil {
 		t.Fatal(err)
 	}
-	if got := supportedOptionsAt("darwin", home); len(got) != 2 {
-		t.Fatalf("symlinked profile advertised: %#v", got)
+	if options := supportedOptionsIn(environment); len(options) != 0 {
+		t.Fatalf("symlinked profile advertised: %#v", options)
 	}
 
 	profile := filepath.Join(root, "Profile 3")
-	if err := os.MkdirAll(profile, 0o700); err != nil {
-		t.Fatal(err)
+	writeCookieDatabase(t, profile)
+	options := supportedOptionsIn(environment)
+	if len(options) != 1 {
+		t.Fatalf("options = %#v; want one profile", options)
 	}
-	if err := os.WriteFile(filepath.Join(profile, "Cookies"), []byte("fixture"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	options := supportedOptionsAt("darwin", home)
-	descriptor, err := descriptorForOptionAt(options[len(options)-1].ID, "darwin", home)
+	descriptor, err := descriptorForOptionIn(options[0].ID, environment)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(profile, "Cookies")); err != nil {
+	if err := os.Remove(filepath.Join(profile, "Network", "Cookies")); err != nil {
 		t.Fatal(err)
 	}
-	if spec, err := cookiesFromBrowserAt(descriptor, "darwin", home); err == nil || spec != "" {
+	if spec, err := cookiesFromBrowserIn(descriptor, environment); err == nil || spec != "" {
 		t.Fatalf("removed profile resolved to %q, %v", spec, err)
 	}
 }
 
-func TestDarwinOptionMappingIsPureAndRuntimeGateFailsClosed(t *testing.T) {
-	for _, test := range []struct {
-		option string
-		want   string
-	}{
-		{option: "darwin.chrome.default", want: "chrome"},
-		{option: "darwin.safari.default", want: "safari"},
-	} {
-		descriptor, err := descriptorForOption(test.option, "darwin")
+func TestMissingPlatformDirectoriesNeverUseRelativeDiscovery(t *testing.T) {
+	for _, platform := range []string{"linux", "windows"} {
+		if options := supportedOptionsIn(sourceEnvironment{platform: platform}); len(options) != 0 {
+			t.Fatalf("%s empty environment advertised relative sources: %#v", platform, options)
+		}
+	}
+	options := supportedOptionsIn(sourceEnvironment{platform: "darwin"})
+	if len(options) != 1 || options[0].Browser != BrowserSafari {
+		t.Fatalf("Darwin empty environment options = %#v; want only fixed Safari source", options)
+	}
+}
+
+func TestRuntimePlatformDoesNotAcceptAnotherPlatformBinding(t *testing.T) {
+	other := "linux"
+	if runtime.GOOS == other {
+		other = "windows"
+	}
+	descriptor := Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: other, Browser: BrowserChrome}
+	if spec, err := CookiesFromBrowser(descriptor); err == nil || spec != "" {
+		t.Fatalf("runtime %s accepted %s descriptor: %q, %v", runtime.GOOS, other, spec, err)
+	}
+	if options := supportedOptions("freebsd"); len(options) != 0 {
+		t.Fatalf("unsupported platform options = %#v", options)
+	}
+}
+
+func assertSourceSpecs(t *testing.T, environment sourceEnvironment, expected map[string]string) {
+	t.Helper()
+	options := supportedOptionsIn(environment)
+	got := make(map[string]string, len(options))
+	for _, option := range options {
+		if strings.Contains(option.ID, environment.home) || strings.ContainsAny(option.ID, `/\\`) {
+			t.Fatalf("option ID leaked path: %#v", option)
+		}
+		descriptor, err := descriptorForOptionIn(option.ID, environment)
 		if err != nil {
-			t.Fatalf("descriptorForOption(%q): %v", test.option, err)
+			t.Fatalf("descriptorForOptionIn(%q): %v", option.ID, err)
 		}
-		if got, err := cookiesFromBrowser(descriptor, "darwin"); err != nil || got != test.want {
-			t.Fatalf("cookiesFromBrowser(%q) = %q, %v; want %q", test.option, got, err, test.want)
+		encoded, err := jsonDescriptor(descriptor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(encoded, environment.home) || strings.Contains(encoded, "Cookies") {
+			t.Fatalf("descriptor leaked source material: %s", encoded)
+		}
+		spec, err := cookiesFromBrowserIn(descriptor, environment)
+		if err != nil {
+			t.Fatalf("cookiesFromBrowserIn(%q): %v", option.ID, err)
+		}
+		key := browserLabel(option.Browser) + "|" + option.ProfileLabel + "|" + option.ContainerLabel
+		got[key] = spec
+	}
+	if len(got) != len(expected) {
+		t.Fatalf("source specs = %#v; want %#v", got, expected)
+	}
+	for key, want := range expected {
+		if got[key] != want {
+			t.Fatalf("source %q = %q; want %q (all: %#v)", key, got[key], want, got)
 		}
 	}
-	for _, platform := range []string{"linux", "windows", "freebsd"} {
-		if options := supportedOptions(platform); len(options) != 0 {
-			t.Fatalf("%s options = %#v; want none", platform, options)
-		}
-		if _, err := descriptorForOption("darwin.chrome.default", platform); err == nil {
-			t.Fatalf("%s option mapping succeeded", platform)
-		}
-		valid := Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserChrome}
-		if spec, err := cookiesFromBrowser(valid, platform); err == nil || spec != "" {
-			t.Fatalf("%s cookie mapping = %q, %v; want unsupported", platform, spec, err)
+}
+
+func jsonDescriptor(descriptor Descriptor) (string, error) {
+	raw, err := json.Marshal(descriptor)
+	return string(raw), err
+}
+
+func writeCookieDatabase(t *testing.T, profile string) {
+	t.Helper()
+	writeRegular(t, filepath.Join(profile, "Network", "Cookies"))
+}
+
+func writeFirefoxDatabase(t *testing.T, profile string, container bool) {
+	t.Helper()
+	writeRegular(t, filepath.Join(profile, "cookies.sqlite"))
+	if container {
+		if err := os.WriteFile(filepath.Join(profile, "containers.json"), []byte(`{"identities":[{"name":"Work","userContextId":7}]}`), 0o600); err != nil {
+			t.Fatal(err)
 		}
 	}
-	valid := Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserChrome}
-	got, err := CookiesFromBrowser(valid)
-	if runtime.GOOS == "darwin" {
-		if err != nil || got != "chrome" {
-			t.Fatalf("runtime Darwin mapping = %q, %v", got, err)
-		}
-	} else if err == nil || got != "" {
-		t.Fatalf("runtime %s mapping = %q, %v; want unsupported", runtime.GOOS, got, err)
+}
+
+func writeRegular(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("fixture"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

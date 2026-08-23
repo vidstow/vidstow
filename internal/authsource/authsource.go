@@ -30,9 +30,14 @@ const (
 type Browser string
 
 const (
-	BrowserChrome  Browser = "chrome"
-	BrowserFirefox Browser = "firefox"
-	BrowserSafari  Browser = "safari"
+	BrowserChrome   Browser = "chrome"
+	BrowserChromium Browser = "chromium"
+	BrowserEdge     Browser = "edge"
+	BrowserBrave    Browser = "brave"
+	BrowserVivaldi  Browser = "vivaldi"
+	BrowserOpera    Browser = "opera"
+	BrowserFirefox  Browser = "firefox"
+	BrowserSafari   Browser = "safari"
 )
 
 // Descriptor is non-secret durable authority. ProfileRef and ContainerRef are
@@ -68,27 +73,41 @@ type discoveredSource struct {
 	descriptor  Descriptor
 	profileName string
 	containerID int
+	profileRoot string
 }
 
-var fixedDarwinSources = []discoveredSource{
-	{option: Option{ID: "darwin.chrome.default", Browser: BrowserChrome, Label: "Chrome — Default", ProfileLabel: "Default"}, descriptor: Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserChrome}},
-	{option: Option{ID: "darwin.safari.default", Browser: BrowserSafari, Label: "Safari — Default", ProfileLabel: "Default"}, descriptor: Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserSafari}},
+type sourceEnvironment struct {
+	platform       string
+	home           string
+	configHome     string
+	localAppData   string
+	roamingAppData string
+}
+
+type chromiumRoot struct {
+	browser    Browser
+	label      string
+	root       string
+	noProfiles bool
 }
 
 func SupportedOptions() []Option {
-	home, _ := os.UserHomeDir()
-	return supportedOptionsAt(runtime.GOOS, home)
+	return supportedOptionsIn(currentEnvironment())
 }
 
 func supportedOptions(platform string) []Option {
-	return supportedOptionsAt(platform, "")
+	return supportedOptionsIn(environmentAt(platform, ""))
 }
 
 func supportedOptionsAt(platform, home string) []Option {
-	if platform != "darwin" {
+	return supportedOptionsIn(environmentAt(platform, home))
+}
+
+func supportedOptionsIn(environment sourceEnvironment) []Option {
+	if !supportedPlatform(environment.platform) {
 		return []Option{}
 	}
-	sources := discoverSources(home)
+	sources := discoverSources(environment)
 	out := make([]Option, 0, len(sources))
 	for _, source := range sources {
 		out = append(out, source.option)
@@ -99,19 +118,22 @@ func supportedOptionsAt(platform, home string) []Option {
 // DescriptorForOption resolves only a backend-advertised option. Free-form
 // browser names, profiles, containers, paths, and cookie material are rejected.
 func DescriptorForOption(optionID string) (Descriptor, error) {
-	home, _ := os.UserHomeDir()
-	return descriptorForOptionAt(optionID, runtime.GOOS, home)
+	return descriptorForOptionIn(optionID, currentEnvironment())
 }
 
 func descriptorForOption(optionID, platform string) (Descriptor, error) {
-	return descriptorForOptionAt(optionID, platform, "")
+	return descriptorForOptionIn(optionID, environmentAt(platform, ""))
 }
 
 func descriptorForOptionAt(optionID, platform, home string) (Descriptor, error) {
-	if platform != "darwin" {
+	return descriptorForOptionIn(optionID, environmentAt(platform, home))
+}
+
+func descriptorForOptionIn(optionID string, environment sourceEnvironment) (Descriptor, error) {
+	if !supportedPlatform(environment.platform) {
 		return Descriptor{}, NewError("unsupported-platform")
 	}
-	for _, source := range discoverSources(home) {
+	for _, source := range discoverSources(environment) {
 		if optionID == source.option.ID {
 			return source.descriptor, nil
 		}
@@ -120,46 +142,40 @@ func descriptorForOptionAt(optionID, platform, home string) (Descriptor, error) 
 }
 
 func Label(descriptor Descriptor) string {
-	home, _ := os.UserHomeDir()
-	for _, source := range discoverSources(home) {
+	for _, source := range discoverSources(currentEnvironment()) {
 		if descriptor == source.descriptor {
 			return source.option.Label
 		}
 	}
-	switch descriptor.Browser {
-	case BrowserChrome:
-		return "Chrome profile"
-	case BrowserFirefox:
-		return "Firefox profile"
-	case BrowserSafari:
-		return "Safari — Default"
-	default:
-		return "Browser source"
+	if label := browserLabel(descriptor.Browser); label != "" {
+		if descriptor.ProfileRef == "" {
+			return label + " — Default"
+		}
+		return label + " profile"
 	}
+	return "Browser source"
 }
 
 // ValidateDescriptor validates only the durable descriptor shape. Source
 // existence is checked at operation time so a removed profile becomes Action
 // required instead of making State v2 corrupt during startup.
 func ValidateDescriptor(descriptor Descriptor) error {
-	if descriptor.SchemaVersion != DescriptorSchemaVersion || descriptor.Platform != "darwin" {
+	if descriptor.SchemaVersion != DescriptorSchemaVersion || !supportedPlatform(descriptor.Platform) || !browserSupported(descriptor.Platform, descriptor.Browser) {
 		return NewError("invalid-source")
 	}
 	switch descriptor.Browser {
-	case BrowserChrome:
-		if descriptor.ContainerRef != "" || (descriptor.ProfileRef != "" && !validOpaqueRef(descriptor.ProfileRef)) {
-			return NewError("invalid-source")
-		}
 	case BrowserFirefox:
 		if !validOpaqueRef(descriptor.ProfileRef) || (descriptor.ContainerRef != "" && !validOpaqueRef(descriptor.ContainerRef)) {
 			return NewError("invalid-source")
 		}
-	case BrowserSafari:
+	case BrowserSafari, BrowserOpera:
 		if descriptor.ProfileRef != "" || descriptor.ContainerRef != "" {
 			return NewError("invalid-source")
 		}
 	default:
-		return NewError("invalid-source")
+		if descriptor.ContainerRef != "" || (descriptor.ProfileRef != "" && !validOpaqueRef(descriptor.ProfileRef)) {
+			return NewError("invalid-source")
+		}
 	}
 	return nil
 }
@@ -167,112 +183,295 @@ func ValidateDescriptor(descriptor Descriptor) error {
 // CookiesFromBrowser derives the sole engine credential input. CookieFile is
 // never represented by this package or accepted from callers.
 func CookiesFromBrowser(descriptor Descriptor) (string, error) {
-	home, _ := os.UserHomeDir()
-	return cookiesFromBrowserAt(descriptor, runtime.GOOS, home)
+	return cookiesFromBrowserIn(descriptor, currentEnvironment())
 }
 
 func cookiesFromBrowser(descriptor Descriptor, platform string) (string, error) {
-	return cookiesFromBrowserAt(descriptor, platform, "")
+	return cookiesFromBrowserIn(descriptor, environmentAt(platform, ""))
 }
 
 func cookiesFromBrowserAt(descriptor Descriptor, platform, home string) (string, error) {
+	return cookiesFromBrowserIn(descriptor, environmentAt(platform, home))
+}
+
+func cookiesFromBrowserIn(descriptor Descriptor, environment sourceEnvironment) (string, error) {
 	if err := ValidateDescriptor(descriptor); err != nil {
 		return "", err
 	}
-	if platform != "darwin" || descriptor.Platform != platform {
+	if descriptor.Platform != environment.platform {
 		return "", NewError("unsupported-platform")
 	}
-	if descriptor.Browser == BrowserChrome && descriptor.ProfileRef == "" {
-		return "chrome", nil
-	}
-	if descriptor.Browser == BrowserSafari {
-		return "safari", nil
-	}
-	for _, source := range discoverSources(home) {
+	for _, source := range discoverSources(environment) {
 		if source.descriptor != descriptor {
 			continue
 		}
+		browser := string(descriptor.Browser)
 		switch descriptor.Browser {
-		case BrowserChrome:
-			return "chrome:" + source.profileName, nil
+		case BrowserSafari, BrowserOpera:
+			return browser, nil
 		case BrowserFirefox:
 			container := "none"
 			if descriptor.ContainerRef != "" {
 				container = "@" + strconv.Itoa(source.containerID)
 			}
-			return "firefox:" + source.profileName + "::" + container, nil
+			return browser + ":" + source.profileName + "::" + container, nil
+		default:
+			if source.profileName == "" || source.profileName == "Default" {
+				return browser, nil
+			}
+			return browser + ":" + source.profileName, nil
 		}
 	}
 	return "", NewError("source-unavailable")
 }
 
-func discoverSources(home string) []discoveredSource {
-	out := append([]discoveredSource(nil), fixedDarwinSources...)
-	if strings.TrimSpace(home) == "" {
-		return out
-	}
-	out = append(out, discoverChrome(home)...)
-	out = append(out, discoverFirefox(home)...)
-	sort.SliceStable(out[2:], func(i, j int) bool {
-		a, b := out[i+2].option, out[j+2].option
-		if a.Browser != b.Browser {
-			return a.Browser < b.Browser
+func currentEnvironment() sourceEnvironment {
+	home, _ := os.UserHomeDir()
+	environment := environmentAt(runtime.GOOS, home)
+	if runtime.GOOS == "linux" {
+		if configured := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); configured != "" {
+			environment.configHome = configured
 		}
-		return a.Label < b.Label
+	}
+	if runtime.GOOS == "windows" {
+		if local := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); local != "" {
+			environment.localAppData = local
+		}
+		if roaming := strings.TrimSpace(os.Getenv("APPDATA")); roaming != "" {
+			environment.roamingAppData = roaming
+		}
+	}
+	return environment
+}
+
+func environmentAt(platform, home string) sourceEnvironment {
+	environment := sourceEnvironment{platform: platform, home: home}
+	switch platform {
+	case "linux":
+		if home != "" {
+			environment.configHome = filepath.Join(home, ".config")
+		}
+	case "windows":
+		if home != "" {
+			environment.localAppData = filepath.Join(home, "AppData", "Local")
+			environment.roamingAppData = filepath.Join(home, "AppData", "Roaming")
+		}
+	}
+	return environment
+}
+
+func supportedPlatform(platform string) bool {
+	return platform == "darwin" || platform == "linux" || platform == "windows"
+}
+
+func browserSupported(platform string, browser Browser) bool {
+	switch platform {
+	case "darwin":
+		return browser == BrowserChrome || browser == BrowserFirefox || browser == BrowserSafari
+	case "linux":
+		return browser == BrowserChrome || browser == BrowserChromium || browser == BrowserBrave || browser == BrowserFirefox
+	case "windows":
+		switch browser {
+		case BrowserChrome, BrowserChromium, BrowserEdge, BrowserBrave, BrowserVivaldi, BrowserOpera, BrowserFirefox:
+			return true
+		}
+	}
+	return false
+}
+
+func discoverSources(environment sourceEnvironment) []discoveredSource {
+	if !supportedPlatform(environment.platform) {
+		return nil
+	}
+	var out []discoveredSource
+	for _, root := range chromiumRoots(environment) {
+		out = append(out, discoverChromium(environment.platform, root)...)
+	}
+	out = append(out, discoverFirefox(environment)...)
+	if environment.platform == "darwin" {
+		// Safari is an operating-system source. Advertise its fixed default even
+		// when privacy controls prevent discovery from probing the cookie file;
+		// the explicit source check owns the bounded permission/missing result.
+		out = append(out, discoveredSource{
+			option:     Option{ID: "darwin.safari.default", Browser: BrowserSafari, Label: "Safari — Default", ProfileLabel: "Default"},
+			descriptor: Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserSafari},
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].option.Browser != out[j].option.Browser {
+			return out[i].option.Browser < out[j].option.Browser
+		}
+		return out[i].option.Label < out[j].option.Label
 	})
 	return out
 }
 
-func discoverChrome(home string) []discoveredSource {
-	root := filepath.Join(home, "Library", "Application Support", "Google", "Chrome")
-	entries := safeChildDirectories(root)
+func chromiumRoots(environment sourceEnvironment) []chromiumRoot {
+	switch environment.platform {
+	case "darwin":
+		return []chromiumRoot{{BrowserChrome, "Chrome", joinRoot(environment.home, "Library", "Application Support", "Google", "Chrome"), false}}
+	case "linux":
+		return []chromiumRoot{
+			{BrowserChrome, "Chrome", joinRoot(environment.configHome, "google-chrome"), false},
+			{BrowserChromium, "Chromium", joinRoot(environment.configHome, "chromium"), false},
+			{BrowserBrave, "Brave", joinRoot(environment.configHome, "BraveSoftware", "Brave-Browser"), false},
+		}
+	case "windows":
+		return []chromiumRoot{
+			{BrowserChrome, "Chrome", joinRoot(environment.localAppData, "Google", "Chrome", "User Data"), false},
+			{BrowserChromium, "Chromium", joinRoot(environment.localAppData, "Chromium", "User Data"), false},
+			{BrowserEdge, "Edge", joinRoot(environment.localAppData, "Microsoft", "Edge", "User Data"), false},
+			{BrowserBrave, "Brave", joinRoot(environment.localAppData, "BraveSoftware", "Brave-Browser", "User Data"), false},
+			{BrowserVivaldi, "Vivaldi", joinRoot(environment.localAppData, "Vivaldi", "User Data"), false},
+			{BrowserOpera, "Opera", joinRoot(environment.roamingAppData, "Opera Software", "Opera Stable"), true},
+		}
+	}
+	return nil
+}
+
+func discoverChromium(platform string, root chromiumRoot) []discoveredSource {
+	if root.root == "" {
+		return nil
+	}
+	if root.noProfiles {
+		if !hasRegularCookieDatabase(root.root, []string{filepath.Join("Network", "Cookies"), "Cookies"}) {
+			return nil
+		}
+		return []discoveredSource{{
+			option:     Option{ID: platform + "." + string(root.browser) + ".default", Browser: root.browser, Label: root.label + " — Default", ProfileLabel: "Default"},
+			descriptor: Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: platform, Browser: root.browser}, profileRoot: root.root,
+		}}
+	}
+	entries := safeChildDirectories(root.root)
 	out := make([]discoveredSource, 0, len(entries))
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == "Default" || !hasRegularCookieDatabase(filepath.Join(root, name), []string{filepath.Join("Network", "Cookies"), "Cookies"}) {
+		if !hasRegularCookieDatabase(filepath.Join(root.root, name), []string{filepath.Join("Network", "Cookies"), "Cookies"}) {
 			continue
 		}
-		ref := opaqueRef("darwin", string(BrowserChrome), name)
 		profileLabel := safeLabel(name, "Profile")
+		descriptor := Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: platform, Browser: root.browser}
+		optionID := platform + "." + string(root.browser) + ".default"
+		profileName := "Default"
+		if name != "Default" {
+			ref := opaqueRef(platform, string(root.browser), name)
+			descriptor.ProfileRef = ref
+			optionID = platform + "." + string(root.browser) + "." + ref
+			profileName = name
+		}
 		out = append(out, discoveredSource{
-			option:      Option{ID: "darwin.chrome." + ref, Browser: BrowserChrome, Label: "Chrome — " + profileLabel, ProfileLabel: profileLabel},
-			descriptor:  Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserChrome, ProfileRef: ref},
-			profileName: name,
+			option:     Option{ID: optionID, Browser: root.browser, Label: root.label + " — " + profileLabel, ProfileLabel: profileLabel},
+			descriptor: descriptor, profileName: profileName, profileRoot: filepath.Join(root.root, name),
 		})
 	}
 	return out
 }
 
-func discoverFirefox(home string) []discoveredSource {
-	root := filepath.Join(home, "Library", "Application Support", "Firefox", "Profiles")
-	entries := safeChildDirectories(root)
-	out := make([]discoveredSource, 0, len(entries))
-	for _, entry := range entries {
-		name := entry.Name()
-		profileDir := filepath.Join(root, name)
-		if !regularNoSymlink(filepath.Join(profileDir, "cookies.sqlite")) {
+func discoverFirefox(environment sourceEnvironment) []discoveredSource {
+	type candidate struct {
+		root string
+		name string
+	}
+	var candidates []candidate
+	counts := make(map[string]int)
+	for _, root := range firefoxRoots(environment) {
+		for _, entry := range safeChildDirectories(root) {
+			name := entry.Name()
+			if !regularNoSymlink(filepath.Join(root, name, "cookies.sqlite")) {
+				continue
+			}
+			candidates = append(candidates, candidate{root: root, name: name})
+			counts[name]++
+		}
+	}
+	var out []discoveredSource
+	for _, candidate := range candidates {
+		// The public engine selector accepts a profile name rather than a path.
+		// Do not advertise an ambiguous name that could select another install.
+		if counts[candidate.name] != 1 {
 			continue
 		}
-		profileRef := opaqueRef("darwin", string(BrowserFirefox), name)
-		profileLabel := firefoxProfileLabel(name)
-		baseDescriptor := Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserFirefox, ProfileRef: profileRef}
+		profileDir := filepath.Join(candidate.root, candidate.name)
+		profileRef := opaqueRef(environment.platform, string(BrowserFirefox), candidate.root, candidate.name)
+		profileLabel := firefoxProfileLabel(candidate.name)
+		baseDescriptor := Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: environment.platform, Browser: BrowserFirefox, ProfileRef: profileRef}
+		prefix := environment.platform + ".firefox." + profileRef
 		out = append(out, discoveredSource{
-			option:      Option{ID: "darwin.firefox." + profileRef, Browser: BrowserFirefox, Label: "Firefox — " + profileLabel, ProfileLabel: profileLabel},
-			descriptor:  baseDescriptor,
-			profileName: name,
+			option:     Option{ID: prefix, Browser: BrowserFirefox, Label: "Firefox — " + profileLabel, ProfileLabel: profileLabel},
+			descriptor: baseDescriptor, profileName: candidate.name, profileRoot: profileDir,
 		})
 		for _, container := range discoverFirefoxContainers(profileDir) {
-			containerRef := opaqueRef("darwin", string(BrowserFirefox), name, "container", strconv.Itoa(container.id))
+			containerRef := opaqueRef(environment.platform, string(BrowserFirefox), candidate.root, candidate.name, "container", strconv.Itoa(container.id))
 			containerLabel := safeLabel(container.label, "Container")
 			out = append(out, discoveredSource{
-				option:      Option{ID: "darwin.firefox." + profileRef + "." + containerRef, Browser: BrowserFirefox, Label: "Firefox — " + profileLabel + " · " + containerLabel, ProfileLabel: profileLabel, ContainerLabel: containerLabel},
-				descriptor:  Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: "darwin", Browser: BrowserFirefox, ProfileRef: profileRef, ContainerRef: containerRef},
-				profileName: name,
-				containerID: container.id,
+				option:      Option{ID: prefix + "." + containerRef, Browser: BrowserFirefox, Label: "Firefox — " + profileLabel + " · " + containerLabel, ProfileLabel: profileLabel, ContainerLabel: containerLabel},
+				descriptor:  Descriptor{SchemaVersion: DescriptorSchemaVersion, Platform: environment.platform, Browser: BrowserFirefox, ProfileRef: profileRef, ContainerRef: containerRef},
+				profileName: candidate.name, containerID: container.id, profileRoot: profileDir,
 			})
 		}
 	}
 	return out
+}
+
+func firefoxRoots(environment sourceEnvironment) []string {
+	switch environment.platform {
+	case "darwin":
+		return compactRoots(joinRoot(environment.home, "Library", "Application Support", "Firefox", "Profiles"))
+	case "windows":
+		return compactRoots(
+			joinRoot(environment.roamingAppData, "Mozilla", "Firefox", "Profiles"),
+			joinRoot(environment.localAppData, "Packages", "Mozilla.Firefox_n80bbvh6b1yt2", "LocalCache", "Roaming", "Mozilla", "Firefox", "Profiles"),
+		)
+	case "linux":
+		return compactRoots(
+			joinRoot(environment.configHome, "mozilla", "firefox"),
+			joinRoot(environment.home, ".mozilla", "firefox"),
+			joinRoot(environment.home, ".var", "app", "org.mozilla.firefox", "config", "mozilla", "firefox"),
+			joinRoot(environment.home, ".var", "app", "org.mozilla.firefox", ".mozilla", "firefox"),
+			joinRoot(environment.home, "snap", "firefox", "common", ".mozilla", "firefox"),
+		)
+	}
+	return nil
+}
+
+func joinRoot(base string, elements ...string) string {
+	if strings.TrimSpace(base) == "" {
+		return ""
+	}
+	return filepath.Join(append([]string{base}, elements...)...)
+}
+
+func compactRoots(roots ...string) []string {
+	out := make([]string, 0, len(roots))
+	for _, root := range roots {
+		if root != "" {
+			out = append(out, root)
+		}
+	}
+	return out
+}
+
+func browserLabel(browser Browser) string {
+	switch browser {
+	case BrowserChrome:
+		return "Chrome"
+	case BrowserChromium:
+		return "Chromium"
+	case BrowserEdge:
+		return "Edge"
+	case BrowserBrave:
+		return "Brave"
+	case BrowserVivaldi:
+		return "Vivaldi"
+	case BrowserOpera:
+		return "Opera"
+	case BrowserFirefox:
+		return "Firefox"
+	case BrowserSafari:
+		return "Safari"
+	default:
+		return ""
+	}
 }
 
 type firefoxContainer struct {
@@ -318,6 +517,9 @@ func discoverFirefoxContainers(profileDir string) []firefoxContainer {
 }
 
 func safeChildDirectories(root string) []os.DirEntry {
+	if strings.TrimSpace(root) == "" {
+		return nil
+	}
 	info, err := os.Lstat(root)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil
@@ -346,12 +548,15 @@ func hasRegularCookieDatabase(profileDir string, relatives []string) bool {
 }
 
 func regularNoSymlink(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
 	info, err := os.Lstat(path)
 	return err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0
 }
 
 func safeBasename(value string) bool {
-	return value != "" && value != "." && value != ".." && filepath.Base(value) == value && !strings.ContainsAny(value, `/\\\x00`)
+	return value != "" && value != "." && value != ".." && filepath.Base(value) == value && !strings.ContainsAny(value, "/\\\\\x00")
 }
 
 func firefoxProfileLabel(name string) string {
