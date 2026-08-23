@@ -46,7 +46,6 @@ var (
 		return recovery.Reconcile(ctx, state, recovery.Options{})
 	}
 	restoreStartupManager    = func(manager *jobs.Manager, snapshot jobmodel.State) error { return manager.RestoreStateV2(snapshot) }
-	resolveDownloadPlan      = (*jobs.Manager).ResolvePlan
 	resolveAnalysisAuthority = (*jobs.Manager).ResolveAnalysisAuthority
 	analyzeWithBrowserSource = (*jobs.Manager).AnalyzeAuthenticated
 	startStartupCleanup      = recovery.StartCleanupWorkerWithReport
@@ -585,8 +584,8 @@ func (a *App) AnalyzeURL(raw string) (jobs.InfoSummary, error) {
 }
 
 // GetBrowserSourceOptions returns only backend-authored macOS source choices.
-// Milestone 1 intentionally exposes default stores only; renderer paths and
-// cookie material are never accepted.
+// Renderer paths, free-form profile names, and cookie material are never
+// accepted.
 func (a *App) GetBrowserSourceOptions() []authsource.Option {
 	if a.store == nil {
 		return []authsource.Option{}
@@ -651,6 +650,9 @@ func (a *App) AnalyzeURLWithBrowserSource(raw, bindingRef string) (jobs.InfoSumm
 		if _, ok := authsource.ErrorCode(err); ok {
 			return jobs.InfoSummary{}, errors.New("the selected browser source is unavailable; check browser access and try again")
 		}
+		if errors.Is(err, engine.ErrBrowserCookieScopeEmpty) {
+			return jobs.InfoSummary{}, errors.New("no YouTube browser data was available from the selected profile; open YouTube in that profile, confirm sign-in if needed, then try again")
+		}
 		if engine.IsCategory(err, engine.ErrorAuthentication) {
 			return jobs.InfoSummary{}, errors.New("YouTube did not return this media with the selected browser session; check sign-in and media access, then try again")
 		}
@@ -684,6 +686,9 @@ func (a *App) AnalyzePlaylistWithBrowserSource(raw, bindingRef string) (jobs.Pla
 	if err != nil {
 		if _, ok := authsource.ErrorCode(err); ok {
 			return jobs.PlaylistSummary{}, errors.New("the selected browser source is unavailable; check browser access and try again")
+		}
+		if errors.Is(err, engine.ErrBrowserCookieScopeEmpty) {
+			return jobs.PlaylistSummary{}, errors.New("no YouTube browser data was available from the selected profile; open YouTube in that profile, confirm sign-in if needed, then try again")
 		}
 		if engine.IsCategory(err, engine.ErrorAuthentication) {
 			return jobs.PlaylistSummary{}, errors.New("YouTube did not return this playlist with the selected browser session; check sign-in and playlist access, then try again")

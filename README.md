@@ -68,7 +68,9 @@ verification details.
 - **Explicit browser-session access** — on macOS, choose a discovered Chrome,
   Firefox profile/container, or Safari cookie store for a request you start.
   Public-only access remains the default; VidStow never silently substitutes a
-  different profile or retries an authenticated request anonymously.
+  different profile or retries an authenticated request anonymously. Imported
+  cookies are scoped to YouTube's registrable site and are not supplied to
+  unrelated redirect hosts.
 - **Focused output choices** — choose best available video, capped resolutions,
   original audio, or MP3 when the analyzed media supports those choices.
 - **Playlist review** — select up to 500 Ready entries, apply a bounded range,

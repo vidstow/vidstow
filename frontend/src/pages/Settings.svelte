@@ -126,9 +126,9 @@
       const activeWarning = impact.active ? ` ${impact.active} active ${impact.active === 1 ? 'download must' : 'downloads must'} be paused first.` : '';
       modal.set({
         kind: 'confirm',
-        title: `Forget ${source.label}?`,
+        title: impact.active ? `Pause downloads using ${source.label}` : `Forget ${source.label}?`,
         message: `This source is bound to ${jobs} in ${collections}. Non-terminal downloads will move to Action required.${activeWarning} VidStow does not store cookie values.`,
-        actions: [{ label: 'Forget browser source', primary: true, action: () => forgetBrowserSource(source.bindingRef) }],
+        actions: impact.active ? undefined : [{ label: 'Forget browser source', primary: true, action: () => forgetBrowserSource(source.bindingRef) }],
       });
     } catch (err) { showError(err, 'Could not check browser source dependencies'); }
     finally { browserBusy = false; }

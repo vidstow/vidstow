@@ -137,6 +137,7 @@ export interface QueueCollectionViewModel {
   total: number;
   completed: number;
   failed: number;
+  actionRequired?: number;
   canceled: number;
   active: number;
   pending: number;

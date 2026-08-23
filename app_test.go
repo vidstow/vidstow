@@ -381,6 +381,13 @@ func TestAuthenticatedEngineErrorCanaryNeverReachesAppDiagnosticsReportOutboxOrH
 	if strings.Contains(surfacedErr.Error(), canary) || !strings.Contains(surfacedErr.Error(), "selected browser session") {
 		t.Fatalf("App error projection = %q", surfacedErr)
 	}
+	analyzeWithBrowserSource = func(_ *jobs.Manager, _ context.Context, _, _ string) (jobs.InfoSummary, error) {
+		return jobs.InfoSummary{}, &engine.Error{Category: engine.ErrorAuthentication, Err: engine.ErrBrowserCookieScopeEmpty}
+	}
+	_, scopeErr := app.AnalyzeURLWithBrowserSource("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "browser-binding")
+	if scopeErr == nil || !strings.Contains(scopeErr.Error(), "no YouTube browser data") || strings.Contains(strings.ToLower(scopeErr.Error()), "cookie") {
+		t.Fatalf("scoped browser error projection = %v", scopeErr)
+	}
 
 	settings := app.store.Settings()
 	settings.AutomaticDiagnostics = "enabled"
@@ -1009,7 +1016,6 @@ func installAppTestSeams(t *testing.T) func() {
 	oldPrepare := prepareStartupStateRoots
 	oldReconcile := reconcileStartupState
 	oldRestore := restoreStartupManager
-	oldResolveDownloadPlan := resolveDownloadPlan
 	oldResolveAnalysisAuthority := resolveAnalysisAuthority
 	oldAnalyzeWithBrowserSource := analyzeWithBrowserSource
 	oldCleanup := startStartupCleanup
@@ -1030,7 +1036,6 @@ func installAppTestSeams(t *testing.T) func() {
 		prepareStartupStateRoots = oldPrepare
 		reconcileStartupState = oldReconcile
 		restoreStartupManager = oldRestore
-		resolveDownloadPlan = oldResolveDownloadPlan
 		resolveAnalysisAuthority = oldResolveAnalysisAuthority
 		analyzeWithBrowserSource = oldAnalyzeWithBrowserSource
 		startStartupCleanup = oldCleanup

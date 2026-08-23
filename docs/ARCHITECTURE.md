@@ -88,10 +88,12 @@ specifications.
 Analysis, authenticated playlist review, initial download, retry, and restored
 queue execution all resolve the same durable binding immediately before the
 engine operation. The engine imports from that source read-only for the
-operation. VidStow never writes cookies, persists cookie values, silently
-substitutes another configured profile, or retries an authenticated operation
-without its browser session. Missing or rejected session authority moves
-admitted work to Action required.
+operation and scopes imported cookies to the registrable site of the canonical
+request URL, so cookies for unrelated browser sites never enter the operation
+jar or follow a cross-site redirect. VidStow never writes cookies, persists
+cookie values, silently substitutes another configured profile, or retries an
+authenticated operation without its browser session. Missing or rejected
+session authority moves admitted work to Action required.
 
 Authenticated playlist review is one engine operation with one shared browser
 source. It returns one explicit outcome for every discovered occurrence. Only

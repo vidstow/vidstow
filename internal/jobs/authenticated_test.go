@@ -66,7 +66,7 @@ func TestAuthenticatedAnalysisInjectsExactSourceOnceAndBindsAuthority(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(requests) != 1 || requests[0].CookiesFromBrowser != "chrome" || requests[0].CookieFile != "" {
+	if len(requests) != 1 || requests[0].CookiesFromBrowser != "chrome" || requests[0].CookieFile != "" || !requests[0].ScopeBrowserCookiesToURL {
 		t.Fatalf("authenticated requests = %#v", requests)
 	}
 	if summary.BrowserAccess.Mode != "browser-session" || summary.BrowserAccess.Label != "Chrome — Default" || summary.AnalysisAuthority == "" {
@@ -137,7 +137,7 @@ func TestForgottenBindingCannotReviveCachedAnalysisAfterFreshReconfiguration(t *
 		t.Fatal(err)
 	}
 	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
-		if request.CookiesFromBrowser != "chrome" {
+		if request.CookiesFromBrowser != "chrome" || !request.ScopeBrowserCookiesToURL {
 			t.Fatalf("authenticated request = %#v", request)
 		}
 		return analysisFixtureResult(), nil
@@ -185,8 +185,13 @@ func TestOlderConcurrentAnalysisCannotReplaceNewerSelection(t *testing.T) {
 	releasePublic := make(chan struct{})
 	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
 		if request.CookiesFromBrowser == "" {
+			if request.ScopeBrowserCookiesToURL {
+				t.Fatalf("public request enabled browser-cookie scoping: %#v", request)
+			}
 			close(publicStarted)
 			<-releasePublic
+		} else if !request.ScopeBrowserCookiesToURL {
+			t.Fatalf("authenticated request omitted browser-cookie scoping: %#v", request)
 		}
 		return analysisFixtureResult(), nil
 	}
@@ -246,7 +251,7 @@ func TestAuthenticatedAnalysisFailureHasNoCookieFreeFallback(t *testing.T) {
 	calls := 0
 	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
 		calls++
-		if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" {
+		if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" || !request.ScopeBrowserCookiesToURL {
 			t.Fatalf("request = %#v", request)
 		}
 		return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Err: errors.New("KEYCHAIN_CANARY")}
@@ -269,7 +274,7 @@ func TestPublicAnalysisRemainsAnonymous(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
-		if request.CookiesFromBrowser != "" || request.CookieFile != "" {
+		if request.CookiesFromBrowser != "" || request.CookieFile != "" || request.ScopeBrowserCookiesToURL {
 			t.Fatalf("public request inspected browser authority: %#v", request)
 		}
 		return analysisFixtureResult(), nil
@@ -295,7 +300,7 @@ func TestAuthenticatedDownloadFailureBecomesActionRequiredWithoutFallback(t *tes
 	calls := 0
 	manager.runDownload = func(_ context.Context, request engine.Request, handler engine.EventHandler) (engine.Result, error) {
 		calls++
-		if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" {
+		if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" || !request.ScopeBrowserCookiesToURL {
 			t.Fatalf("download request = %#v", request)
 		}
 		if err := handler(context.Background(), engine.Event{Kind: engine.EventBrowserCookies, Message: "imported 7 of 9 browser cookies"}); err != nil {
@@ -314,6 +319,11 @@ func TestAuthenticatedDownloadFailureBecomesActionRequiredWithoutFallback(t *tes
 	if snapshot.Message == "imported 7 of 9 browser cookies" || snapshot.ErrorReason != authenticatedSessionUnavailableCode {
 		t.Fatalf("renderer snapshot leaked browser event or wrong recovery: %#v", snapshot)
 	}
+	view := manager.QueueView()
+	review, err := manager.QueueActionRequiredReview("job-auth", view.Rows[0].CommandToken)
+	if err != nil || !review.CanRetryFreshLink || review.RetryFreshLabel != "Refresh Chrome — Default and retry" {
+		t.Fatalf("available bound-source review = %#v, %v", review, err)
+	}
 }
 
 func TestInitialAuthenticatedDownloadSucceedsWithoutLoginAttestation(t *testing.T) {
@@ -331,7 +341,7 @@ func TestInitialAuthenticatedDownloadSucceedsWithoutLoginAttestation(t *testing.
 	calls := 0
 	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
 		calls++
-		if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" {
+		if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" || !request.ScopeBrowserCookiesToURL {
 			t.Fatalf("download request = %#v", request)
 		}
 		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4")}, nil
@@ -364,7 +374,7 @@ func TestEngineTextCanariesNeverReachPresentationOrState(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.runDownload = func(_ context.Context, request engine.Request, handler engine.EventHandler) (engine.Result, error) {
-		if request.CookiesFromBrowser != "chrome" {
+		if request.CookiesFromBrowser != "chrome" || !request.ScopeBrowserCookiesToURL {
 			t.Fatalf("request = %#v", request)
 		}
 		if err := handler(context.Background(), engine.Event{Kind: "future-provider-event", Message: canary}); err != nil {
@@ -456,7 +466,7 @@ func TestAuthenticatedValidatedRetryUsesDurableBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := <-requests
-	if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" {
+	if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" || !request.ScopeBrowserCookiesToURL {
 		t.Fatalf("retry request = %#v", request)
 	}
 	waitForV2Job(t, store, "job-auth-retry", jobmodel.LifecycleCompleted)
@@ -503,15 +513,47 @@ func TestForgetSourceTombstonesBindingAndMovesDependentJobToActionRequired(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if review.AccessMode != "browser-session" || review.BrowserSourceLabel != "Chrome — Default" || review.RetryFreshLabel != "Refresh Chrome — Default and retry" || review.StartOverLabel != "Start over publicly from Home" || !strings.Contains(review.Message, "will not silently switch") {
+	if review.AccessMode != "browser-session" || review.BrowserSourceLabel != "Chrome — Default" || review.RetryFreshLabel != "Refresh Chrome — Default and retry" || review.StartOverLabel != "Start over publicly from Home" || review.CanRetryFreshLink || !strings.Contains(review.Message, "will not switch") {
 		t.Fatalf("authenticated recovery review = %#v", review)
 	}
+	beforeRetry := store.Snapshot().Jobs[0]
+	if err := manager.QueueActionRequiredRetryFreshLink("job-forgotten-auth", view.Rows[0].CommandToken); err == nil {
+		t.Fatal("forgotten source unexpectedly authorized a fresh retry")
+	}
+	afterRetry := store.Snapshot().Jobs[0]
+	if afterRetry.SessionID != beforeRetry.SessionID || afterRetry.AttemptID != beforeRetry.AttemptID || afterRetry.SessionRestarts != beforeRetry.SessionRestarts || len(store.Snapshot().Cleanup) != 0 {
+		t.Fatalf("rejected retry mutated durable evidence: before=%#v after=%#v cleanup=%#v", beforeRetry, afterRetry, store.Snapshot().Cleanup)
+	}
+	view = manager.QueueView()
 	if err := manager.QueueRemove("job-forgotten-auth", view.Rows[0].CommandToken); err != nil {
 		t.Fatalf("dismiss settled authenticated row: %v", err)
 	}
 	afterDismiss := store.Snapshot()
 	if len(afterDismiss.Jobs) != 0 || len(afterDismiss.AuthSourceBindings) != 2 || afterDismiss.AuthSourceBindings[0].Enabled {
 		t.Fatalf("dismiss changed browser tombstone authority: jobs=%#v bindings=%#v", afterDismiss.Jobs, afterDismiss.AuthSourceBindings)
+	}
+}
+
+func TestForgetPreviewCountsOnlyCollectionsWithAffectedNonTerminalChildren(t *testing.T) {
+	store, _, _ := newV2TestStore(t)
+	installAuthBindings(store, "chrome-binding")
+	intent := jobmodel.AuthIntent{RequiresAuthenticatedExecution: true, AuthSourceBindingRef: "chrome-binding"}
+	store.mu.Lock()
+	store.state.Jobs = []jobmodel.DurableJob{
+		{ID: "affected", CollectionID: "collection-active", Lifecycle: jobmodel.LifecyclePaused, AuthIntent: intent},
+		{ID: "completed-sibling", CollectionID: "collection-active", Lifecycle: jobmodel.LifecycleCompleted, AuthIntent: intent},
+		{ID: "completed-only", CollectionID: "collection-terminal", Lifecycle: jobmodel.LifecycleCompleted, AuthIntent: intent},
+		{ID: "canceled-only", CollectionID: "collection-canceled", Lifecycle: jobmodel.LifecycleCanceled, AuthIntent: intent},
+	}
+	store.mu.Unlock()
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := manager.PreviewForgetAuthSource("chrome-binding")
+	if err != nil || preview.Jobs != 1 || preview.Collections != 1 || preview.Active != 0 {
+		t.Fatalf("forget impact = %#v, %v", preview, err)
 	}
 }
 
@@ -590,7 +632,7 @@ func TestAuthenticatedPlaylistReviewPreservesEveryOutcomeAndStableOccurrenceOrde
 	calls := 0
 	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
 		calls++
-		if request.CookiesFromBrowser != "chrome" || !request.PlaylistReview || request.Playlist.Flat || request.Playlist.End != MaxPlaylistEntries {
+		if request.CookiesFromBrowser != "chrome" || !request.ScopeBrowserCookiesToURL || !request.PlaylistReview || request.Playlist.Flat || request.Playlist.End != MaxPlaylistEntries {
 			t.Fatalf("playlist review request = %#v", request)
 		}
 		return engine.Result{
@@ -645,7 +687,7 @@ func TestAuthenticatedPlaylistReviewNeverFallsBackAndInvalidatesOldAuthority(t *
 	calls := 0
 	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
 		calls++
-		if request.CookiesFromBrowser != "chrome" {
+		if request.CookiesFromBrowser != "chrome" || !request.ScopeBrowserCookiesToURL {
 			t.Fatalf("playlist request silently became public: %#v", request)
 		}
 		return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Err: errors.New("COOKIE_CANARY")}
@@ -706,6 +748,13 @@ func TestBrowserSourceCheckReturnsOnlyBoundedStatus(t *testing.T) {
 	if err != nil || check.Status != "permission-denied" || check.Ready || strings.Contains(check.Message, "KEYCHAIN_CANARY") {
 		t.Fatalf("permission check = %#v, %v", check, err)
 	}
+	manager.checkBrowserCookies = func(context.Context, string) (engine.BrowserCookieCheck, error) {
+		return engine.BrowserCookieCheck{}, &engine.BrowserCookieCheckError{Code: "source-empty"}
+	}
+	check, err = manager.CheckBrowserSource(context.Background(), "chrome-binding")
+	if err != nil || check.Status != "source-empty" || check.Ready || !strings.Contains(check.Message, "cannot determine whether YouTube is signed in") {
+		t.Fatalf("empty source check = %#v, %v", check, err)
+	}
 }
 
 func TestRestoredAuthenticatedJobUsesDurableBindingNotChangedDefault(t *testing.T) {
@@ -734,7 +783,7 @@ func TestRestoredAuthenticatedJobUsesDurableBindingNotChangedDefault(t *testing.
 		t.Fatal(err)
 	}
 	request := <-requests
-	if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" {
+	if request.CookiesFromBrowser != "chrome" || request.CookieFile != "" || !request.ScopeBrowserCookiesToURL {
 		t.Fatalf("restored request = %#v", request)
 	}
 	waitForV2Job(t, store, "job-restored-auth", jobmodel.LifecycleCompleted)

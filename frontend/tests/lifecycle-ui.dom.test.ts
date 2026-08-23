@@ -109,8 +109,8 @@ describe('backend-authored capabilities', () => {
           jobs: [],
           collections: [{
             id: 'batch-1', kind: 'batch', title: 'Batch download · 2 videos', thumbnailUrl: 'https://example.invalid/batch.jpg',
-            policy: 'video:720p', childJobIds: [], total: 2, completed: 0, failed: 0, canceled: 0,
-            active: 2, pending: 0, paused: 0, progress: 0.5, progressLabel: '0 of 2 complete',
+            policy: 'video:720p', childJobIds: [], total: 2, completed: 0, failed: 0, actionRequired: 1, canceled: 0,
+            active: 1, pending: 0, paused: 0, progress: 0.5, progressLabel: '0 of 2 complete',
             capabilities: {}, commandToken: 'batch-token',
           }],
         }),
@@ -119,6 +119,7 @@ describe('backend-authored capabilities', () => {
 
     expect(screen.getByText('Batch download · 2 videos')).toBeInTheDocument();
     expect(screen.getByText('video:720p')).toBeInTheDocument();
+    expect(screen.getByText('1 action required')).toBeInTheDocument();
     expect(container.querySelector('.parent-row > .thumbnail')).not.toBeInTheDocument();
   });
 

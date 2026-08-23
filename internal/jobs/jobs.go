@@ -306,6 +306,7 @@ type QueueCollection struct {
 	Total              int                         `json:"total"`
 	Completed          int                         `json:"completed"`
 	Failed             int                         `json:"failed"`
+	ActionRequired     int                         `json:"actionRequired"`
 	Canceled           int                         `json:"canceled"`
 	Active             int                         `json:"active"`
 	Pending            int                         `json:"pending"`
@@ -547,7 +548,7 @@ type browserSpecResolver func(authsource.Descriptor) (string, error)
 // analysis and execution. Callers provide explicit public/authenticated intent;
 // Settings is never consulted as a source substitute.
 func (m *Manager) prepareOperationRequest(intent jobmodel.AuthIntent, request engine.Request) (engine.Request, error) {
-	if request.CookieFile != "" || request.CookiesFromBrowser != "" {
+	if request.CookieFile != "" || request.CookiesFromBrowser != "" || request.ScopeBrowserCookiesToURL {
 		return engine.Request{}, authsource.NewError("invalid-operation-request")
 	}
 	if intent.RequiresAuthenticatedExecution != (intent.AuthSourceBindingRef != "") {
@@ -576,6 +577,7 @@ func (m *Manager) prepareOperationRequest(intent jobmodel.AuthIntent, request en
 		return engine.Request{}, authsource.NewError("source-unavailable")
 	}
 	request.CookiesFromBrowser = spec
+	request.ScopeBrowserCookiesToURL = true
 	return request, nil
 }
 
@@ -733,20 +735,20 @@ func (m *Manager) PreviewForgetAuthSource(bindingRef string) (BrowserSourceDepen
 	if !found {
 		return BrowserSourceDependencies{}, errors.New("jobs: browser source is unavailable")
 	}
+	affectedCollections := make(map[string]struct{})
 	for _, job := range document.Jobs {
 		if job.AuthIntent.AuthSourceBindingRef != bindingRef || job.Lifecycle == jobmodel.LifecycleCompleted || job.Lifecycle == jobmodel.LifecycleCanceled {
 			continue
 		}
 		preview.Jobs++
+		if job.CollectionID != "" {
+			affectedCollections[job.CollectionID] = struct{}{}
+		}
 		if job.Lifecycle == jobmodel.LifecycleActive || job.Lifecycle == jobmodel.LifecyclePausing || job.Lifecycle == jobmodel.LifecycleCanceling {
 			preview.Active++
 		}
 	}
-	for _, collection := range document.Collections {
-		if collection.AuthIntent.AuthSourceBindingRef == bindingRef {
-			preview.Collections++
-		}
-	}
+	preview.Collections = len(affectedCollections)
 	return preview, nil
 }
 
@@ -2125,8 +2127,10 @@ func (m *Manager) queueCollectionsLocked(rows []QueueRow) []QueueCollection {
 			case jobmodel.LifecycleCompleted:
 				collection.Completed++
 				progress += 1
-			case jobmodel.LifecycleFailed, jobmodel.LifecycleActionRequired:
+			case jobmodel.LifecycleFailed:
 				collection.Failed++
+			case jobmodel.LifecycleActionRequired:
+				collection.ActionRequired++
 			case jobmodel.LifecycleCanceled:
 				collection.Canceled++
 			case jobmodel.LifecycleActive, jobmodel.LifecyclePausing, jobmodel.LifecycleCanceling:
@@ -2559,14 +2563,27 @@ func (m *Manager) QueueRemove(id, token string) error {
 // retained engine evidence.
 func (m *Manager) QueueActionRequiredReview(id, token string) (ActionRequiredReview, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.refreshQueueAuthorityLocked()
 	state := m.all[id]
 	if state == nil || token == "" || token != state.commandToken || !m.queueCapabilitiesLocked(state, state.snap).Review {
+		m.mu.Unlock()
 		return ActionRequiredReview{}, errors.New("jobs: queue action is no longer available")
 	}
 	cleanupPresent, cleanupQuarantined := m.cleanupStatusLocked(id)
-	return actionRequiredReview(state, cleanupPresent, cleanupQuarantined), nil
+	review := actionRequiredReview(state, cleanupPresent, cleanupQuarantined)
+	intent := state.durable.AuthIntent
+	m.mu.Unlock()
+
+	// The dialog is advisory, but do not offer an authenticated retry when the
+	// exact durable binding can no longer be resolved. A settings replacement
+	// is never treated as equivalent authority.
+	if review.CanRetryFreshLink && intent.RequiresAuthenticatedExecution {
+		if _, err := m.prepareOperationRequest(intent, engine.Request{}); err != nil {
+			review.CanRetryFreshLink = false
+			review.Message = fmt.Sprintf("The bound %s source is unavailable. VidStow will not switch this job to another profile or public access.", review.BrowserSourceLabel)
+		}
+	}
+	return review, nil
 }
 
 // QueueActionRequiredStartOverURL releases only the persisted source URL after
@@ -2624,7 +2641,19 @@ func (m *Manager) QueueActionRequiredRetryFreshLink(id, token string) error {
 		return errors.New("jobs: fresh-link retry is no longer available")
 	}
 	state.commanding = true
+	authIntent := state.durable.AuthIntent
 	m.mu.Unlock()
+	if authIntent.RequiresAuthenticatedExecution {
+		if _, prepareErr := m.prepareOperationRequest(authIntent, engine.Request{}); prepareErr != nil {
+			m.mu.Lock()
+			if m.all[id] == state {
+				state.commanding = false
+				m.emitQueueLocked()
+			}
+			m.mu.Unlock()
+			return errors.New("jobs: the bound browser source is unavailable; start over from Home")
+		}
+	}
 	if !freshRetryDestinationAvailable(state.durable) {
 		m.mu.Lock()
 		state.commanding = false
@@ -5630,7 +5659,7 @@ func (m *Manager) CheckBrowserSource(ctx context.Context, bindingRef string) (Br
 		return browserSourceCheckResult("import-failed", label, false, false), nil
 	}
 	if !check.Usable {
-		return browserSourceCheckResult("sign-in-missing", label, false, false), nil
+		return browserSourceCheckResult("source-empty", label, false, false), nil
 	}
 	status := "ready"
 	if check.Partial {
@@ -5644,7 +5673,7 @@ func browserSourceCheckResult(status, label string, ready, partial bool) Browser
 		"ready":             "Browser source is ready to be supplied.",
 		"partial":           "Browser source is usable, but some browser data could not be read.",
 		"consent-required":  "Current browser access consent is required.",
-		"sign-in-missing":   "No usable browser session data was found. Sign in to YouTube in this profile and try again.",
+		"source-empty":      "No usable browser data was found in this profile. This local check cannot determine whether YouTube is signed in.",
 		"permission-denied": "VidStow could not access this browser source. Review macOS permissions and try again.",
 		"source-missing":    "This browser profile is no longer available.",
 		"source-unsafe":     "This browser source could not be read safely.",

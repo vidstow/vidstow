@@ -75,6 +75,7 @@
         </div>
         <span>{collection.progressLabel}</span>
         {#if collection.failed}<strong class="failed">{collection.failed} failed</strong>{/if}
+        {#if collection.actionRequired}<strong class="attention">{collection.actionRequired} action required</strong>{/if}
         {#if collection.canceled}<strong>{collection.canceled} canceled</strong>{/if}
       </div>
     </div>
@@ -125,6 +126,7 @@
   .track { width: min(220px, 35vw); height: 6px; overflow: hidden; border-radius: var(--r-full); background: var(--surface-active); }
   .track span { display: block; height: 100%; border-radius: inherit; background: var(--accent-500); }
   .failed { color: var(--status-danger); }
+  .attention { color: var(--status-warning); }
   .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
   .children { margin-left: 48px; border-left: 3px solid var(--accent-soft); }
   .children :global(.job-row) { border-radius: 0; }

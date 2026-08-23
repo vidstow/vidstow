@@ -201,7 +201,7 @@ func TestActionRequiredCollectionChildrenCanBeDismissedWithoutOrphaningParent(t 
 		t.Fatal(err)
 	}
 	view := manager.QueueView()
-	if len(view.Collections) != 1 || !view.Collections[0].Capabilities.Remove {
+	if len(view.Collections) != 1 || !view.Collections[0].Capabilities.Remove || view.Collections[0].Failed != 0 || view.Collections[0].ActionRequired != 2 {
 		t.Fatalf("action-required batch capabilities = %#v", view.Collections)
 	}
 	firstToken := ""
