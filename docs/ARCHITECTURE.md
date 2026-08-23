@@ -96,9 +96,11 @@ authenticated operation without its browser session. Missing or rejected
 session authority moves admitted work to Action required.
 
 Authenticated playlist review is one engine operation with one shared browser
-source. It returns one explicit outcome for every discovered occurrence. Only
-selected Ready occurrences are admitted, in source order, in one atomic parent
-and child transaction.
+source. It returns one explicit outcome for every discovered occurrence within
+the 500-entry product bound. VidStow probes one additional occurrence and
+rejects an oversized review instead of silently truncating it. Only selected
+Ready occurrences are admitted, in source order, in one atomic parent and child
+transaction.
 
 ## Admission and destination ownership
 

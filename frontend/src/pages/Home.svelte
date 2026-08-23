@@ -271,6 +271,11 @@
     }
   }
 
+  function analysisErrorTitle(message: string): string {
+    if (!effectiveBrowserAccess) return 'Unsupported URL';
+    return message.includes('timed out') ? 'Browser access timed out' : 'Browser-session analysis failed';
+  }
+
   async function analyze() {
     const submittedURL = url.trim();
     if (!submittedURL) return;
@@ -305,7 +310,7 @@
           actions: [{ label: 'Use browser session', primary: true, action: offerBrowserAccess }],
         });
       } else {
-        modal.set({ kind: 'error', title: 'Unsupported URL', message });
+        modal.set({ kind: 'error', title: analysisErrorTitle(message), message });
       }
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
@@ -328,7 +333,7 @@
           actions: [{ label: 'Use browser session', primary: true, action: offerBrowserAccess }],
         });
       } else {
-        modal.set({ kind: 'error', title: 'Could not analyze link', message });
+        modal.set({ kind: 'error', title: effectiveBrowserAccess ? analysisErrorTitle(message) : 'Could not analyze link', message });
       }
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;

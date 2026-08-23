@@ -54,6 +54,7 @@ const (
 	MaxDownloadConcurrency     = 10
 	MaxProcessingConcurrency   = 3
 	MaxPlaylistEntries         = 500
+	playlistReviewProbeLimit   = MaxPlaylistEntries + 1
 	maxCachedPlaylistPreviews  = 32
 	DefaultShutdownTimeout     = 3 * time.Second
 )
@@ -61,6 +62,10 @@ const (
 // ErrClosed is returned when an operation would start new manager activity
 // after Close has begun.
 var ErrClosed = errors.New("jobs: manager is closed")
+
+// ErrAuthenticatedPlaylistLimit prevents a complete authenticated review from
+// being represented as an apparently complete truncated preview.
+var ErrAuthenticatedPlaylistLimit = errors.New("jobs: authenticated playlist exceeds review limit")
 
 var errCancelRequested = errors.New("jobs: cancel requested")
 
@@ -3628,7 +3633,6 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		case <-finished:
 		case <-ctx.Done():
 			shutdownErr = ctx.Err()
-			break
 		}
 		if shutdownErr != nil {
 			break
@@ -5208,7 +5212,7 @@ func (m *Manager) AnalyzePlaylistAuthenticated(ctx context.Context, rawURL, bind
 	}()
 	request, err := m.prepareOperationRequest(intent, engine.Request{
 		URL: rawURL, PlaylistReview: true,
-		Playlist:   engine.PlaylistOptions{End: MaxPlaylistEntries},
+		Playlist:   engine.PlaylistOptions{End: playlistReviewProbeLimit},
 		Filesystem: engine.FilesystemOptions{FfmpegLocation: ffmpegLocation},
 	})
 	if err != nil {
@@ -5221,8 +5225,11 @@ func (m *Manager) AnalyzePlaylistAuthenticated(ctx context.Context, rawURL, bind
 	if result.PlaylistReview == nil || !result.PlaylistReview.Complete || result.PlaylistReview.Discovered != len(result.PlaylistReview.Occurrences) {
 		return PlaylistSummary{}, errors.New("analyze playlist: authenticated review incomplete")
 	}
-	if len(result.PlaylistReview.Occurrences) == 0 || len(result.PlaylistReview.Occurrences) > MaxPlaylistEntries {
+	if len(result.PlaylistReview.Occurrences) == 0 {
 		return PlaylistSummary{}, errors.New("analyze playlist: invalid authenticated review size")
+	}
+	if len(result.PlaylistReview.Occurrences) > MaxPlaylistEntries {
+		return PlaylistSummary{}, fmt.Errorf("%w: maximum %d entries", ErrAuthenticatedPlaylistLimit, MaxPlaylistEntries)
 	}
 	summary, occurrences, err := summarizeAuthenticatedPlaylist(result, rawURL)
 	if err != nil {

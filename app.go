@@ -32,6 +32,8 @@ import (
 
 var errRecoveryRequired = errors.New("vidstow: recovery required")
 
+const browserAccessOperationTimeout = 5 * time.Minute
+
 type shutdownLifecycle interface {
 	Shutdown(context.Context) error
 	Close(...context.Context) error
@@ -611,7 +613,7 @@ func (a *App) CheckBrowserSource(bindingRef string) (jobs.BrowserSourceCheck, er
 	if err := a.requireReady(); err != nil {
 		return jobs.BrowserSourceCheck{}, err
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 45*time.Second)
+	ctx, cancel := context.WithTimeout(a.ctx, browserAccessOperationTimeout)
 	defer cancel()
 	return a.jobs.CheckBrowserSource(ctx, bindingRef)
 }
@@ -643,10 +645,13 @@ func (a *App) AnalyzeURLWithBrowserSource(raw, bindingRef string) (jobs.InfoSumm
 	if res.Kind != urlcheck.KindSingleVideo {
 		return jobs.InfoSummary{}, errors.New("browser-session access currently supports individual videos and Shorts")
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 75*time.Second)
+	ctx, cancel := context.WithTimeout(a.ctx, browserAccessOperationTimeout)
 	defer cancel()
 	summary, err := analyzeWithBrowserSource(a.jobs, ctx, res.URL, bindingRef)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return jobs.InfoSummary{}, errors.New("browser-session analysis timed out while waiting for browser access or YouTube; approve any macOS permission prompt and try again")
+		}
 		if _, ok := authsource.ErrorCode(err); ok {
 			return jobs.InfoSummary{}, errors.New("the selected browser source is unavailable; check browser access and try again")
 		}
@@ -680,10 +685,16 @@ func (a *App) AnalyzePlaylistWithBrowserSource(raw, bindingRef string) (jobs.Pla
 	if res.Kind != urlcheck.KindPlaylist {
 		return jobs.PlaylistSummary{}, errors.New("choose the playlist from this link first")
 	}
-	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+	ctx, cancel := context.WithTimeout(a.ctx, browserAccessOperationTimeout)
 	defer cancel()
 	summary, err := a.jobs.AnalyzePlaylistAuthenticated(ctx, res.PlaylistURL, bindingRef)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return jobs.PlaylistSummary{}, errors.New("browser-session playlist review timed out while waiting for browser access or YouTube; approve any macOS permission prompt and try again")
+		}
+		if errors.Is(err, jobs.ErrAuthenticatedPlaylistLimit) {
+			return jobs.PlaylistSummary{}, fmt.Errorf("this playlist exposes more than %d entries; VidStow will not create a partial authenticated review", jobs.MaxPlaylistEntries)
+		}
 		if _, ok := authsource.ErrorCode(err); ok {
 			return jobs.PlaylistSummary{}, errors.New("the selected browser source is unavailable; check browser access and try again")
 		}

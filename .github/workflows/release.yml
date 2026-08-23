@@ -97,6 +97,10 @@ jobs:
           test "$(lipo -archs "$app/Contents/MacOS/$main_executable")" = "arm64"
           test "$(lipo -archs "$app/Contents/MacOS/ytdlp-js-helper")" = "arm64"
           "$app/Contents/MacOS/ytdlp-js-helper" --version
+          test -f "$app/Contents/Resources/legal/VidStow-LICENSE"
+          test -f "$app/Contents/Resources/legal/ytdlp-go-THIRD_PARTY_NOTICES.md"
+          test -f "$app/Contents/Resources/legal/ytdlp-go-licenses/quickjs-go-v0.7.7.LICENSE"
+          test -f "$app/Contents/Resources/legal/ytdlp-go-licenses/quickjs-ng.LICENSE"
           codesign --verify --deep --strict --verbose=2 "$app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$MACOS_BUNDLE_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$MACOS_MARKETING_VERSION"
@@ -119,6 +123,10 @@ jobs:
           archived_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$archived_app/Contents/Info.plist")
           test "$(lipo -archs "$archived_app/Contents/MacOS/$archived_executable")" = "arm64"
           test "$(lipo -archs "$archived_app/Contents/MacOS/ytdlp-js-helper")" = "arm64"
+          test -f "$archived_app/Contents/Resources/legal/VidStow-LICENSE"
+          test -f "$archived_app/Contents/Resources/legal/ytdlp-go-THIRD_PARTY_NOTICES.md"
+          test -f "$archived_app/Contents/Resources/legal/ytdlp-go-licenses/quickjs-go-v0.7.7.LICENSE"
+          test -f "$archived_app/Contents/Resources/legal/ytdlp-go-licenses/quickjs-ng.LICENSE"
           codesign --verify --deep --strict --verbose=2 "$archived_app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$archived_app/Contents/Info.plist")" = "$MACOS_BUNDLE_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$archived_app/Contents/Info.plist")" = "$MACOS_MARKETING_VERSION"

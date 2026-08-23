@@ -289,6 +289,24 @@ describe('Home analysis authority', () => {
     expect(screen.getByText('Browser session supplied · Chrome — Default')).toBeInTheDocument();
   });
 
+  test('labels a delayed Keychain approval as a browser-access timeout', async () => {
+    const user = userEvent.setup();
+    const { GetBrowserSourceOptions, ListBrowserSources } = installBindings();
+    GetBrowserSourceOptions.mockResolvedValue([{ id: 'chrome-default', browser: 'chrome', label: 'Chrome — Default' }]);
+    ListBrowserSources.mockResolvedValue([{ bindingRef: 'binding-chrome', browser: 'chrome', label: 'Chrome — Default', enabled: true, default: true }]);
+    (window as any).go.main.App.AnalyzeURLWithBrowserSource = vi.fn(async () => {
+      throw new Error('browser-session analysis timed out while waiting for browser access or YouTube; approve any macOS permission prompt and try again');
+    });
+    render(Home);
+
+    await user.selectOptions(await screen.findByLabelText('Access'), 'binding-chrome');
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    await waitFor(() => expect(get(modal)?.title).toBe('Browser access timed out'));
+    expect(get(modal)?.message).toContain('permission prompt');
+  });
+
   test('shows every authenticated playlist outcome and admits opaque Ready occurrences in source order', async () => {
     const user = userEvent.setup();
     const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';

@@ -388,6 +388,13 @@ func TestAuthenticatedEngineErrorCanaryNeverReachesAppDiagnosticsReportOutboxOrH
 	if scopeErr == nil || !strings.Contains(scopeErr.Error(), "no YouTube browser data") || strings.Contains(strings.ToLower(scopeErr.Error()), "cookie") {
 		t.Fatalf("scoped browser error projection = %v", scopeErr)
 	}
+	analyzeWithBrowserSource = func(_ *jobs.Manager, _ context.Context, _, _ string) (jobs.InfoSummary, error) {
+		return jobs.InfoSummary{}, context.DeadlineExceeded
+	}
+	_, timeoutErr := app.AnalyzeURLWithBrowserSource("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "browser-binding")
+	if timeoutErr == nil || !strings.Contains(timeoutErr.Error(), "permission prompt") || strings.Contains(strings.ToLower(timeoutErr.Error()), "cookie") {
+		t.Fatalf("browser prompt timeout projection = %v", timeoutErr)
+	}
 
 	settings := app.store.Settings()
 	settings.AutomaticDiagnostics = "enabled"

@@ -81,7 +81,10 @@ test('first launch asks for explicit diagnostic consent without a default', asyn
 
 test('analysis failures use the redesigned error modal', async () => {
   const home = await read('../src/pages/Home.svelte');
-  assert.match(home, /title: 'Unsupported URL'/);
+  assert.match(home, /analysisErrorTitle\(message\)/);
+  assert.match(home, /return 'Unsupported URL'/);
+  assert.match(home, /'Browser access timed out'/);
+  assert.match(home, /'Browser-session analysis failed'/);
   assert.match(home, /kind: 'error'/);
   assert.match(home, /message: errorMessage\(err,/);
   assert.doesNotMatch(home, /catch \(err\) \{\s*unsupported = \{\s*url: result\.url/);

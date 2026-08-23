@@ -24,10 +24,18 @@ does not exist yet.
 
 ### Changed
 
-- No entries yet.
+- Packaged macOS builds include the ytdlp-go and JavaScript-runtime license
+  notices used by the bundled helper.
 
 ### Fixed
 
+- Browser-session analysis allows a bounded five-minute owner-interaction
+  window for macOS permission prompts and reports delayed approval as a browser
+  access timeout rather than an unsupported URL.
+- Authenticated playlists that expose more than 500 occurrences are rejected
+  visibly instead of presenting a silently truncated review.
+- Updated reachable Unicode normalization code to the patched
+  `golang.org/x/text` release.
 - Action-required downloads can be dismissed from the queue without retrying
   or deleting their preserved temporary data. Rows with pending cleanup remain
   visible until that cleanup settles.

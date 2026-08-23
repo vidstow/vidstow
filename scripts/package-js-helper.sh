@@ -57,7 +57,25 @@ mv -f "$temporary_path" "$helper_path"
 "$script_dir/verify-js-helper.sh" "$app_path"
 
 if [ "$(uname -s)" = "Darwin" ] && [ -n "$app_bundle" ] && [ -d "$app_bundle" ]; then
-  printf '%s\n' "package-js-helper: ad-hoc re-signing bundle after helper placement"
+  engine_dir=$(cd "$repo_dir" && go list -m -f '{{.Dir}}' github.com/tejasa97/ytdlp-go)
+  legal_dir="$app_bundle/Contents/Resources/legal"
+  engine_licenses="$legal_dir/ytdlp-go-licenses"
+  mkdir -p "$engine_licenses"
+  chmod -R u+w "$legal_dir" 2>/dev/null || true
+  cp "$repo_dir/LICENSE" "$legal_dir/VidStow-LICENSE"
+  cp "$repo_dir/NOTICE" "$legal_dir/VidStow-NOTICE"
+  cp "$engine_dir/LICENSE" "$legal_dir/ytdlp-go-LICENSE"
+  cp "$engine_dir/THIRD_PARTY_NOTICES.md" "$legal_dir/ytdlp-go-THIRD_PARTY_NOTICES.md"
+  for license in "$engine_dir"/third_party/licenses/*; do
+    if [ -f "$license" ]; then
+      cp "$license" "$engine_licenses/"
+    fi
+  done
+  test -f "$engine_licenses/quickjs-go-v0.7.7.LICENSE"
+  test -f "$engine_licenses/quickjs-ng.LICENSE"
+  find "$legal_dir" -type f -exec chmod 444 {} \;
+
+  printf '%s\n' "package-js-helper: ad-hoc re-signing bundle after helper and legal notice placement"
   /usr/bin/codesign --force --deep --sign - "$app_bundle"
   /usr/bin/codesign --verify --deep --strict "$app_bundle"
 fi

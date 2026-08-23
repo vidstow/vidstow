@@ -77,6 +77,8 @@ verification details.
   and admit the collection as one expandable parent with individual jobs.
   Browser-session reviews preserve source order and show every occurrence as
   Ready, Auth required, Unavailable, or Invalid instead of silently skipping it.
+  If a 501st authenticated occurrence is exposed, VidStow rejects the review
+  visibly rather than presenting the first 500 as complete.
 - **Reliable batch downloads** — review 2–20 individual video or Short URLs at
   once, identify invalid and duplicate lines, then atomically admit every ready
   item under one durable expandable queue parent.

@@ -632,7 +632,7 @@ func TestAuthenticatedPlaylistReviewPreservesEveryOutcomeAndStableOccurrenceOrde
 	calls := 0
 	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
 		calls++
-		if request.CookiesFromBrowser != "chrome" || !request.ScopeBrowserCookiesToURL || !request.PlaylistReview || request.Playlist.Flat || request.Playlist.End != MaxPlaylistEntries {
+		if request.CookiesFromBrowser != "chrome" || !request.ScopeBrowserCookiesToURL || !request.PlaylistReview || request.Playlist.Flat || request.Playlist.End != playlistReviewProbeLimit {
 			t.Fatalf("playlist review request = %#v", request)
 		}
 		return engine.Result{
@@ -671,6 +671,40 @@ func TestAuthenticatedPlaylistReviewPreservesEveryOutcomeAndStableOccurrenceOrde
 	}
 	if preview.ID != "PLfixture" || len(selected) != 2 || selected[0].Entry.Index != 1 || selected[1].Entry.Index != 5 || intent.AuthSourceBindingRef != "chrome-binding" {
 		t.Fatalf("stable authenticated selection = %#v, %#v, %#v", preview, selected, intent)
+	}
+}
+
+func TestAuthenticatedPlaylistReviewRejectsSilentLimitTruncation(t *testing.T) {
+	store, _, _ := newV2TestStore(t)
+	installAuthBindings(store, "chrome-binding")
+	manager := New(nil, nil)
+	installDarwinBrowserSpecResolver(manager)
+	t.Cleanup(func() { _ = manager.Close() })
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	occurrences := make([]engine.PlaylistReviewOccurrence, playlistReviewProbeLimit)
+	for index := range occurrences {
+		occurrences[index] = engine.PlaylistReviewOccurrence{
+			SourceIndex: index + 1, Outcome: engine.PlaylistReviewInvalid,
+			ReasonCode: engine.PlaylistReviewReasonInvalid, InfoJSON: []byte(`{"title":"Unavailable entry"}`),
+		}
+	}
+	manager.runAnalyze = func(_ context.Context, request engine.Request) (engine.Result, error) {
+		if request.Playlist.End != playlistReviewProbeLimit {
+			t.Fatalf("playlist review probe end = %d, want %d", request.Playlist.End, playlistReviewProbeLimit)
+		}
+		return engine.Result{
+			InfoJSON:       []byte(`{"id":"PLfixture","title":"Oversized playlist"}`),
+			PlaylistReview: &engine.PlaylistReview{Complete: true, Discovered: len(occurrences), Occurrences: occurrences},
+		}, nil
+	}
+	_, err := manager.AnalyzePlaylistAuthenticated(context.Background(), "https://www.youtube.com/playlist?list=PLfixture", "chrome-binding")
+	if !errors.Is(err, ErrAuthenticatedPlaylistLimit) {
+		t.Fatalf("oversized authenticated playlist error = %v", err)
+	}
+	if len(manager.playlistReviewCache) != 0 {
+		t.Fatalf("oversized playlist created admissible authority: %#v", manager.playlistReviewCache)
 	}
 }
 
