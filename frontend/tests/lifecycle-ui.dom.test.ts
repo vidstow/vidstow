@@ -102,6 +102,37 @@ describe('backend-authored capabilities', () => {
     expect(screen.getByRole('button', { name: 'Expand Fixture playlist' })).toHaveAttribute('aria-expanded', 'false');
   });
 
+  test('interleaves collections and standalone videos using backend priority order', () => {
+    const { container } = render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [
+            {
+              id: 'active-video', title: 'Active standalone video', lifecycle: 'active',
+              occupiesSlot: true, capabilities: {},
+            },
+            {
+              id: 'completed-child', collectionId: 'completed-collection', collectionIndex: 1,
+              title: 'Completed collection video', lifecycle: 'completed',
+              occupiesSlot: false, capabilities: {},
+            },
+          ],
+          collections: [{
+            id: 'completed-collection', kind: 'playlist', title: 'Completed collection', policy: 'video:1080p',
+            childJobIds: ['completed-child'], total: 1, completed: 1, failed: 0, canceled: 0,
+            active: 0, pending: 0, paused: 0, progress: 1, progressLabel: '1 of 1 complete',
+            capabilities: {},
+          }],
+        }),
+      },
+    });
+
+    const entries = Array.from(container.querySelectorAll('.job-list > :is(article, section)'));
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toHaveAttribute('aria-label', 'Active standalone video');
+    expect(entries[1]).toHaveTextContent('Completed collection');
+  });
+
   test('batch collection parents omit synthetic thumbnails', () => {
     const { container } = render(QueueOverview, {
       props: {

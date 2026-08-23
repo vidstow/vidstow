@@ -3,8 +3,9 @@
   import LifecycleJobRow, { type LifecycleJobActionEvent } from './LifecycleJobRow.svelte';
   import CollectionRow from './CollectionRow.svelte';
   import QueueSummary from './QueueSummary.svelte';
+  import { queueDisplayItems } from '../queue-view.js';
   import { isValidCommandToken } from './types.js';
-  import type { LifecycleJobEventDetail, LifecycleJobViewModel, QueueCollectionActionEvent, QueueOverviewViewModel } from './types.js';
+  import type { LifecycleJobEventDetail, QueueCollectionActionEvent, QueueOverviewViewModel } from './types.js';
 
   export interface QueueOverviewEvents {
     'pause-all': void;
@@ -36,9 +37,7 @@
   const dispatch = createEventDispatcher<QueueOverviewEvents>();
   const hasQueueAuthority = $derived(isValidCommandToken(model.commandToken));
   const collections = $derived(model.collections ?? []);
-  const collectionIds = $derived(new Set(collections.map((collection) => collection.id)));
-  const jobsById = $derived(new Map(model.jobs.map((job) => [job.id, job])));
-  const standaloneJobs = $derived(model.jobs.filter((job) => !job.collectionId || !collectionIds.has(job.collectionId)));
+  const displayItems = $derived(queueDisplayItems(model.jobs, collections));
 
   function forward(event: LifecycleJobActionEvent): void {
     dispatch(event.action, { jobId: event.jobId, commandToken: event.commandToken });
@@ -48,10 +47,6 @@
   function forwardCollection(event: QueueCollectionActionEvent): void {
     dispatch('collection-action', event);
     onCollectionAction?.(event);
-  }
-
-  function collectionChildren(childJobIds: string[]) {
-    return childJobIds.map((id) => jobsById.get(id)).filter((job): job is LifecycleJobViewModel => job !== undefined);
   }
 
   function pauseAll(): void {
@@ -106,20 +101,21 @@
 
     {#if model.jobs.length || collections.length}
       <div class="job-list">
-        {#each collections as collection (collection.id)}
-          <CollectionRow
-            {collection}
-            children={collectionChildren(collection.childJobIds)}
-            onAction={forward}
-            onCollectionAction={forwardCollection}
-          />
-        {/each}
-        {#each standaloneJobs as job, index (job.id)}
-          <LifecycleJobRow
-            {job}
-            index={index + 1}
-            onAction={forward}
-          />
+        {#each displayItems as item, index (item.key)}
+          {#if item.kind === 'collection'}
+            <CollectionRow
+              collection={item.collection}
+              children={item.children}
+              onAction={forward}
+              onCollectionAction={forwardCollection}
+            />
+          {:else}
+            <LifecycleJobRow
+              job={item.job}
+              index={index + 1}
+              onAction={forward}
+            />
+          {/if}
         {/each}
       </div>
     {:else}
