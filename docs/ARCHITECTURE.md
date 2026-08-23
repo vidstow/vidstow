@@ -29,6 +29,13 @@ VidStow imports the provider-neutral engine and the focused YouTube provider.
 Engine capabilities that are not exposed by the VidStow UI are not VidStow
 features.
 
+## Platform scope
+
+VidStow is built for macOS, Linux, and Windows. Generated release artifacts are
+a separate, changeable distribution concern and are currently available only
+for Apple Silicon macOS; that does not narrow application or feature scope. See
+[Platform support](PLATFORM_SUPPORT.md).
+
 ## Queue authority
 
 One manager owns the in-process FIFO queue. The configured download concurrency

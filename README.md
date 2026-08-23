@@ -15,7 +15,7 @@ A local desktop application built with Go, Wails, and Svelte.
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](frontend/package.json)
 [![Engine](https://img.shields.io/badge/youtube__dlp-pinned-20232A)](go.mod)
 
-[Download](#download) · [Features](#features) · [Browser access](#browser-session-access-on-macos) · [Screenshots](#screenshots) · [Project status](#project-status) · [Run locally](#run-locally) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
+[Download](#download) · [Features](#features) · [Browser access](#browser-session-access) · [Screenshots](#screenshots) · [Project status](#project-status) · [Platform policy](docs/PLATFORM_SUPPORT.md) · [Run locally](#run-locally) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
 
 <video src="docs/assets/demo-walkthrough.mp4" width="800" autoplay muted loop playsinline controls>
   VidStow playlist walkthrough: paste a link, review entries, and follow the local queue.
@@ -25,10 +25,11 @@ A local desktop application built with Go, Wails, and Svelte.
 
 > [!IMPORTANT]
 > VidStow is beta software for on-demand YouTube video, Short, and existing playlist URLs.
-> Public access is the default. On macOS, an explicitly selected local Chrome,
-> Firefox, or Safari session can be supplied for media the signed-in user is
-> authorized to access. Channels, search, library browsing, live streams, and
-> other sites are outside the supported application scope.
+> Public access is the default. An explicitly selected supported local browser
+> session can be supplied for media the signed-in user is authorized to access.
+> Browser support follows the pinned engine's Windows, macOS, and Linux matrix.
+> Channels, search, library browsing, live streams, and other sites are outside
+> the supported application scope.
 
 ## Download
 
@@ -54,9 +55,13 @@ The cask installs FFmpeg and FFprobe automatically. Upgrade later with
 VidStow can alternatively be built from the Apache-2.0 source using the
 [local build instructions](#run-locally).
 
-Windows, Linux, and macOS Intel packages are outside the supported release
-scope. See the [release guide](docs/RELEASE.md) for artifact packaging and
-verification details.
+The current published distribution is macOS Apple Silicon only. That is an
+artifact-availability boundary, not a product-development boundary: VidStow
+code and features target supported Windows, macOS, and Linux architectures even
+when an installer is not yet published for them. See the normative
+[platform development and distribution policy](docs/PLATFORM_SUPPORT.md) and
+the [release guide](docs/RELEASE.md) for the current artifact packaging and
+verification matrix.
 
 ## Features
 
@@ -65,12 +70,12 @@ verification details.
 - **Flexible link input** — paste, type, or drag and drop a YouTube video,
   Short, or existing playlist URL. Links containing both a video and a playlist
   can be reviewed as either.
-- **Explicit browser-session access** — on macOS, choose a discovered Chrome,
-  Firefox profile/container, or Safari cookie store for a request you start.
-  Public-only access remains the default; VidStow never silently substitutes a
-  different profile or retries an authenticated request anonymously. Imported
-  cookies are scoped to YouTube's registrable site and are not supplied to
-  unrelated redirect hosts.
+- **Explicit browser-session access** — choose a supported backend-discovered
+  browser profile or cookie store for a request you start. Public-only access
+  remains the default; VidStow never silently substitutes a different profile
+  or retries an authenticated request anonymously. Imported cookies are scoped
+  to YouTube's registrable site and are not supplied to unrelated redirect
+  hosts.
 - **Focused output choices** — choose best available video, capped resolutions,
   original audio, or MP3 when the analyzed media supports those choices.
 - **Playlist review** — select up to 500 Ready entries, apply a bounded range,
@@ -113,13 +118,22 @@ Cancel requests engine-session discard. If cleanup cannot be proved complete,
 the application retains a cleanup obligation or reports that user action is
 required instead of claiming success.
 
-## Browser-session access on macOS
+## Browser-session access
 
 Browser-session access lets VidStow supply an explicitly selected local browser
 session to YouTube for a video, Short, or existing playlist that the signed-in
 user is authorized to access. It does not bypass DRM, grant access, or prove
 that YouTube accepted the session. A successful public download may simply mean
 the media never required authentication.
+
+| Platform | Browser sources |
+| --- | --- |
+| macOS | Chrome, Firefox, Safari |
+| Windows | Chrome, Chromium, Edge, Brave, Vivaldi, Opera, Firefox |
+| Linux | Chrome, Chromium, Brave, Firefox |
+
+This is a feature-compatibility matrix, independent of the smaller current
+binary-distribution matrix.
 
 ### Set up and use a source
 
@@ -132,11 +146,12 @@ the media never required authentication.
    the queue.
 
 A source check proves only that VidStow can read the selected local store. It
-does not contact YouTube to attest login state or media entitlement. Chrome may
-cause macOS Keychain to request access to the **Chrome Safe Storage** key.
-Denying or cancelling safely stops the check. Choosing a one-time Keychain
-approval can cause the prompt to return on later operations; VidStow does not
-weaken that operating-system protection or cache the decryption key.
+does not contact YouTube to attest login state or media entitlement. Platform
+credential controls may appear: for example, Chrome can cause macOS Keychain to
+request access to the **Chrome Safe Storage** key, while Windows and Linux use
+their supported native decryption boundaries. Denying or cancelling safely
+stops the check. VidStow does not weaken operating-system protection or cache a
+credential-store key.
 
 ### Durable behavior and recovery
 
@@ -263,8 +278,8 @@ application and engine versions and by artifact-specific validation.
 
 | Area | Supported boundary |
 | --- | --- |
-| Product | Beta; focused YouTube video, Short, existing playlist, and public-only 2–20 URL batch workflow; optional macOS browser-session access |
-| Package | [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5) installs on Apple Silicon through the [`vidstow/tap`](https://github.com/vidstow/homebrew-tap) Homebrew cask |
+| Product | Beta; cross-platform focused YouTube video, Short, existing playlist, and public-only 2–20 URL batch workflow; optional browser-session access follows the pinned engine's OS/browser matrix |
+| Distribution | [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5) currently installs on macOS Apple Silicon through the [`vidstow/tap`](https://github.com/vidstow/homebrew-tap) Homebrew cask; this does not narrow source or feature compatibility |
 | Source | Apache-2.0 source and self-build instructions |
 | Queue | State v2 persistence, revision-checked lifecycle transitions, FIFO admission, and startup reconciliation |
 | Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins the reviewed hardening commit exposed as `v0.3.1-0.20260823140312-a952b51dca44` |
@@ -373,8 +388,9 @@ access is read-only and operation-scoped; browser-store access is closed and
 temporary material is released according to the pinned engine contract. A
 queued authenticated job retains only its exact opaque browser/profile binding.
 If that source later disappears, the job becomes **Action required** rather than
-using another configured profile or falling back to public access. macOS or the
-browser may show permission or Keychain prompts during source access.
+using another configured profile or falling back to public access. The operating
+system or browser may show permission or credential-store prompts during source
+access.
 
 VidStow does not require a hosted account and does not provide cloud sync.
 Normal operation contacts YouTube and its media or thumbnail hosts. If
@@ -415,7 +431,7 @@ intentionally not tracked.
 VidStow does not support:
 
 - channels, search, library browsing, live streams, or browser-session access
-  outside the explicit macOS video, Short, and existing-playlist workflow;
+  outside the explicit video, Short, and existing-playlist workflow;
 - sites other than YouTube;
 - DRM decryption or access-control circumvention;
 - universal resumability or byte reuse when media equivalence is unproved;
