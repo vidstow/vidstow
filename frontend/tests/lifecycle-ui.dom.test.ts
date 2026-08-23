@@ -190,6 +190,19 @@ describe('backend-authored capabilities', () => {
     expect(screen.getByLabelText('Downloading, occupies an active slot')).toBeInTheDocument();
   });
 
+  test('browser-session rows keep the safe bound source visible', () => {
+    render(LifecycleJobRow, {
+      props: {
+        job: {
+          id: 'auth-1', title: 'Signed-in source', lifecycle: 'paused', occupiesSlot: false,
+          accessMode: 'browser-session', browserSourceLabel: 'Chrome — Default', capabilities: {},
+        },
+      },
+    });
+    expect(screen.getByText('Browser session · Chrome — Default')).toBeInTheDocument();
+    expect(screen.queryByText(/profile|cookie|binding/i)).not.toBeInTheDocument();
+  });
+
   test('row actions require an opaque token and echo it without deriving authority', async () => {
     const onResume = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
     const user = userEvent.setup();
@@ -300,6 +313,23 @@ describe('action-required recovery', () => {
     preservationNotice: 'Removing the row leaves saved data on disk.', canStartOver: true,
     canRetryRecovery: true, canRetryFreshLink: true, canDiscard: true, canRemove: true, canRetryCleanup: false,
   };
+
+  test('uses backend-authored browser-source recovery labels without implying confirmation', () => {
+    render(ActionRequiredReviewDialog, {
+      props: {
+        open: true,
+        review: {
+          ...review,
+          accessMode: 'browser-session', browserSourceLabel: 'Chrome — Default',
+          retryFreshLabel: 'Refresh Chrome — Default and retry', startOverLabel: 'Start over publicly from Home',
+        },
+      },
+    });
+    expect(screen.getByText('Browser session · Chrome — Default')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Refresh Chrome — Default and retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start over publicly from Home' })).toBeInTheDocument();
+    expect(screen.queryByText(/signed-in session confirmed/i)).not.toBeInTheDocument();
+  });
 
   test('offers a fresh Home analysis while clearly preserving the original row', async () => {
     const onStartOver = vi.fn();

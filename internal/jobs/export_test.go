@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 
+	"github.com/tejasa97/vidstow/internal/authsource"
 	"github.com/tejasa97/ytdlp-go/engine"
 )
 
@@ -19,6 +20,12 @@ func InstallDownloadHooksForTest(
 	if run != nil {
 		m.runDownload = run
 	}
+}
+
+// InstallBrowserSpecResolverForTest makes authenticated behavioral tests
+// independent of the host while the production default remains runtime-gated.
+func InstallBrowserSpecResolverForTest(m *Manager, resolver func(authsource.Descriptor) (string, error)) {
+	m.resolveBrowserSpec = resolver
 }
 
 const RetryCodeMediaLinkExpiredForTest = retryCodeMediaLinkExpired

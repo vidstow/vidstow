@@ -9,6 +9,10 @@ import type {
   BatchAnalysisView,
   BatchStartResult,
   BuildInfo,
+  BrowserSourceCheck,
+  BrowserSourceDependencies,
+  BrowserSourceOption,
+  BrowserSourceStatus,
   FFmpegStatus,
   HistoryEntry,
   InfoSummary,
@@ -58,6 +62,8 @@ export interface StartPlaylistRequest {
   quality: JobSnapshot['quality'];
   audioBitrate?: number;
   selectedItems: number[];
+  reviewAuthority?: string;
+  selectedOccurrences?: string[];
 }
 
 export interface StartBatchRequest {
@@ -73,6 +79,7 @@ export interface StartRequest {
   channel: string;
   quality?: JobSnapshot['quality'];
   planId?: string;
+  analysisAuthority?: string;
   outputDir: string;
   duration: string;
   thumbnail: string;
@@ -105,9 +112,19 @@ export const api = {
   validation: {
     url: (raw: string) => call<UrlCheckResult>('ValidateURL', raw),
   },
+  browserAccess: {
+    options: () => call<BrowserSourceOption[]>('GetBrowserSourceOptions'),
+    sources: () => call<BrowserSourceStatus[]>('ListBrowserSources'),
+    configure: (optionId: string, consentVersion: number) => call<BrowserSourceStatus>('ConfigureBrowserSource', optionId, consentVersion),
+    check: (bindingRef: string) => call<BrowserSourceCheck>('CheckBrowserSource', bindingRef),
+    previewForget: (bindingRef: string) => call<BrowserSourceDependencies>('PreviewForgetBrowserSource', bindingRef),
+    forget: (bindingRef: string) => call<number>('ForgetBrowserSource', bindingRef),
+  },
   analyse: {
     url: (raw: string) => call<InfoSummary>('AnalyzeURL', raw),
+    urlWithBrowserSource: (raw: string, bindingRef: string) => call<InfoSummary>('AnalyzeURLWithBrowserSource', raw, bindingRef),
     playlist: (raw: string) => call<PlaylistSummary>('AnalyzePlaylist', raw),
+    playlistWithBrowserSource: (raw: string, bindingRef: string) => call<PlaylistSummary>('AnalyzePlaylistWithBrowserSource', raw, bindingRef),
     batch: (raw: string) => call<BatchAnalysisView>('AnalyzeBatchURLs', raw),
   },
   jobs: {

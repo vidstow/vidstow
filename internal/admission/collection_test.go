@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tejasa97/vidstow/internal/authsource"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/jobs"
 	"github.com/tejasa97/vidstow/internal/outputplan"
@@ -132,6 +133,59 @@ func TestCoordinatorCollectionManagerFailureLeavesWholeDurableCollection(t *test
 		if job.Lifecycle != jobmodel.LifecyclePending || job.CollectionID != snapshot.Collections[0].ID {
 			t.Fatalf("pending child = %#v", job)
 		}
+	}
+}
+
+func TestCoordinatorAdmitsAuthenticatedCollectionWithOneSharedBinding(t *testing.T) {
+	coordinator, root, state, queue, request := collectionFixture(t)
+	const bindingRef = "browser-binding"
+	if err := state.Transaction(nil, func(document *jobmodel.State) error {
+		document.AuthSourceBindings = []authsource.Binding{{ID: bindingRef, Enabled: true, Descriptor: authsource.Descriptor{SchemaVersion: 1, Platform: "darwin", Browser: authsource.BrowserChrome}}}
+		document.Settings.BrowserAccessEnabled = true
+		document.Settings.BrowserAccessConsentVersion = authsource.CurrentConsentVersion
+		document.Settings.DefaultAuthSourceBindingRef = bindingRef
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	intent := jobmodel.AuthIntent{RequiresAuthenticatedExecution: true, AuthSourceBindingRef: bindingRef}
+	request.Collection.AuthIntent = intent
+	request.Collection.Discovered = 5
+	request.Collection.Ready = 2
+	request.Collection.AuthRequired = 1
+	request.Collection.Unavailable = 1
+	request.Collection.Invalid = 1
+	request.Collection.Approved = 2
+	for index := range request.Children {
+		request.Children[index].Request.AuthIntent = intent
+		request.Children[index].Request.SourceIndex = index*4 + 1
+	}
+	request.Children[0].Request.SourceOccurrenceID = "11111111-1111-4111-8111-111111111111"
+	request.Children[1].Request.SourceOccurrenceID = "22222222-2222-4222-8222-222222222222"
+	result, err := coordinator.AdmitCollection(context.Background(), root, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Submitted != 2 || len(queue.ids) != 2 {
+		t.Fatalf("authenticated result = %#v, queue=%#v", result, queue.ids)
+	}
+	snapshot := state.Snapshot()
+	if len(snapshot.Collections) != 1 || snapshot.Collections[0].AuthIntent != intent || snapshot.Collections[0].Discovered != 5 || snapshot.Collections[0].Approved != 2 {
+		t.Fatalf("durable authenticated collection = %#v", snapshot.Collections)
+	}
+	if len(snapshot.Jobs) != 2 || snapshot.Jobs[0].AuthIntent != intent || snapshot.Jobs[1].AuthIntent != intent || snapshot.Jobs[0].SourceIndex != 1 || snapshot.Jobs[1].SourceIndex != 5 {
+		t.Fatalf("durable authenticated children = %#v", snapshot.Jobs)
+	}
+}
+
+func TestCoordinatorRejectsMixedAuthenticatedCollectionAtomically(t *testing.T) {
+	coordinator, root, state, queue, request := collectionFixture(t)
+	request.Children[0].Request.AuthIntent = jobmodel.AuthIntent{RequiresAuthenticatedExecution: true, AuthSourceBindingRef: "browser-binding"}
+	if _, err := coordinator.AdmitCollection(context.Background(), root, request); err == nil {
+		t.Fatal("mixed authenticated collection admission unexpectedly succeeded")
+	}
+	if snapshot := state.Snapshot(); len(snapshot.Collections) != 0 || len(snapshot.Jobs) != 0 || len(queue.ids) != 0 {
+		t.Fatalf("mixed collection mutated state: %#v", snapshot)
 	}
 }
 

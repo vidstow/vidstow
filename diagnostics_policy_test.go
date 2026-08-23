@@ -12,6 +12,7 @@ import (
 
 	localdiagnostics "github.com/tejasa97/vidstow/internal/diagnostics"
 	"github.com/tejasa97/vidstow/internal/ffmpegdetect"
+	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/jobs"
 	"github.com/tejasa97/vidstow/internal/outputplan"
 	"github.com/tejasa97/ytdlp-go/engine"
@@ -213,19 +214,19 @@ func TestStartDownloadRecordsFFmpegMissingWithoutFilesystemSideEffects(t *testin
 		_ = app.store.Close()
 	}()
 	app.lastFFmpeg = ffmpegdetect.Status{Available: false, Message: "ffmpeg missing"}
-	resolveDownloadPlan = func(_ *jobs.Manager, videoID, planID string) (outputplan.Plan, error) {
-		if videoID != "dQw4w9WgXcQ" || planID != "mp3-192" {
-			return outputplan.Plan{}, errors.New("unexpected output plan request")
+	resolveAnalysisAuthority = func(_ *jobs.Manager, authority, rawURL, videoID, planID string) (outputplan.Plan, jobmodel.AuthIntent, error) {
+		if authority != "analysis-authority" || rawURL != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" || videoID != "dQw4w9WgXcQ" || planID != "mp3-192" {
+			return outputplan.Plan{}, jobmodel.AuthIntent{}, errors.New("unexpected analysis authority request")
 		}
 		return outputplan.Plan{
 			ID: "mp3-192", Kind: outputplan.KindAudio, Label: "MP3", Container: "MP3",
 			RequiresFFmpeg: true, AudioBitrateKbps: 192, Available: true, Selector: "140",
-		}, nil
+		}, jobmodel.AuthIntent{}, nil
 	}
 	outputDir := filepath.Join(secureAppTempDir(t), "must-not-exist")
 	if _, err := app.StartDownload(jobs.Request{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", VideoID: "dQw4w9WgXcQ",
-		Title: "Demo", PlanID: "mp3-192", OutputDir: outputDir,
+		Title: "Demo", PlanID: "mp3-192", AnalysisAuthority: "analysis-authority", OutputDir: outputDir,
 	}); err == nil {
 		t.Fatal("StartDownload accepted a plan that requires missing FFmpeg")
 	}

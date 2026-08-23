@@ -23,11 +23,13 @@ import (
 const playlistAnalysisConcurrency = 4
 
 type StartPlaylistRequest struct {
-	URL           string       `json:"url"`
-	PlaylistID    string       `json:"playlistId"`
-	Quality       jobs.Quality `json:"quality"`
-	AudioBitrate  int          `json:"audioBitrate,omitempty"`
-	SelectedItems []int        `json:"selectedItems"`
+	URL                 string       `json:"url"`
+	PlaylistID          string       `json:"playlistId"`
+	Quality             jobs.Quality `json:"quality"`
+	AudioBitrate        int          `json:"audioBitrate,omitempty"`
+	SelectedItems       []int        `json:"selectedItems"`
+	ReviewAuthority     string       `json:"reviewAuthority,omitempty"`
+	SelectedOccurrences []string     `json:"selectedOccurrences,omitempty"`
 }
 
 type playlistChildAnalyzer interface {
@@ -65,6 +67,15 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 	}
 	if req.Quality == jobs.QualityAudioOnly && req.AudioBitrate != 0 && !a.ffmpegStatus().Available {
 		return "", errors.New("MP3 conversion needs FFmpeg; choose original audio or configure FFmpeg")
+	}
+	if strings.TrimSpace(req.ReviewAuthority) != "" {
+		if len(req.SelectedItems) != 0 {
+			return "", errors.New("authenticated playlist selection must use reviewed occurrences")
+		}
+		return a.startAuthenticatedPlaylistDownload(req, validated, policy)
+	}
+	if len(req.SelectedOccurrences) != 0 {
+		return "", errors.New("public playlist selection must use reviewed positions")
 	}
 	preview, entries, err := a.jobs.ResolvePlaylistSelection(validated.PlaylistID, req.SelectedItems)
 	if err != nil {
@@ -122,6 +133,70 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 	})
 	if err != nil {
 		return "", err
+	}
+	return result.Collection.ID, nil
+}
+
+func (a *App) startAuthenticatedPlaylistDownload(req StartPlaylistRequest, validated urlcheck.Result, policy string) (string, error) {
+	preview, occurrences, authIntent, err := a.jobs.ResolveAuthenticatedPlaylistSelection(req.ReviewAuthority, req.SelectedOccurrences)
+	if err != nil {
+		return "", err
+	}
+	if preview.ID != validated.PlaylistID || preview.URL != validated.PlaylistURL {
+		return "", errors.New("playlist review identity is no longer valid")
+	}
+	children := make([]analyzedPlaylistChild, len(occurrences))
+	for index, occurrence := range occurrences {
+		plan, planErr := choosePlaylistPlan(occurrence.Plans, req.Quality, req.AudioBitrate)
+		if planErr != nil {
+			return "", fmt.Errorf("playlist entry %d: %w", occurrence.Entry.Index, planErr)
+		}
+		if plan.RequiresFFmpeg && !a.ffmpegStatus().Available {
+			return "", errors.New("this playlist output needs FFmpeg; install FFmpeg or choose original audio")
+		}
+		children[index] = analyzedPlaylistChild{entry: occurrence.Entry, summary: occurrence.Summary, plan: plan}
+	}
+
+	outputDir := filepath.Join(a.store.Settings().DownloadFolder, playlistSubfolder(preview.Title, preview.ID))
+	outputDir, err = canonicalOutputRequestPath(outputDir)
+	if err != nil {
+		return "", err
+	}
+	root, err := reservationfs.EnsureOpenRoot(outputDir)
+	if err != nil {
+		return "", fmt.Errorf("could not create playlist output folder: %w", err)
+	}
+	defer root.Close()
+
+	admissionChildren := make([]admission.CollectionChildRequest, len(children))
+	for index, child := range children {
+		admissionChildren[index] = admission.CollectionChildRequest{
+			Request: admission.Request{Queue: jobs.Request{
+				URL: child.entry.URL, VideoID: child.entry.VideoID, Title: child.summary.Title,
+				Channel: child.summary.Channel, Quality: req.Quality, PlanID: child.plan.ID,
+				OutputDir: outputDir, Duration: child.summary.Duration, Thumbnail: child.summary.Thumbnail,
+			}, Metadata: value.NewInfo(value.NewObject(
+				value.Field{Key: "title", Value: value.String(child.summary.Title)},
+				value.Field{Key: "id", Value: value.String(child.entry.VideoID)},
+				value.Field{Key: "channel", Value: value.String(child.summary.Channel)},
+			)), AuthIntent: authIntent, SourceIndex: child.entry.Index, SourceOccurrenceID: child.entry.OccurrenceID},
+			ResolvedPlan: child.plan,
+		}
+	}
+	result, err := a.coordinator.AdmitCollection(a.ctx, root, admission.CollectionRequest{
+		Collection: admission.Collection{
+			Kind: jobmodel.CollectionKindPlaylist, PlaylistID: preview.ID, SourceURL: preview.URL, Title: preview.Title,
+			Channel: preview.Channel, Thumbnail: preview.Thumbnail, Policy: policy, AuthIntent: authIntent,
+			Discovered: preview.EntryCount, Ready: preview.Ready, AuthRequired: preview.AuthRequired,
+			Unavailable: preview.Unavailable, Invalid: preview.Invalid, Approved: len(children),
+		},
+		Children: admissionChildren,
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(result.Collection.ChildJobIDs) != len(children) || result.Submitted != len(children) {
+		return "", errors.New("authenticated playlist admission count mismatch")
 	}
 	return result.Collection.ID, nil
 }

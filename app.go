@@ -17,6 +17,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/tejasa97/vidstow/internal/admission"
+	"github.com/tejasa97/vidstow/internal/authsource"
 	localdiagnostics "github.com/tejasa97/vidstow/internal/diagnostics"
 	"github.com/tejasa97/vidstow/internal/ffmpegdetect"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
@@ -44,17 +45,19 @@ var (
 	reconcileStartupState    = func(ctx context.Context, state *store.V2Store) (jobmodel.State, error) {
 		return recovery.Reconcile(ctx, state, recovery.Options{})
 	}
-	restoreStartupManager = func(manager *jobs.Manager, snapshot jobmodel.State) error { return manager.RestoreStateV2(snapshot) }
-	resolveDownloadPlan   = (*jobs.Manager).ResolvePlan
-	startStartupCleanup   = recovery.StartCleanupWorkerWithReport
-	logAppErrorf          = wailsruntime.LogErrorf
-	emitAppEvent          = wailsruntime.EventsEmit
-	openDiagnostics       = localdiagnostics.Open
-	openDiagnosticOutbox  = localdiagnostics.OpenOutbox
-	newDiagnosticUploader = localdiagnostics.NewUploader
-	newDiagnosticID       = localdiagnostics.NewUUID
-	clipboardSetText      = wailsruntime.ClipboardSetText
-	browserOpenURL        = wailsruntime.BrowserOpenURL
+	restoreStartupManager    = func(manager *jobs.Manager, snapshot jobmodel.State) error { return manager.RestoreStateV2(snapshot) }
+	resolveDownloadPlan      = (*jobs.Manager).ResolvePlan
+	resolveAnalysisAuthority = (*jobs.Manager).ResolveAnalysisAuthority
+	analyzeWithBrowserSource = (*jobs.Manager).AnalyzeAuthenticated
+	startStartupCleanup      = recovery.StartCleanupWorkerWithReport
+	logAppErrorf             = wailsruntime.LogErrorf
+	emitAppEvent             = wailsruntime.EventsEmit
+	openDiagnostics          = localdiagnostics.Open
+	openDiagnosticOutbox     = localdiagnostics.OpenOutbox
+	newDiagnosticUploader    = localdiagnostics.NewUploader
+	newDiagnosticID          = localdiagnostics.NewUUID
+	clipboardSetText         = wailsruntime.ClipboardSetText
+	browserOpenURL           = wailsruntime.BrowserOpenURL
 )
 
 // App is the Wails-bound root. Every exported method is reachable from
@@ -567,6 +570,9 @@ func (a *App) AnalyzeURL(raw string) (jobs.InfoSummary, error) {
 		if problem, ok := classifyAnalysisProblem(err, time.Since(started)); ok {
 			a.recordDiagnosticProblem(operationID, problem)
 		}
+		if engine.IsCategory(err, engine.ErrorAuthentication) {
+			return jobs.InfoSummary{}, errors.New("browser-access-required")
+		}
 		wailsruntime.LogErrorf(a.ctx, "desktop: analyze video: %v", err)
 		return jobs.InfoSummary{}, errors.New(friendlyAnalyzeError(err))
 	}
@@ -575,6 +581,116 @@ func (a *App) AnalyzeURL(raw string) (jobs.InfoSummary, error) {
 	}
 	summary.URL = res.URL
 	summary.VideoID = res.VideoID
+	return summary, nil
+}
+
+// GetBrowserSourceOptions returns only backend-authored macOS source choices.
+// Milestone 1 intentionally exposes default stores only; renderer paths and
+// cookie material are never accepted.
+func (a *App) GetBrowserSourceOptions() []authsource.Option {
+	if a.store == nil {
+		return []authsource.Option{}
+	}
+	return a.store.BrowserSourceOptions()
+}
+
+func (a *App) ListBrowserSources() []store.BrowserSourceStatus {
+	if a.store == nil {
+		return []store.BrowserSourceStatus{}
+	}
+	return a.store.BrowserSources()
+}
+
+func (a *App) ConfigureBrowserSource(optionID string, consentVersion int) (store.BrowserSourceStatus, error) {
+	if err := a.requireReady(); err != nil {
+		return store.BrowserSourceStatus{}, err
+	}
+	return a.store.ConfigureBrowserSource(optionID, consentVersion)
+}
+
+func (a *App) CheckBrowserSource(bindingRef string) (jobs.BrowserSourceCheck, error) {
+	if err := a.requireReady(); err != nil {
+		return jobs.BrowserSourceCheck{}, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 45*time.Second)
+	defer cancel()
+	return a.jobs.CheckBrowserSource(ctx, bindingRef)
+}
+
+func (a *App) PreviewForgetBrowserSource(bindingRef string) (jobs.BrowserSourceDependencies, error) {
+	if err := a.requireReady(); err != nil {
+		return jobs.BrowserSourceDependencies{}, err
+	}
+	return a.jobs.PreviewForgetAuthSource(bindingRef)
+}
+
+func (a *App) ForgetBrowserSource(bindingRef string) (int, error) {
+	if err := a.requireReady(); err != nil {
+		return 0, err
+	}
+	return a.jobs.ForgetAuthSource(bindingRef)
+}
+
+// AnalyzeURLWithBrowserSource is the explicit individual video/Short vertical
+// slice. It makes one cookie-configured request and never retries publicly.
+func (a *App) AnalyzeURLWithBrowserSource(raw, bindingRef string) (jobs.InfoSummary, error) {
+	if err := a.requireReady(); err != nil {
+		return jobs.InfoSummary{}, err
+	}
+	res, err := urlcheck.Validate(raw)
+	if err != nil {
+		return jobs.InfoSummary{}, err
+	}
+	if res.Kind != urlcheck.KindSingleVideo {
+		return jobs.InfoSummary{}, errors.New("browser-session access currently supports individual videos and Shorts")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 75*time.Second)
+	defer cancel()
+	summary, err := analyzeWithBrowserSource(a.jobs, ctx, res.URL, bindingRef)
+	if err != nil {
+		if _, ok := authsource.ErrorCode(err); ok {
+			return jobs.InfoSummary{}, errors.New("the selected browser source is unavailable; check browser access and try again")
+		}
+		if engine.IsCategory(err, engine.ErrorAuthentication) {
+			return jobs.InfoSummary{}, errors.New("YouTube did not return this media with the selected browser session; check sign-in and media access, then try again")
+		}
+		return jobs.InfoSummary{}, errors.New("the browser-session analysis could not be completed")
+	}
+	if summary.Title == "" {
+		summary.Title = "Untitled video"
+	}
+	summary.URL = res.URL
+	summary.VideoID = res.VideoID
+	return summary, nil
+}
+
+// AnalyzePlaylistWithBrowserSource performs one complete authenticated review
+// for an existing playlist URL. Enumeration and child resolution share one
+// engine operation and one exact browser binding.
+func (a *App) AnalyzePlaylistWithBrowserSource(raw, bindingRef string) (jobs.PlaylistSummary, error) {
+	if err := a.requireReady(); err != nil {
+		return jobs.PlaylistSummary{}, err
+	}
+	res, err := urlcheck.Validate(raw)
+	if err != nil {
+		return jobs.PlaylistSummary{}, err
+	}
+	if res.Kind != urlcheck.KindPlaylist {
+		return jobs.PlaylistSummary{}, errors.New("choose the playlist from this link first")
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+	defer cancel()
+	summary, err := a.jobs.AnalyzePlaylistAuthenticated(ctx, res.PlaylistURL, bindingRef)
+	if err != nil {
+		if _, ok := authsource.ErrorCode(err); ok {
+			return jobs.PlaylistSummary{}, errors.New("the selected browser source is unavailable; check browser access and try again")
+		}
+		if engine.IsCategory(err, engine.ErrorAuthentication) {
+			return jobs.PlaylistSummary{}, errors.New("YouTube did not return this playlist with the selected browser session; check sign-in and playlist access, then try again")
+		}
+		return jobs.PlaylistSummary{}, errors.New("the browser-session playlist review could not be completed")
+	}
+	summary.URL = res.PlaylistURL
 	return summary, nil
 }
 
@@ -599,6 +715,9 @@ func (a *App) AnalyzePlaylist(raw string) (jobs.PlaylistSummary, error) {
 	if err != nil {
 		if problem, ok := classifyAnalysisProblem(err, time.Since(started)); ok {
 			a.recordDiagnosticProblem(operationID, problem)
+		}
+		if engine.IsCategory(err, engine.ErrorAuthentication) {
+			return jobs.PlaylistSummary{}, errors.New("browser-access-required")
 		}
 		wailsruntime.LogErrorf(a.ctx, "desktop: analyze playlist: %v", err)
 		return jobs.PlaylistSummary{}, errors.New(friendlyAnalyzeError(err))
@@ -650,9 +769,12 @@ func (a *App) StartDownload(req jobs.Request) (string, error) {
 	if req.PlanID == "" {
 		return "", errors.New("an analyzed output plan is required before starting a download")
 	}
-	plan, resolveErr := resolveDownloadPlan(a.jobs, req.VideoID, req.PlanID)
-	if resolveErr != nil {
-		return "", resolveErr
+	if strings.TrimSpace(req.AnalysisAuthority) == "" {
+		return "", errors.New("analyze the video again before starting the download")
+	}
+	plan, authIntent, err := resolveAnalysisAuthority(a.jobs, req.AnalysisAuthority, req.URL, req.VideoID, req.PlanID)
+	if err != nil {
+		return "", err
 	}
 	if plan.RequiresFFmpeg && !a.ffmpegStatus().Available {
 		a.recordDiagnosticProblem(operationID, localdiagnostics.Problem{Stage: "postprocessing", Category: "ffmpeg_missing", Outcome: "terminal", RetryBucket: "none"})
@@ -673,7 +795,7 @@ func (a *App) StartDownload(req jobs.Request) (string, error) {
 		value.Field{Key: "id", Value: value.String(req.VideoID)},
 		value.Field{Key: "channel", Value: value.String(req.Channel)},
 	))
-	result, err := a.coordinator.Admit(a.ctx, root, admission.Request{Queue: req, Metadata: metadata})
+	result, err := a.coordinator.Admit(a.ctx, root, admission.Request{Queue: req, Metadata: metadata, ResolvedPlan: &plan, AuthIntent: authIntent})
 	if err != nil {
 		// Admission cancellation and deadline expiry are caller/lifecycle
 		// outcomes, not terminal download failures. Other errors here occur

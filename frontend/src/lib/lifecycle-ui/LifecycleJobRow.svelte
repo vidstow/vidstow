@@ -98,6 +98,9 @@
       <div class="title-block">
         <h3>{job.title}</h3>
         {#if job.metadata}<p>{job.metadata}</p>{/if}
+        {#if job.accessMode === 'browser-session'}
+          <span class="browser-access">Browser session · {job.browserSourceLabel ?? 'Browser source'}</span>
+        {/if}
       </div>
 
       <LifecycleBadge lifecycle={job.lifecycle} phase={displayPhase} occupiesSlot={job.occupiesSlot} compact />
@@ -241,6 +244,7 @@
   .title-block { min-width: 0; }
   h3 { margin: 0; overflow: hidden; font-size: var(--fs-md); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
   .title-block p { margin: 3px 0 0; color: var(--text-muted); font-size: var(--fs-sm); }
+  .browser-access { display: inline-flex; margin-top: var(--sp-2); padding: 2px 8px; border: 1px solid var(--accent-400); border-radius: var(--r-full); color: var(--accent-600); background: var(--accent-soft); font-size: var(--fs-xs); font-weight: 650; }
 
   .actions {
     display: flex;

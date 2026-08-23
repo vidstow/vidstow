@@ -4,7 +4,7 @@
 
 # VidStow
 
-### Download public YouTube videos with a focused desktop queue.
+### Download public or authorized YouTube media with a focused desktop queue.
 
 A local desktop application built with Go, Wails, and Svelte.
 
@@ -24,9 +24,11 @@ A local desktop application built with Go, Wails, and Svelte.
 </div>
 
 > [!IMPORTANT]
-> VidStow is beta software for public, on-demand YouTube video, Short, and playlist URLs.
-> Channels, search, live streams, authenticated downloads, and other
-> sites are outside the supported application scope.
+> VidStow is beta software for on-demand YouTube video, Short, and existing playlist URLs.
+> Public access is the default. On macOS, an explicitly selected local Chrome,
+> Firefox, or Safari session can be supplied for media the signed-in user is
+> authorized to access. Channels, search, library browsing, live streams, and
+> other sites are outside the supported application scope.
 
 ## Download
 
@@ -60,13 +62,19 @@ verification details.
 
 - **Analyze before downloading** — inspect the title, thumbnail, duration,
   channel, and available output choices.
-- **Flexible link input** — paste, type, or drag and drop a public YouTube video,
-  Short, or playlist URL. Links containing both a video and a playlist can be
-  reviewed as either.
+- **Flexible link input** — paste, type, or drag and drop a YouTube video,
+  Short, or existing playlist URL. Links containing both a video and a playlist
+  can be reviewed as either.
+- **Explicit browser-session access** — on macOS, choose a discovered Chrome,
+  Firefox profile/container, or Safari cookie store for a request you start.
+  Public-only access remains the default; VidStow never silently substitutes a
+  different profile or retries an authenticated request anonymously.
 - **Focused output choices** — choose best available video, capped resolutions,
   original audio, or MP3 when the analyzed media supports those choices.
-- **Playlist review** — select up to 500 available entries, apply a bounded
-  range, and admit the collection as one expandable parent with individual jobs.
+- **Playlist review** — select up to 500 Ready entries, apply a bounded range,
+  and admit the collection as one expandable parent with individual jobs.
+  Browser-session reviews preserve source order and show every occurrence as
+  Ready, Auth required, Unavailable, or Invalid instead of silently skipping it.
 - **Reliable batch downloads** — review 2–20 individual video or Short URLs at
   once, identify invalid and duplicate lines, then atomically admit every ready
   item under one durable expandable queue parent.
@@ -145,11 +153,11 @@ application and engine versions and by artifact-specific validation.
 
 | Area | Supported boundary |
 | --- | --- |
-| Product | Beta; focused public YouTube video, Short, playlist, and 2–20 URL batch workflow |
+| Product | Beta; focused YouTube video, Short, existing playlist, and public-only 2–20 URL batch workflow; optional macOS browser-session access |
 | Package | [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5) installs on Apple Silicon through the [`vidstow/tap`](https://github.com/vidstow/homebrew-tap) Homebrew cask |
 | Source | Apache-2.0 source and self-build instructions |
 | Queue | State v2 persistence, revision-checked lifecycle transitions, FIFO admission, and startup reconciliation |
-| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins `github.com/tejasa97/ytdlp-go v0.3.0` |
+| Engine | [ytdlp-go](https://github.com/tejasa97/ytdlp-go); `go.mod` pins the reviewed commit exposed as `v0.3.1-0.20260823042903-d2fa5ce41a21` |
 | Resume | Session reuse is evidence-dependent; no universal transfer continuation or guaranteed byte reuse |
 | Updates | Manual downloads from GitHub Releases |
 
@@ -229,7 +237,8 @@ VidStow stores application state in the operating system's per-user
 configuration directory. State v2 can include:
 
 - settings, including the selected download folder and an optional FFmpeg path;
-- canonical public YouTube watch URLs and video IDs;
+- opaque, non-secret descriptors for explicitly configured browser profiles;
+- canonical YouTube watch URLs and video IDs;
 - display metadata such as title, channel, duration, and selected quality;
 - job, attempt, session, queue, lifecycle, reservation, and cleanup records;
 - completed-download history, including output paths and media metadata; and
@@ -248,10 +257,17 @@ sent.
 Engine session work is stored beneath an engine-owned hidden directory in the
 selected output root.
 
-State v2 must not persist media delivery URLs, request headers, cookies,
-credentials, signed query parameters, or media encryption keys. VidStow does
-not require a hosted account and does not provide cloud sync. Normal operation
-contacts YouTube and its media or thumbnail hosts. If automatic diagnostics are
+State v2 must not persist media delivery URLs, request headers, cookie values,
+credentials, signed query parameters, or media encryption keys. Browser-cookie
+access is read-only and operation-scoped; browser-store access is closed and
+temporary material is released according to the pinned engine contract. A
+queued authenticated job retains only its exact opaque browser/profile binding.
+If that source later disappears, the job becomes **Action required** rather than
+using another configured profile or falling back to public access. macOS or the
+browser may show permission or Keychain prompts during source access.
+
+VidStow does not require a hosted account and does not provide cloud sync.
+Normal operation contacts YouTube and its media or thumbnail hosts. If automatic diagnostics are
 explicitly enabled, VidStow also contacts `diagnostics.vidstow.workers.dev` to
 submit the bounded reports described above. VidStow may start the locally
 installed FFmpeg/FFprobe tools when the selected output requires them.
@@ -287,7 +303,7 @@ intentionally not tracked.
 
 VidStow does not support:
 
-- channels, search, live streams, or authenticated workflows;
+- channels, search, library browsing, live streams, or browser-session access outside the explicit macOS video, Short, and existing-playlist workflow;
 - sites other than YouTube;
 - DRM decryption or access-control circumvention;
 - universal resumability or byte reuse when media equivalence is unproved;

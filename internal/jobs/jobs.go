@@ -27,6 +27,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/tejasa97/vidstow/internal/authsource"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/outputplan"
 	"github.com/tejasa97/vidstow/internal/reservation"
@@ -64,6 +65,8 @@ var ErrClosed = errors.New("jobs: manager is closed")
 var errCancelRequested = errors.New("jobs: cancel requested")
 
 var errActivationSuperseded = errors.New("jobs: durable activation was superseded")
+
+const authenticatedSessionUnavailableCode = "authenticated-session-unavailable"
 
 // StateStore is the manager-facing State v2 seam. The precondition type is
 // deliberately owned by jobmodel so jobs can use the durable authority
@@ -160,15 +163,16 @@ const (
 
 // Request is the data needed to schedule one download.
 type Request struct {
-	URL       string  `json:"url"`
-	VideoID   string  `json:"videoId"`
-	Title     string  `json:"title"`
-	Channel   string  `json:"channel"`
-	Quality   Quality `json:"quality"`
-	PlanID    string  `json:"planId"`
-	OutputDir string  `json:"outputDir"`
-	Duration  string  `json:"duration"`
-	Thumbnail string  `json:"thumbnail"`
+	URL               string  `json:"url"`
+	VideoID           string  `json:"videoId"`
+	Title             string  `json:"title"`
+	Channel           string  `json:"channel"`
+	Quality           Quality `json:"quality"`
+	PlanID            string  `json:"planId"`
+	AnalysisAuthority string  `json:"analysisAuthority,omitempty"`
+	OutputDir         string  `json:"outputDir"`
+	Duration          string  `json:"duration"`
+	Thumbnail         string  `json:"thumbnail"`
 }
 
 // AdmittedOutput is the internal admission-to-manager contract. The basename
@@ -180,43 +184,44 @@ type AdmittedOutput struct {
 
 // JobSnapshot is the immutable view of a job exposed to the UI.
 type JobSnapshot struct {
-	ID              string                `json:"id"`
-	URL             string                `json:"url"`
-	VideoID         string                `json:"videoID"`
-	Title           string                `json:"title"`
-	Channel         string                `json:"channel"`
-	Quality         Quality               `json:"quality"`
-	QualityLabel    string                `json:"qualityLabel"`
-	PlanID          string                `json:"planId,omitempty"`
-	OutputKind      outputplan.Kind       `json:"outputKind,omitempty"`
-	Container       string                `json:"container,omitempty"`
-	VideoCodec      string                `json:"videoCodec,omitempty"`
-	AudioCodec      string                `json:"audioCodec,omitempty"`
-	ApproxBytes     int64                 `json:"approxBytes,omitempty"`
-	SizeApproximate bool                  `json:"sizeApproximate,omitempty"`
-	RequiresFFmpeg  bool                  `json:"requiresFfmpeg,omitempty"`
-	CanPause        bool                  `json:"canPause,omitempty"`
-	Processing      bool                  `json:"processing,omitempty"`
-	OutputDir       string                `json:"outputDir"`
-	DurationLabel   string                `json:"durationLabel"`
-	Thumbnail       string                `json:"thumbnail"`
-	Status          Status                `json:"status"`
-	Lifecycle       jobmodel.Lifecycle    `json:"lifecycle,omitempty"`
-	Phase           jobmodel.Phase        `json:"phase,omitempty"`
-	Desired         jobmodel.DesiredState `json:"desired,omitempty"`
-	OccupiesSlot    bool                  `json:"occupiesSlot"`
-	CreatedAt       string                `json:"createdAt"`
-	StartedAt       string                `json:"startedAt,omitempty"`
-	CompletedAt     string                `json:"completedAt,omitempty"`
-	Bytes           int64                 `json:"bytes"`
-	Total           int64                 `json:"total"`
-	Progress        float64               `json:"progress"`
-	SpeedBps        float64               `json:"speedBps"`
-	ETASeconds      float64               `json:"etaSeconds"`
-	Filename        string                `json:"filename"`
-	AbsolutePath    string                `json:"absolutePath"`
-	Message         string                `json:"message"`
-	ErrorReason     string                `json:"errorReason,omitempty"`
+	ID                             string                `json:"id"`
+	URL                            string                `json:"url"`
+	VideoID                        string                `json:"videoID"`
+	Title                          string                `json:"title"`
+	Channel                        string                `json:"channel"`
+	Quality                        Quality               `json:"quality"`
+	QualityLabel                   string                `json:"qualityLabel"`
+	PlanID                         string                `json:"planId,omitempty"`
+	OutputKind                     outputplan.Kind       `json:"outputKind,omitempty"`
+	Container                      string                `json:"container,omitempty"`
+	VideoCodec                     string                `json:"videoCodec,omitempty"`
+	AudioCodec                     string                `json:"audioCodec,omitempty"`
+	ApproxBytes                    int64                 `json:"approxBytes,omitempty"`
+	SizeApproximate                bool                  `json:"sizeApproximate,omitempty"`
+	RequiresFFmpeg                 bool                  `json:"requiresFfmpeg,omitempty"`
+	RequiresAuthenticatedExecution bool                  `json:"requiresAuthenticatedExecution,omitempty"`
+	CanPause                       bool                  `json:"canPause,omitempty"`
+	Processing                     bool                  `json:"processing,omitempty"`
+	OutputDir                      string                `json:"outputDir"`
+	DurationLabel                  string                `json:"durationLabel"`
+	Thumbnail                      string                `json:"thumbnail"`
+	Status                         Status                `json:"status"`
+	Lifecycle                      jobmodel.Lifecycle    `json:"lifecycle,omitempty"`
+	Phase                          jobmodel.Phase        `json:"phase,omitempty"`
+	Desired                        jobmodel.DesiredState `json:"desired,omitempty"`
+	OccupiesSlot                   bool                  `json:"occupiesSlot"`
+	CreatedAt                      string                `json:"createdAt"`
+	StartedAt                      string                `json:"startedAt,omitempty"`
+	CompletedAt                    string                `json:"completedAt,omitempty"`
+	Bytes                          int64                 `json:"bytes"`
+	Total                          int64                 `json:"total"`
+	Progress                       float64               `json:"progress"`
+	SpeedBps                       float64               `json:"speedBps"`
+	ETASeconds                     float64               `json:"etaSeconds"`
+	Filename                       string                `json:"filename"`
+	AbsolutePath                   string                `json:"absolutePath"`
+	Message                        string                `json:"message"`
+	ErrorReason                    string                `json:"errorReason,omitempty"`
 }
 
 // QueueJobCapabilities is deliberately backend-authored. The frontend must
@@ -251,25 +256,27 @@ type QueueFailure struct {
 // QueueRow is the safe frontend projection of a job. Lifecycle, phase,
 // desired state, and occupancy intentionally remain independent facts.
 type QueueRow struct {
-	ID              string                `json:"id"`
-	CollectionID    string                `json:"collectionId,omitempty"`
-	CollectionIndex int                   `json:"collectionIndex,omitempty"`
-	Title           string                `json:"title"`
-	Metadata        string                `json:"metadata,omitempty"`
-	ThumbnailURL    string                `json:"thumbnailUrl,omitempty"`
-	Lifecycle       jobmodel.Lifecycle    `json:"lifecycle"`
-	Phase           jobmodel.Phase        `json:"phase,omitempty"`
-	Desired         jobmodel.DesiredState `json:"desired"`
-	OccupiesSlot    bool                  `json:"occupiesSlot"`
-	QueuePosition   int                   `json:"queuePosition,omitempty"`
-	Progress        float64               `json:"progress,omitempty"`
-	ProgressLabel   string                `json:"progressLabel,omitempty"`
-	SpeedLabel      string                `json:"speedLabel,omitempty"`
-	ETALabel        string                `json:"etaLabel,omitempty"`
-	Message         string                `json:"message,omitempty"`
-	Failure         *QueueFailure         `json:"failure,omitempty"`
-	Capabilities    QueueJobCapabilities  `json:"capabilities"`
-	CommandToken    string                `json:"commandToken,omitempty"`
+	ID                 string                `json:"id"`
+	CollectionID       string                `json:"collectionId,omitempty"`
+	AccessMode         string                `json:"accessMode"`
+	BrowserSourceLabel string                `json:"browserSourceLabel,omitempty"`
+	CollectionIndex    int                   `json:"collectionIndex,omitempty"`
+	Title              string                `json:"title"`
+	Metadata           string                `json:"metadata,omitempty"`
+	ThumbnailURL       string                `json:"thumbnailUrl,omitempty"`
+	Lifecycle          jobmodel.Lifecycle    `json:"lifecycle"`
+	Phase              jobmodel.Phase        `json:"phase,omitempty"`
+	Desired            jobmodel.DesiredState `json:"desired"`
+	OccupiesSlot       bool                  `json:"occupiesSlot"`
+	QueuePosition      int                   `json:"queuePosition,omitempty"`
+	Progress           float64               `json:"progress,omitempty"`
+	ProgressLabel      string                `json:"progressLabel,omitempty"`
+	SpeedLabel         string                `json:"speedLabel,omitempty"`
+	ETALabel           string                `json:"etaLabel,omitempty"`
+	Message            string                `json:"message,omitempty"`
+	Failure            *QueueFailure         `json:"failure,omitempty"`
+	Capabilities       QueueJobCapabilities  `json:"capabilities"`
+	CommandToken       string                `json:"commandToken,omitempty"`
 }
 
 type QueueCollectionCapabilities struct {
@@ -281,24 +288,32 @@ type QueueCollectionCapabilities struct {
 }
 
 type QueueCollection struct {
-	ID            string                      `json:"id"`
-	Kind          jobmodel.CollectionKind     `json:"kind"`
-	Title         string                      `json:"title"`
-	Metadata      string                      `json:"metadata,omitempty"`
-	ThumbnailURL  string                      `json:"thumbnailUrl,omitempty"`
-	Policy        string                      `json:"policy"`
-	ChildJobIDs   []string                    `json:"childJobIds"`
-	Total         int                         `json:"total"`
-	Completed     int                         `json:"completed"`
-	Failed        int                         `json:"failed"`
-	Canceled      int                         `json:"canceled"`
-	Active        int                         `json:"active"`
-	Pending       int                         `json:"pending"`
-	Paused        int                         `json:"paused"`
-	Progress      float64                     `json:"progress"`
-	ProgressLabel string                      `json:"progressLabel"`
-	Capabilities  QueueCollectionCapabilities `json:"capabilities"`
-	CommandToken  string                      `json:"commandToken,omitempty"`
+	ID                 string                      `json:"id"`
+	Kind               jobmodel.CollectionKind     `json:"kind"`
+	Title              string                      `json:"title"`
+	Metadata           string                      `json:"metadata,omitempty"`
+	ThumbnailURL       string                      `json:"thumbnailUrl,omitempty"`
+	Policy             string                      `json:"policy"`
+	AccessMode         string                      `json:"accessMode"`
+	BrowserSourceLabel string                      `json:"browserSourceLabel,omitempty"`
+	Discovered         int                         `json:"discovered,omitempty"`
+	Ready              int                         `json:"ready,omitempty"`
+	AuthRequired       int                         `json:"authRequired,omitempty"`
+	Unavailable        int                         `json:"unavailable,omitempty"`
+	Invalid            int                         `json:"invalid,omitempty"`
+	Approved           int                         `json:"approved,omitempty"`
+	ChildJobIDs        []string                    `json:"childJobIds"`
+	Total              int                         `json:"total"`
+	Completed          int                         `json:"completed"`
+	Failed             int                         `json:"failed"`
+	Canceled           int                         `json:"canceled"`
+	Active             int                         `json:"active"`
+	Pending            int                         `json:"pending"`
+	Paused             int                         `json:"paused"`
+	Progress           float64                     `json:"progress"`
+	ProgressLabel      string                      `json:"progressLabel"`
+	Capabilities       QueueCollectionCapabilities `json:"capabilities"`
+	CommandToken       string                      `json:"commandToken,omitempty"`
 }
 
 type QueueSummary struct {
@@ -333,6 +348,10 @@ type ActionRequiredReview struct {
 	CanDiscard         bool   `json:"canDiscard"`
 	CanRemove          bool   `json:"canRemove"`
 	CanRetryCleanup    bool   `json:"canRetryCleanup"`
+	AccessMode         string `json:"accessMode"`
+	BrowserSourceLabel string `json:"browserSourceLabel,omitempty"`
+	RetryFreshLabel    string `json:"retryFreshLabel,omitempty"`
+	StartOverLabel     string `json:"startOverLabel,omitempty"`
 }
 
 // QueueView is the only live queue contract consumed by the V4 frontend.
@@ -443,8 +462,10 @@ type Manager struct {
 	detachedWG           sync.WaitGroup
 	runDownload          downloadRunner
 	runAnalyze           analyzeRunner
+	checkBrowserCookies  browserCheckRunner
 	inspectResume        resumeInspector
 	prepareResumeDiscard resumeDiscardPreparer
+	resolveBrowserSpec   browserSpecResolver
 	ffmpegLocation       string
 	mu                   sync.Mutex
 	all                  map[string]*jobState
@@ -457,7 +478,10 @@ type Manager struct {
 	queueAuthoritySig    string
 	stateStore           StateStore
 	planCache            map[string]cachedPlans
+	analysisCache        map[string]cachedAnalysis
+	analysisGeneration   map[string]uint64
 	playlistCache        map[string]cachedPlaylist
+	playlistReviewCache  map[string]cachedPlaylistReview
 	collectionAuthority  map[string]collectionAuthority
 	collectionCommanding map[string]bool
 	persistence          Persistence
@@ -474,6 +498,15 @@ type cachedPlans struct {
 	expiresAt time.Time
 }
 
+type cachedAnalysis struct {
+	key       string
+	url       string
+	videoID   string
+	plans     []outputplan.Plan
+	auth      jobmodel.AuthIntent
+	expiresAt time.Time
+}
+
 type collectionAuthority struct {
 	signature string
 	token     string
@@ -484,13 +517,86 @@ type cachedPlaylist struct {
 	expiresAt time.Time
 }
 
+type cachedPlaylistOccurrence struct {
+	entry   PlaylistEntrySummary
+	summary InfoSummary
+	plans   []outputplan.Plan
+}
+
+type cachedPlaylistReview struct {
+	key         string
+	summary     PlaylistSummary
+	auth        jobmodel.AuthIntent
+	occurrences map[string]cachedPlaylistOccurrence
+	expiresAt   time.Time
+}
+
 type downloadRunner func(context.Context, engine.Request, engine.EventHandler) (engine.Result, error)
 
 type analyzeRunner func(context.Context, engine.Request) (engine.Result, error)
 
+type browserCheckRunner func(context.Context, string) (engine.BrowserCookieCheck, error)
+
 type resumeInspector func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error)
 
 type resumeDiscardPreparer func(context.Context, engine.OutputRootRef, string) (*engine.ResumeDiscardHandle, error)
+
+type browserSpecResolver func(authsource.Descriptor) (string, error)
+
+// prepareOperationRequest is the single backend-owned credential boundary for
+// analysis and execution. Callers provide explicit public/authenticated intent;
+// Settings is never consulted as a source substitute.
+func (m *Manager) prepareOperationRequest(intent jobmodel.AuthIntent, request engine.Request) (engine.Request, error) {
+	if request.CookieFile != "" || request.CookiesFromBrowser != "" {
+		return engine.Request{}, authsource.NewError("invalid-operation-request")
+	}
+	if intent.RequiresAuthenticatedExecution != (intent.AuthSourceBindingRef != "") {
+		return engine.Request{}, authsource.NewError("invalid-auth-intent")
+	}
+	if !intent.RequiresAuthenticatedExecution {
+		return request, nil
+	}
+	stateStore := m.stateStoreSnapshot()
+	if stateStore == nil {
+		return engine.Request{}, authsource.NewError("source-unavailable")
+	}
+	state := stateStore.Snapshot()
+	binding, err := resolveEnabledAuthBinding(state, intent)
+	if err != nil {
+		return engine.Request{}, err
+	}
+	m.mu.Lock()
+	resolver := m.resolveBrowserSpec
+	m.mu.Unlock()
+	if resolver == nil {
+		return engine.Request{}, authsource.NewError("source-unavailable")
+	}
+	spec, err := resolver(binding.Descriptor)
+	if err != nil || spec == "" {
+		return engine.Request{}, authsource.NewError("source-unavailable")
+	}
+	request.CookiesFromBrowser = spec
+	return request, nil
+}
+
+func resolveEnabledAuthBinding(state jobmodel.State, intent jobmodel.AuthIntent) (authsource.Binding, error) {
+	if !state.Settings.BrowserAccessEnabled || state.Settings.BrowserAccessConsentVersion != authsource.CurrentConsentVersion {
+		return authsource.Binding{}, authsource.NewError("consent-required")
+	}
+	for _, binding := range state.AuthSourceBindings {
+		if binding.ID != intent.AuthSourceBindingRef {
+			continue
+		}
+		if !binding.Enabled {
+			return authsource.Binding{}, authsource.NewError("source-disabled")
+		}
+		if authsource.ValidateDescriptor(binding.Descriptor) != nil {
+			return authsource.Binding{}, authsource.NewError("source-unavailable")
+		}
+		return binding, nil
+	}
+	return authsource.Binding{}, authsource.NewError("source-unavailable")
+}
 
 // worker is runtime-only attempt state. It is never restored from State v2;
 // active is the sole live occupancy authority and retains this value until
@@ -520,6 +626,7 @@ type jobState struct {
 	authoritySig       string
 	authorityRevision  uint64
 	authorityAttemptID string
+	authSourceLabel    string
 	startBps           time.Time
 	startByt           int64
 }
@@ -543,15 +650,20 @@ func New(client *engine.Client, listener Listener) *Manager {
 		lifecycleCancel:      lifecycleCancel,
 		runDownload:          downloadRunnerForComposition(composition),
 		runAnalyze:           client.Run,
+		checkBrowserCookies:  client.CheckBrowserCookies,
 		inspectResume:        engine.InspectResumeState,
 		prepareResumeDiscard: engine.PrepareResumeDiscard,
+		resolveBrowserSpec:   authsource.CookiesFromBrowser,
 		all:                  make(map[string]*jobState),
 		active:               make(map[string]*worker),
 		concurrency:          DefaultDownloadConcurrency,
 		processing:           make(chan struct{}, MaxProcessingConcurrency),
 		queueCommandToken:    uuid.NewString(),
 		planCache:            make(map[string]cachedPlans),
+		analysisCache:        make(map[string]cachedAnalysis),
+		analysisGeneration:   make(map[string]uint64),
 		playlistCache:        make(map[string]cachedPlaylist),
+		playlistReviewCache:  make(map[string]cachedPlaylistReview),
 		collectionAuthority:  make(map[string]collectionAuthority),
 		collectionCommanding: make(map[string]bool),
 	}
@@ -593,6 +705,138 @@ func (m *Manager) SetStateStore(stateStore StateStore) error {
 	return nil
 }
 
+// PreviewForgetAuthSource reports the exact durable impact without changing
+// authority or touching the browser store.
+func (m *Manager) PreviewForgetAuthSource(bindingRef string) (BrowserSourceDependencies, error) {
+	bindingRef = strings.TrimSpace(bindingRef)
+	if bindingRef == "" {
+		return BrowserSourceDependencies{}, errors.New("jobs: browser source is required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing || m.closed {
+		return BrowserSourceDependencies{}, ErrClosed
+	}
+	if m.stateStore == nil {
+		return BrowserSourceDependencies{}, errors.New("jobs: State v2 store is not configured")
+	}
+	document := m.stateStore.Snapshot()
+	preview := BrowserSourceDependencies{BindingRef: bindingRef}
+	found := false
+	for _, binding := range document.AuthSourceBindings {
+		if binding.ID == bindingRef && binding.Enabled {
+			preview.Label = authsource.Label(binding.Descriptor)
+			found = true
+			break
+		}
+	}
+	if !found {
+		return BrowserSourceDependencies{}, errors.New("jobs: browser source is unavailable")
+	}
+	for _, job := range document.Jobs {
+		if job.AuthIntent.AuthSourceBindingRef != bindingRef || job.Lifecycle == jobmodel.LifecycleCompleted || job.Lifecycle == jobmodel.LifecycleCanceled {
+			continue
+		}
+		preview.Jobs++
+		if job.Lifecycle == jobmodel.LifecycleActive || job.Lifecycle == jobmodel.LifecyclePausing || job.Lifecycle == jobmodel.LifecycleCanceling {
+			preview.Active++
+		}
+	}
+	for _, collection := range document.Collections {
+		if collection.AuthIntent.AuthSourceBindingRef == bindingRef {
+			preview.Collections++
+		}
+	}
+	return preview, nil
+}
+
+// ForgetAuthSource tombstones one binding and immediately moves dependent
+// non-terminal jobs to Action required. Active attempts must be paused first so
+// durable authority cannot change underneath an untracked engine operation.
+func (m *Manager) ForgetAuthSource(bindingRef string) (int, error) {
+	if strings.TrimSpace(bindingRef) == "" {
+		return 0, errors.New("jobs: browser source is required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing || m.closed {
+		return 0, ErrClosed
+	}
+	if m.stateStore == nil {
+		return 0, errors.New("jobs: State v2 store is not configured")
+	}
+	for _, state := range m.all {
+		if state.durable.AuthIntent.AuthSourceBindingRef == bindingRef && (state.worker != nil || state.settling || state.commanding || state.snap.Status == StatusActive || state.snap.Status == StatusPausing || state.snap.Status == StatusCanceling) {
+			return 0, errors.New("pause active downloads using this browser source before forgetting it")
+		}
+	}
+	dependent := 0
+	err := m.stateStore.Transaction(nil, func(document *jobmodel.State) error {
+		found := false
+		enabledRemain := false
+		for index := range document.AuthSourceBindings {
+			if document.AuthSourceBindings[index].ID == bindingRef {
+				document.AuthSourceBindings[index].Enabled = false
+				found = true
+			}
+			if document.AuthSourceBindings[index].Enabled {
+				enabledRemain = true
+			}
+		}
+		if !found {
+			return errors.New("jobs: browser source is unavailable")
+		}
+		if document.Settings.DefaultAuthSourceBindingRef == bindingRef {
+			document.Settings.DefaultAuthSourceBindingRef = ""
+		}
+		if !enabledRemain {
+			document.Settings.BrowserAccessEnabled = false
+			document.Settings.BrowserAccessConsentVersion = 0
+		}
+		now := time.Now().UTC()
+		for index := range document.Jobs {
+			job := &document.Jobs[index]
+			if job.AuthIntent.AuthSourceBindingRef != bindingRef || job.Lifecycle == jobmodel.LifecycleCompleted || job.Lifecycle == jobmodel.LifecycleCanceled {
+				continue
+			}
+			if job.Lifecycle == jobmodel.LifecycleActive || job.Lifecycle == jobmodel.LifecyclePausing || job.Lifecycle == jobmodel.LifecycleCanceling {
+				return errors.New("pause active downloads using this browser source before forgetting it")
+			}
+			job.Lifecycle = jobmodel.LifecycleActionRequired
+			job.Desired = jobmodel.DesiredPaused
+			job.Phase = jobmodel.PhasePreparing
+			job.ActionRequiredCode = authenticatedSessionUnavailableCode
+			job.LastErrorCode = authenticatedSessionUnavailableCode
+			job.Revision++
+			job.UpdatedAt = now
+			dependent++
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	latest := m.stateStore.Snapshot()
+	for _, durable := range latest.Jobs {
+		state := m.all[durable.ID]
+		if state == nil || durable.AuthIntent.AuthSourceBindingRef != bindingRef || durable.Lifecycle != jobmodel.LifecycleActionRequired {
+			continue
+		}
+		state.durable = durable
+		state.authorityRevision = durable.Revision
+		state.snap.Status = StatusActionRequired
+		state.snap.Lifecycle = durable.Lifecycle
+		state.snap.Desired = durable.Desired
+		state.snap.Phase = durable.Phase
+		state.snap.Message = "Browser session needs attention"
+		state.snap.ErrorReason = authenticatedSessionUnavailableCode
+		state.snap.OccupiesSlot = false
+		m.removeFromOrderLocked(durable.ID)
+	}
+	m.emitQueueLocked()
+	return dependent, nil
+}
+
 // RestoreStateV2 reconstructs the existing FIFO manager from a committed,
 // already-reconciled State v2 snapshot. It deliberately does not enqueue or
 // start anything: startup restoration is always paused and active is empty.
@@ -620,10 +864,23 @@ func (m *Manager) RestoreStateV2(snapshot jobmodel.State) error {
 		if err != nil {
 			return err
 		}
+		state.authSourceLabel = authSourceLabel(snapshot, durable.AuthIntent)
 		m.all[durable.ID] = state
 	}
 	m.persistStatus = PersistenceStatus{Available: true, Healthy: true}
 	return nil
+}
+
+func authSourceLabel(state jobmodel.State, intent jobmodel.AuthIntent) string {
+	if !intent.RequiresAuthenticatedExecution || intent.AuthSourceBindingRef == "" {
+		return ""
+	}
+	for _, binding := range state.AuthSourceBindings {
+		if binding.ID == intent.AuthSourceBindingRef {
+			return authsource.Label(binding.Descriptor)
+		}
+	}
+	return "Browser source"
 }
 
 func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
@@ -671,7 +928,7 @@ func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 		Title: durable.Request.Title, Channel: durable.Request.Channel, Quality: quality,
 		QualityLabel: durable.Plan.Label, PlanID: durable.Plan.ID, OutputKind: outputplan.Kind(durable.Plan.Kind),
 		Container: durable.Plan.Container, VideoCodec: durable.Plan.VideoCodec, AudioCodec: durable.Plan.AudioCodec,
-		RequiresFFmpeg: durable.Plan.RequiresFFmpeg, OutputDir: durable.OutputRoot.CanonicalPath,
+		RequiresFFmpeg: durable.Plan.RequiresFFmpeg, RequiresAuthenticatedExecution: durable.AuthIntent.RequiresAuthenticatedExecution, OutputDir: durable.OutputRoot.CanonicalPath,
 		DurationLabel: durable.Request.Duration, Status: status, Lifecycle: durable.Lifecycle,
 		Phase: durable.Phase, Desired: durable.Desired, OccupiesSlot: false, CreatedAt: durable.CreatedAt.UTC().Format(time.RFC3339Nano),
 		Filename: filename, AbsolutePath: absolutePath, ErrorReason: durable.LastErrorCode,
@@ -1653,6 +1910,10 @@ func (m *Manager) submit(id string, req Request, admittedPlan *outputplan.Plan, 
 		state.snap.RequiresFFmpeg = selectedPlan.RequiresFFmpeg
 	}
 	if fromStateV2 {
+		state.snap.RequiresAuthenticatedExecution = durable.AuthIntent.RequiresAuthenticatedExecution
+		if stateStore := m.stateStoreSnapshot(); stateStore != nil {
+			state.authSourceLabel = authSourceLabel(stateStore.Snapshot(), durable.AuthIntent)
+		}
 		state.snap.Lifecycle = durable.Lifecycle
 		state.snap.Phase = durable.Phase
 		state.snap.Desired = durable.Desired
@@ -1730,8 +1991,13 @@ func (m *Manager) queueViewLocked() QueueView {
 		if lifecycle == "" {
 			lifecycle = lifecycleForStatus(snap.Status)
 		}
+		accessMode := "public"
+		if state.durable.AuthIntent.RequiresAuthenticatedExecution {
+			accessMode = "browser-session"
+		}
 		row := QueueRow{
 			ID: snap.ID, CollectionID: state.durable.CollectionID, CollectionIndex: state.durable.CollectionIndex,
+			AccessMode: accessMode, BrowserSourceLabel: state.authSourceLabel,
 			Title: snap.Title, Metadata: queueMetadata(snap), ThumbnailURL: queueThumbnailURL(snap),
 			Lifecycle: lifecycle, Phase: snap.Phase, Desired: snap.Desired,
 			OccupiesSlot: m.active[snap.ID] != nil, QueuePosition: positions[snap.ID],
@@ -1810,8 +2076,21 @@ func (m *Manager) queueCollectionsLocked(rows []QueueRow) []QueueCollection {
 		if kind == "" {
 			kind = jobmodel.CollectionKindPlaylist
 		}
+		accessMode, sourceLabel := "public", ""
+		if parent.AuthIntent.RequiresAuthenticatedExecution {
+			accessMode = "browser-session"
+			for _, binding := range durable.AuthSourceBindings {
+				if binding.ID == parent.AuthIntent.AuthSourceBindingRef {
+					sourceLabel = authsource.Label(binding.Descriptor)
+					break
+				}
+			}
+		}
 		collection := QueueCollection{
 			ID: parent.ID, Kind: kind, Title: parent.Title, ThumbnailURL: parent.Thumbnail, Policy: parent.Policy,
+			AccessMode: accessMode, BrowserSourceLabel: sourceLabel,
+			Discovered: parent.Discovered, Ready: parent.Ready, AuthRequired: parent.AuthRequired,
+			Unavailable: parent.Unavailable, Invalid: parent.Invalid, Approved: parent.Approved,
 			ChildJobIDs: append([]string(nil), parent.ChildJobIDs...), Total: len(parent.ChildJobIDs),
 		}
 		if kind == jobmodel.CollectionKindBatch {
@@ -2502,6 +2781,10 @@ func (m *Manager) QueueRetryCleanup(id, token string) error {
 
 func actionRequiredReview(state *jobState, cleanupPresent, cleanupQuarantined bool) ActionRequiredReview {
 	code := strings.TrimSpace(state.snap.ErrorReason)
+	sourceLabel := strings.TrimSpace(state.authSourceLabel)
+	if sourceLabel == "" {
+		sourceLabel = "Browser source"
+	}
 	if state.fromStateV2 && state.durable.ActionRequiredCode != "" {
 		code = state.durable.ActionRequiredCode
 	}
@@ -2517,6 +2800,8 @@ func actionRequiredReview(state *jobState, cleanupPresent, cleanupQuarantined bo
 		message = "The saved download session could not be inspected safely, so VidStow has preserved it for review."
 	case "migration-reanalysis-required", "migration-private-plan-unverified":
 		message = "This item came from an older VidStow version and must be analyzed again before it can download."
+	case authenticatedSessionUnavailableCode:
+		message = fmt.Sprintf("VidStow could not use the bound %s session. Retry checks that same source again; VidStow will not silently switch this job to public access.", sourceLabel)
 	}
 	url := strings.TrimSpace(state.snap.URL)
 	if state.snap.Status != StatusActionRequired {
@@ -2529,6 +2814,14 @@ func actionRequiredReview(state *jobState, cleanupPresent, cleanupQuarantined bo
 		}
 	}
 	canManageSession := state.fromStateV2 && state.durable.SessionID != "" && state.durable.OutputRoot.CanonicalPath != ""
+	accessMode := "public"
+	startOverLabel := "Start over from Home"
+	retryFreshLabel := "Retry with fresh link"
+	if state.durable.AuthIntent.RequiresAuthenticatedExecution {
+		accessMode = "browser-session"
+		startOverLabel = "Start over publicly from Home"
+		retryFreshLabel = fmt.Sprintf("Refresh %s and retry", sourceLabel)
+	}
 	return ActionRequiredReview{
 		JobID: state.snap.ID, Title: state.snap.Title,
 		Heading: "This download needs your decision", Message: message,
@@ -2538,6 +2831,10 @@ func actionRequiredReview(state *jobState, cleanupPresent, cleanupQuarantined bo
 		CanRetryFreshLink:  canManageSession && canRetryActionRequiredFresh(state),
 		CanDiscard:         canManageSession,
 		CanRemove:          !cleanupPresent,
+		AccessMode:         accessMode,
+		BrowserSourceLabel: sourceLabel,
+		RetryFreshLabel:    retryFreshLabel,
+		StartOverLabel:     startOverLabel,
 	}
 }
 
@@ -4047,6 +4344,26 @@ func (m *Manager) maybeStartNextLocked() {
 // startWorker commits the durable pending-to-active transition before the
 // engine runner is invoked. It runs outside m.mu so State v2 lock acquisition
 // cannot block queue inspection or lifecycle commands.
+func (m *Manager) latestDurableProjection(id string) (*jobState, bool) {
+	store := m.stateStoreSnapshot()
+	if store == nil {
+		return nil, false
+	}
+	snapshot := store.Snapshot()
+	for _, durable := range snapshot.Jobs {
+		if durable.ID != id {
+			continue
+		}
+		projected, err := stateFromDurable(durable)
+		if err != nil {
+			return nil, false
+		}
+		projected.authSourceLabel = authSourceLabel(snapshot, durable.AuthIntent)
+		return projected, true
+	}
+	return nil, false
+}
+
 func (m *Manager) startWorker(state *jobState, worker *worker) {
 	if state.fromStateV2 {
 		if err := m.commitDurable(state, func(job *jobmodel.DurableJob, _ *jobmodel.State) error {
@@ -4057,18 +4374,30 @@ func (m *Manager) startWorker(state *jobState, worker *worker) {
 			job.Phase = jobmodel.PhasePreparing
 			return nil
 		}); err != nil {
+			projected, durableWinner := m.latestDurableProjection(state.snap.ID)
 			m.mu.Lock()
 			if current := m.active[state.snap.ID]; current == worker {
 				delete(m.active, state.snap.ID)
 				state.worker = nil
 				state.commanding = false
-				state.snap.Status = StatusFailed
-				state.snap.OccupiesSlot = false
-				state.snap.Lifecycle = jobmodel.LifecyclePending
-				state.snap.Message = "Could not start"
-				state.snap.ErrorReason = "persistence"
-				state.snap.CanPause = false
-				state.snap.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+				if durableWinner {
+					state.snap = projected.snap
+					state.plan = projected.plan
+					state.outputTemplate = projected.outputTemplate
+					state.durable = projected.durable
+					state.authorityRevision = projected.authorityRevision
+					state.authorityAttemptID = projected.authorityAttemptID
+					state.authSourceLabel = projected.authSourceLabel
+					m.persistStatus = PersistenceStatus{Available: true, Healthy: true}
+				} else {
+					state.snap.Status = StatusFailed
+					state.snap.OccupiesSlot = false
+					state.snap.Lifecycle = jobmodel.LifecyclePending
+					state.snap.Message = "Could not start"
+					state.snap.ErrorReason = "persistence"
+					state.snap.CanPause = false
+					state.snap.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+				}
 				m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 				m.maybeStartNextLocked()
 				m.emitQueueLocked()
@@ -4136,7 +4465,13 @@ func (m *Manager) run(state *jobState, worker *worker) {
 	}
 	ctx := worker.Ctx
 	runner := m.runDownload
+	authIntent := state.durable.AuthIntent
 	m.mu.Unlock()
+
+	// Every initial, resumed, retried, and restored attempt converges here and
+	// resolves the exact durable binding afresh. Resolution failure never calls
+	// the engine runner, so there is no hidden cookie-free fallback attempt.
+	preparedRequest, operationErr := m.prepareOperationRequest(authIntent, req)
 
 	processingHeld := false
 	sawPostprocess := false
@@ -4164,7 +4499,13 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		return nil
 	}
 
-	result, err := runner(ctx, req, handler)
+	var result engine.Result
+	var err error
+	if operationErr != nil {
+		err = operationErr
+	} else {
+		result, err = runner(ctx, preparedRequest, handler)
+	}
 	diagnostic := terminalDownloadDiagnostic(err, sawDownload, sawPostprocess, time.Since(started))
 	if processingHeld {
 		<-m.processing
@@ -4203,6 +4544,11 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		terminal.Status = StatusCanceled
 		terminal.Message = "Canceled"
 		terminal.ErrorReason = "canceled"
+		terminal.CompletedAt = time.Now().UTC().Format(time.RFC3339)
+	} else if err != nil && authenticatedActionRequired(authIntent, err) {
+		terminal.Status = StatusActionRequired
+		terminal.Message = "Browser session needs attention"
+		terminal.ErrorReason = authenticatedSessionUnavailableCode
 		terminal.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 	} else if err != nil {
 		terminal.Status = StatusFailed
@@ -4258,6 +4604,8 @@ func (m *Manager) run(state *jobState, worker *worker) {
 			settleErr = m.settleDurable(state, jobmodel.LifecyclePaused, jobmodel.DesiredPaused, jobmodel.PhasePreparing, terminal, "", false, -1)
 		case canceled:
 			settleErr = m.settleDurable(state, jobmodel.LifecycleCanceled, jobmodel.DesiredCanceled, jobmodel.PhaseCleaningUp, terminal, cleanupCode, cleanupPending, -1)
+		case terminal.Status == StatusActionRequired:
+			settleErr = m.settleDurable(state, jobmodel.LifecycleActionRequired, jobmodel.DesiredPaused, jobmodel.PhasePreparing, terminal, authenticatedSessionUnavailableCode, false, failureCommitted)
 		case err != nil:
 			settleErr = m.settleDurable(state, jobmodel.LifecycleFailed, jobmodel.DesiredRunning, jobmodel.PhasePreparing, terminal, terminal.ErrorReason, false, failureCommitted)
 		default:
@@ -4286,6 +4634,16 @@ func (m *Manager) run(state *jobState, worker *worker) {
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap, Diagnostic: diagnostic})
 	m.maybeStartNextLocked()
 	m.emitQueueLocked()
+}
+
+func authenticatedActionRequired(intent jobmodel.AuthIntent, err error) bool {
+	if !intent.RequiresAuthenticatedExecution || err == nil {
+		return false
+	}
+	if _, ok := authsource.ErrorCode(err); ok {
+		return true
+	}
+	return engine.IsCategory(err, engine.ErrorAuthentication)
 }
 
 // terminalDownloadDiagnostic maps only typed engine facts. Unknown errors keep
@@ -4412,14 +4770,16 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 	case engine.EventDownloadCancelled:
 		state.snap.Message = "Canceled"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
+	case engine.EventBrowserCookies:
+		// Cookie import counts and messages are credential-adjacent facts and
+		// must never enter QueueView, persisted presentation state, or Wails.
 	case engine.EventJavaScriptChallenge:
 		// Secret-free engine diagnostics are available to dedicated event
 		// consumers, but must not replace the job's user-facing status text.
 	default:
-		if ev.Message != "" {
-			state.snap.Message = humanMessage(ev.Message)
-			m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
-		}
+		// Engine event text is untrusted presentation input and can contain
+		// credential-adjacent URLs, browser paths, or future provider details.
+		// Unknown kinds are ignored unless a curated mapping is added above.
 	}
 }
 
@@ -4557,7 +4917,7 @@ func humanError(err error) string {
 			return "The download was blocked by a security check"
 		}
 	}
-	return humanMessage(err.Error())
+	return "Download failed"
 }
 
 func isYouTubeChallengeTimeout(err error) bool {
@@ -4589,17 +4949,6 @@ func failureMessage(err error, committedBytes int64, sawPostprocess bool) string
 		return downloadStoppedMidMessage
 	}
 	return humanError(err)
-}
-
-func humanMessage(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
-	}
-	if len(s) > 240 {
-		return s[:237] + "..."
-	}
-	return s
 }
 
 func errorReason(err error) string {
@@ -4644,42 +4993,90 @@ func isKnownQuality(quality Quality) bool {
 // PlaylistSummary is a lightweight flat-playlist preview. Child formats are
 // deliberately not extracted until their individual queue jobs run.
 type PlaylistSummary struct {
-	ID          string                 `json:"id"`
-	URL         string                 `json:"url"`
-	Title       string                 `json:"title"`
-	Channel     string                 `json:"channel"`
-	Thumbnail   string                 `json:"thumbnail"`
-	EntryCount  int                    `json:"entryCount"`
-	Available   int                    `json:"available"`
-	Unavailable int                    `json:"unavailable"`
-	Entries     []PlaylistEntrySummary `json:"entries"`
+	ID              string                 `json:"id"`
+	URL             string                 `json:"url"`
+	Title           string                 `json:"title"`
+	Channel         string                 `json:"channel"`
+	Thumbnail       string                 `json:"thumbnail"`
+	EntryCount      int                    `json:"entryCount"`
+	Available       int                    `json:"available"`
+	Ready           int                    `json:"ready"`
+	AuthRequired    int                    `json:"authRequired"`
+	Unavailable     int                    `json:"unavailable"`
+	Invalid         int                    `json:"invalid"`
+	ReviewAuthority string                 `json:"reviewAuthority,omitempty"`
+	Admissible      bool                   `json:"admissible"`
+	BrowserAccess   BrowserAccess          `json:"browserAccess"`
+	Entries         []PlaylistEntrySummary `json:"entries"`
 }
 
 type PlaylistEntrySummary struct {
-	Index     int    `json:"index"`
-	VideoID   string `json:"videoId"`
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Duration  string `json:"duration,omitempty"`
-	Thumbnail string `json:"thumbnail,omitempty"`
-	Available bool   `json:"available"`
+	Index        int    `json:"index"`
+	OccurrenceID string `json:"occurrenceId,omitempty"`
+	VideoID      string `json:"videoId"`
+	URL          string `json:"url"`
+	Title        string `json:"title"`
+	Duration     string `json:"duration,omitempty"`
+	Thumbnail    string `json:"thumbnail,omitempty"`
+	Outcome      string `json:"outcome"`
+	ReasonCode   string `json:"reasonCode,omitempty"`
+	Available    bool   `json:"available"`
+}
+
+// PlaylistAdmissionOccurrence is backend-only authenticated playlist
+// authority released after an opaque review token and occurrence selection are
+// validated. Private plan selectors never cross the desktop boundary.
+type PlaylistAdmissionOccurrence struct {
+	Entry   PlaylistEntrySummary
+	Summary InfoSummary
+	Plans   []outputplan.Plan
 }
 
 // InfoSummary is the metadata displayed on the Home page after analyse.
 type InfoSummary struct {
-	Title           string            `json:"title"`
-	Channel         string            `json:"channel"`
-	Duration        string            `json:"duration"`
-	DurationSeconds int64             `json:"durationSeconds"`
-	Thumbnail       string            `json:"thumbnail"`
-	VideoID         string            `json:"videoId"`
-	URL             string            `json:"url"`
-	ViewCount       int64             `json:"viewCount"`
-	UploadDate      string            `json:"uploadDate"`
-	Description     string            `json:"description"`
-	MediaType       string            `json:"mediaType,omitempty"`
-	Access          AccessSummary     `json:"access"`
-	Plans           []outputplan.Plan `json:"plans"`
+	Title             string            `json:"title"`
+	Channel           string            `json:"channel"`
+	Duration          string            `json:"duration"`
+	DurationSeconds   int64             `json:"durationSeconds"`
+	Thumbnail         string            `json:"thumbnail"`
+	VideoID           string            `json:"videoId"`
+	URL               string            `json:"url"`
+	ViewCount         int64             `json:"viewCount"`
+	UploadDate        string            `json:"uploadDate"`
+	Description       string            `json:"description"`
+	MediaType         string            `json:"mediaType,omitempty"`
+	Access            AccessSummary     `json:"access"`
+	Plans             []outputplan.Plan `json:"plans"`
+	AnalysisAuthority string            `json:"analysisAuthority,omitempty"`
+	BrowserAccess     BrowserAccess     `json:"browserAccess"`
+}
+
+// BrowserAccess describes request mode only. It never claims that YouTube
+// needed or accepted the supplied browser session.
+type BrowserAccess struct {
+	Mode  string `json:"mode"`
+	Label string `json:"label"`
+}
+
+// BrowserSourceCheck is a bounded owner-facing preflight result. Ready means
+// the source can be supplied to an operation; it never attests website login.
+type BrowserSourceCheck struct {
+	Status  string `json:"status"`
+	Label   string `json:"label"`
+	Message string `json:"message"`
+	Ready   bool   `json:"ready"`
+	Partial bool   `json:"partial"`
+}
+
+// BrowserSourceDependencies is a bounded, non-secret preview shown before a
+// source is forgotten. Counts cover only non-terminal jobs that would need
+// user action; collection parents are counted separately for clear UX.
+type BrowserSourceDependencies struct {
+	BindingRef  string `json:"bindingRef"`
+	Label       string `json:"label"`
+	Jobs        int    `json:"jobs"`
+	Collections int    `json:"collections"`
+	Active      int    `json:"active"`
 }
 
 // AccessSummary is informational extraction metadata, not a product gate.
@@ -4750,6 +5147,249 @@ func (m *Manager) AnalyzePlaylist(ctx context.Context, rawURL string) (PlaylistS
 	}
 	m.mu.Unlock()
 	return summary, nil
+}
+
+// AnalyzePlaylistAuthenticated performs one non-flat engine review using one
+// exact browser binding. The engine imports cookies once and returns one typed
+// outcome for every upstream-exposed occurrence; VidStow never reanalyzes
+// Ready children before atomic admission.
+func (m *Manager) AnalyzePlaylistAuthenticated(ctx context.Context, rawURL, bindingRef string) (PlaylistSummary, error) {
+	key, generation, err := m.beginRendererAnalysis(rawURL)
+	if err != nil {
+		return PlaylistSummary{}, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	intent := jobmodel.AuthIntent{RequiresAuthenticatedExecution: true, AuthSourceBindingRef: strings.TrimSpace(bindingRef)}
+	m.mu.Lock()
+	if m.closing || m.closed {
+		m.mu.Unlock()
+		return PlaylistSummary{}, ErrClosed
+	}
+	ffmpegLocation, lifecycleCtx, runner := m.ffmpegLocation, m.lifecycleCtx, m.runAnalyze
+	m.analysisWG.Add(1)
+	m.mu.Unlock()
+	analysisCtx, cancel := context.WithCancelCause(ctx)
+	stopLifecycle := context.AfterFunc(lifecycleCtx, func() { cancel(context.Canceled) })
+	defer func() {
+		stopLifecycle()
+		cancel(context.Canceled)
+		m.analysisWG.Done()
+	}()
+	request, err := m.prepareOperationRequest(intent, engine.Request{
+		URL: rawURL, PlaylistReview: true,
+		Playlist:   engine.PlaylistOptions{End: MaxPlaylistEntries},
+		Filesystem: engine.FilesystemOptions{FfmpegLocation: ffmpegLocation},
+	})
+	if err != nil {
+		return PlaylistSummary{}, err
+	}
+	result, err := runner(analysisCtx, request)
+	if err != nil {
+		return PlaylistSummary{}, err
+	}
+	if result.PlaylistReview == nil || !result.PlaylistReview.Complete || result.PlaylistReview.Discovered != len(result.PlaylistReview.Occurrences) {
+		return PlaylistSummary{}, errors.New("analyze playlist: authenticated review incomplete")
+	}
+	if len(result.PlaylistReview.Occurrences) == 0 || len(result.PlaylistReview.Occurrences) > MaxPlaylistEntries {
+		return PlaylistSummary{}, errors.New("analyze playlist: invalid authenticated review size")
+	}
+	summary, occurrences, err := summarizeAuthenticatedPlaylist(result, rawURL)
+	if err != nil {
+		return PlaylistSummary{}, err
+	}
+	if expectedID := playlistIDFromURL(rawURL); expectedID == "" || summary.ID != expectedID {
+		return PlaylistSummary{}, errors.New("analyze playlist: playlist identity mismatch")
+	}
+	stateStore := m.stateStoreSnapshot()
+	if stateStore == nil {
+		return PlaylistSummary{}, authsource.NewError("source-unavailable")
+	}
+	binding, err := resolveEnabledAuthBinding(stateStore.Snapshot(), intent)
+	if err != nil {
+		return PlaylistSummary{}, err
+	}
+	summary.BrowserAccess = BrowserAccess{Mode: "browser-session", Label: authsource.Label(binding.Descriptor)}
+	token := m.completePlaylistReview(key, generation, summary, intent, occurrences)
+	if token == "" {
+		return PlaylistSummary{}, errors.New("analyze playlist: superseded by newer analysis")
+	}
+	summary.ReviewAuthority = token
+	return summary, nil
+}
+
+func summarizeAuthenticatedPlaylist(result engine.Result, rawURL string) (PlaylistSummary, map[string]cachedPlaylistOccurrence, error) {
+	var parent map[string]any
+	if len(result.InfoJSON) > 0 && json.Unmarshal(result.InfoJSON, &parent) != nil {
+		return PlaylistSummary{}, nil, errors.New("analyze playlist: invalid metadata")
+	}
+	summary := PlaylistSummary{
+		ID: metadataText(parent, "id"), URL: rawURL, Title: metadataText(parent, "title"),
+		Channel: metadataText(parent, "channel"), Thumbnail: metadataText(parent, "thumbnail"),
+	}
+	if summary.Channel == "" {
+		summary.Channel = metadataText(parent, "uploader")
+	}
+	cached := make(map[string]cachedPlaylistOccurrence, len(result.PlaylistReview.Occurrences))
+	seenIndexes := make(map[int]struct{}, len(result.PlaylistReview.Occurrences))
+	for _, occurrence := range result.PlaylistReview.Occurrences {
+		if occurrence.SourceIndex <= 0 {
+			return PlaylistSummary{}, nil, errors.New("analyze playlist: invalid source ordering")
+		}
+		if _, duplicate := seenIndexes[occurrence.SourceIndex]; duplicate {
+			return PlaylistSummary{}, nil, errors.New("analyze playlist: duplicate source position")
+		}
+		seenIndexes[occurrence.SourceIndex] = struct{}{}
+		entry := PlaylistEntrySummary{Index: occurrence.SourceIndex, OccurrenceID: uuid.NewString(), Outcome: string(occurrence.Outcome), ReasonCode: occurrence.ReasonCode}
+		var info map[string]any
+		rawInfo := occurrence.InfoJSON
+		if occurrence.Result != nil {
+			rawInfo = occurrence.Result.InfoJSON
+		}
+		if len(rawInfo) > 0 {
+			_ = json.Unmarshal(rawInfo, &info)
+		}
+		entry.VideoID = metadataText(info, "id")
+		entry.Title = metadataText(info, "title")
+		if videoIDPattern.MatchString(entry.VideoID) {
+			entry.URL = "https://www.youtube.com/watch?v=" + url.QueryEscape(entry.VideoID)
+			entry.Thumbnail = metadataText(info, "thumbnail")
+			if entry.Thumbnail == "" {
+				entry.Thumbnail = "https://i.ytimg.com/vi/" + entry.VideoID + "/hqdefault.jpg"
+			}
+		}
+		if duration := metadataInteger(info["duration"]); duration > 0 {
+			entry.Duration = formatDuration(duration)
+		}
+		if occurrence.Outcome == engine.PlaylistReviewReady && occurrence.Result != nil && entry.URL != "" {
+			childSummary, plans, planErr := summarizeAnalysis(occurrence.Result.InfoJSON, entry.URL)
+			if planErr == nil && childSummary.VideoID == entry.VideoID && len(plans) > 0 {
+				entry.Available = true
+				entry.Outcome = "ready"
+				entry.ReasonCode = "ready"
+				if strings.TrimSpace(childSummary.Title) == "" {
+					childSummary.Title = entry.Title
+				}
+				if childSummary.Channel == "" {
+					childSummary.Channel = summary.Channel
+				}
+				if childSummary.Thumbnail == "" {
+					childSummary.Thumbnail = entry.Thumbnail
+				}
+				cached[entry.OccurrenceID] = cachedPlaylistOccurrence{entry: entry, summary: childSummary, plans: append([]outputplan.Plan(nil), plans...)}
+				summary.Ready++
+				summary.Available++
+			} else {
+				entry.Outcome = "invalid"
+				entry.ReasonCode = "unsupported-output"
+				summary.Invalid++
+			}
+		} else {
+			switch entry.Outcome {
+			case "auth-required":
+				summary.AuthRequired++
+			case "invalid":
+				summary.Invalid++
+			default:
+				entry.Outcome = "unavailable"
+				summary.Unavailable++
+			}
+		}
+		if entry.Title == "" {
+			entry.Title = fmt.Sprintf("Playlist entry %d", entry.Index)
+		}
+		if summary.Thumbnail == "" && entry.Available {
+			summary.Thumbnail = entry.Thumbnail
+		}
+		summary.Entries = append(summary.Entries, entry)
+	}
+	sort.SliceStable(summary.Entries, func(i, j int) bool { return summary.Entries[i].Index < summary.Entries[j].Index })
+	summary.EntryCount = len(summary.Entries)
+	summary.Admissible = summary.Ready > 0
+	if summary.ID == "" {
+		return PlaylistSummary{}, nil, errors.New("analyze playlist: missing playlist identity")
+	}
+	if summary.Title == "" {
+		summary.Title = "Untitled playlist"
+	}
+	return summary, cached, nil
+}
+
+func (m *Manager) completePlaylistReview(key string, generation uint64, summary PlaylistSummary, intent jobmodel.AuthIntent, occurrences map[string]cachedPlaylistOccurrence) string {
+	token := uuid.NewString()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing || m.closed || m.analysisGeneration[key] != generation {
+		return ""
+	}
+	now := time.Now()
+	for existingToken, cached := range m.playlistReviewCache {
+		if !now.Before(cached.expiresAt) || cached.key == key {
+			delete(m.playlistReviewCache, existingToken)
+		}
+	}
+	if len(m.playlistReviewCache) >= 16 {
+		for existingToken := range m.playlistReviewCache {
+			delete(m.playlistReviewCache, existingToken)
+			break
+		}
+	}
+	summary.ReviewAuthority = ""
+	m.playlistReviewCache[token] = cachedPlaylistReview{key: key, summary: summary, auth: intent, occurrences: occurrences, expiresAt: now.Add(30 * time.Minute)}
+	return token
+}
+
+// ResolveAuthenticatedPlaylistSelection validates only opaque occurrence IDs,
+// ignores renderer order, and returns Ready children in stable source order.
+func (m *Manager) ResolveAuthenticatedPlaylistSelection(token string, selected []string) (PlaylistSummary, []PlaylistAdmissionOccurrence, jobmodel.AuthIntent, error) {
+	if strings.TrimSpace(token) == "" || len(selected) == 0 || len(selected) > MaxPlaylistEntries {
+		return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: invalid authenticated playlist selection")
+	}
+	requested := make(map[string]struct{}, len(selected))
+	for _, occurrenceID := range selected {
+		occurrenceID = strings.TrimSpace(occurrenceID)
+		if occurrenceID == "" {
+			return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: invalid authenticated playlist occurrence")
+		}
+		if _, duplicate := requested[occurrenceID]; duplicate {
+			return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: duplicate authenticated playlist occurrence")
+		}
+		requested[occurrenceID] = struct{}{}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cached, ok := m.playlistReviewCache[token]
+	if !ok || !time.Now().Before(cached.expiresAt) {
+		delete(m.playlistReviewCache, token)
+		return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: playlist review expired; analyze the playlist again")
+	}
+	if m.stateStore == nil {
+		delete(m.playlistReviewCache, token)
+		return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: browser source is no longer available")
+	}
+	if _, err := resolveEnabledAuthBinding(m.stateStore.Snapshot(), cached.auth); err != nil {
+		delete(m.playlistReviewCache, token)
+		return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: browser source is no longer available")
+	}
+	children := make([]PlaylistAdmissionOccurrence, 0, len(requested))
+	for _, entry := range cached.summary.Entries {
+		if _, wanted := requested[entry.OccurrenceID]; !wanted {
+			continue
+		}
+		occurrence, ready := cached.occurrences[entry.OccurrenceID]
+		if !ready || !entry.Available || entry.Outcome != "ready" {
+			return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: selected playlist occurrence is not ready")
+		}
+		children = append(children, PlaylistAdmissionOccurrence{Entry: occurrence.entry, Summary: occurrence.summary, Plans: append([]outputplan.Plan(nil), occurrence.plans...)})
+		delete(requested, entry.OccurrenceID)
+	}
+	if len(requested) != 0 || len(children) != len(selected) {
+		return PlaylistSummary{}, nil, jobmodel.AuthIntent{}, errors.New("jobs: playlist selection no longer matches the review")
+	}
+	summary := cached.summary
+	summary.Entries = append([]PlaylistEntrySummary(nil), cached.summary.Entries...)
+	return summary, children, cached.auth, nil
 }
 
 // ResolvePlaylistSelection verifies renderer-selected positions against the
@@ -4831,7 +5471,11 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 		if thumbnail == "" && videoIDPattern.MatchString(id) {
 			thumbnail = "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg"
 		}
-		entry := PlaylistEntrySummary{Index: index, VideoID: id, URL: childURL, Title: title, Thumbnail: thumbnail, Available: available}
+		outcome := "unavailable"
+		if available {
+			outcome = "ready"
+		}
+		entry := PlaylistEntrySummary{Index: index, VideoID: id, URL: childURL, Title: title, Thumbnail: thumbnail, Outcome: outcome, Available: available}
 		if summary.Thumbnail == "" && available {
 			summary.Thumbnail = thumbnail
 		}
@@ -4848,11 +5492,14 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 		summary.Entries = append(summary.Entries, entry)
 		if available {
 			summary.Available++
+			summary.Ready++
 		} else {
 			summary.Unavailable++
 		}
 	}
 	summary.EntryCount = len(summary.Entries)
+	summary.Admissible = summary.Available > 0
+	summary.BrowserAccess = BrowserAccess{Mode: "public", Label: "Public access"}
 	if summary.ID == "" {
 		return PlaylistSummary{}, errors.New("analyze playlist: missing playlist identity")
 	}
@@ -4894,21 +5541,130 @@ func canonicalPlaylistChildURL(videoID, reportedURL string) (string, bool) {
 // still surface as a single video and caches private plans for single-video
 // admission.
 func (m *Manager) Analyze(ctx context.Context, rawURL string) (InfoSummary, error) {
-	summary, privatePlans, err := m.AnalyzeForAdmission(ctx, rawURL)
+	key, generation, err := m.beginRendererAnalysis(rawURL)
 	if err != nil {
 		return InfoSummary{}, err
 	}
-	if summary.VideoID != "" && len(privatePlans) > 0 {
-		m.cachePlans(summary.VideoID, privatePlans)
+	intent := jobmodel.AuthIntent{}
+	summary, privatePlans, err := m.analyzeWithIntent(ctx, rawURL, intent)
+	if err != nil {
+		return InfoSummary{}, err
+	}
+	if summary.VideoID == "" || len(privatePlans) == 0 {
+		return InfoSummary{}, errors.New("analyze: no admissible output")
+	}
+	summary.AnalysisAuthority = m.completeRendererAnalysis(key, generation, rawURL, summary.VideoID, privatePlans, intent)
+	if summary.AnalysisAuthority == "" {
+		return InfoSummary{}, errors.New("analyze: superseded by newer analysis")
 	}
 	return summary, nil
 }
 
-// AnalyzeForAdmission returns private curated plans to trusted Go callers.
-// It is not a Wails binding and its selectors must never cross the renderer
-// boundary. Collection orchestration carries the selected plan directly into
-// atomic admission instead of relying on the bounded single-video plan cache.
+// AnalyzeAuthenticated performs exactly one cookie-configured engine request
+// using the selected backend-authored binding. A successful public response is
+// valid; this mode describes supplied browser context, not login attestation.
+func (m *Manager) AnalyzeAuthenticated(ctx context.Context, rawURL, bindingRef string) (InfoSummary, error) {
+	key, generation, err := m.beginRendererAnalysis(rawURL)
+	if err != nil {
+		return InfoSummary{}, err
+	}
+	intent := jobmodel.AuthIntent{RequiresAuthenticatedExecution: true, AuthSourceBindingRef: bindingRef}
+	summary, privatePlans, err := m.analyzeWithIntent(ctx, rawURL, intent)
+	if err != nil {
+		return InfoSummary{}, err
+	}
+	if summary.VideoID == "" || len(privatePlans) == 0 {
+		return InfoSummary{}, errors.New("analyze: no admissible output")
+	}
+	summary.AnalysisAuthority = m.completeRendererAnalysis(key, generation, rawURL, summary.VideoID, privatePlans, intent)
+	if summary.AnalysisAuthority == "" {
+		return InfoSummary{}, errors.New("analyze: superseded by newer analysis")
+	}
+	return summary, nil
+}
+
+// CheckBrowserSource performs an explicit consented local source preflight.
+// It imports browser data once without making a network request and returns
+// only bounded remediation categories.
+func (m *Manager) CheckBrowserSource(ctx context.Context, bindingRef string) (BrowserSourceCheck, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	intent := jobmodel.AuthIntent{RequiresAuthenticatedExecution: true, AuthSourceBindingRef: strings.TrimSpace(bindingRef)}
+	stateStore := m.stateStoreSnapshot()
+	if stateStore == nil {
+		return browserSourceCheckResult("source-missing", "Browser source", false, false), nil
+	}
+	binding, err := resolveEnabledAuthBinding(stateStore.Snapshot(), intent)
+	if err != nil {
+		code, _ := authsource.ErrorCode(err)
+		if code == "consent-required" {
+			return browserSourceCheckResult("consent-required", authsource.Label(binding.Descriptor), false, false), nil
+		}
+		return browserSourceCheckResult("source-missing", "Browser source", false, false), nil
+	}
+	label := authsource.Label(binding.Descriptor)
+	m.mu.Lock()
+	resolver, checker := m.resolveBrowserSpec, m.checkBrowserCookies
+	closing := m.closing || m.closed
+	m.mu.Unlock()
+	if closing {
+		return BrowserSourceCheck{}, ErrClosed
+	}
+	if resolver == nil || checker == nil {
+		return browserSourceCheckResult("unsupported", label, false, false), nil
+	}
+	spec, err := resolver(binding.Descriptor)
+	if err != nil || spec == "" {
+		return browserSourceCheckResult("source-missing", label, false, false), nil
+	}
+	check, err := checker(ctx, spec)
+	if err != nil {
+		var checkErr *engine.BrowserCookieCheckError
+		if errors.As(err, &checkErr) {
+			return browserSourceCheckResult(checkErr.Code, label, false, false), nil
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return browserSourceCheckResult("canceled", label, false, false), nil
+		}
+		return browserSourceCheckResult("import-failed", label, false, false), nil
+	}
+	if !check.Usable {
+		return browserSourceCheckResult("sign-in-missing", label, false, false), nil
+	}
+	status := "ready"
+	if check.Partial {
+		status = "partial"
+	}
+	return browserSourceCheckResult(status, label, true, check.Partial), nil
+}
+
+func browserSourceCheckResult(status, label string, ready, partial bool) BrowserSourceCheck {
+	message := map[string]string{
+		"ready":             "Browser source is ready to be supplied.",
+		"partial":           "Browser source is usable, but some browser data could not be read.",
+		"consent-required":  "Current browser access consent is required.",
+		"sign-in-missing":   "No usable browser session data was found. Sign in to YouTube in this profile and try again.",
+		"permission-denied": "VidStow could not access this browser source. Review macOS permissions and try again.",
+		"source-missing":    "This browser profile is no longer available.",
+		"source-unsafe":     "This browser source could not be read safely.",
+		"unsupported":       "This browser source is not supported on this build.",
+		"canceled":          "The browser source check was canceled.",
+		"import-failed":     "The browser source could not be checked.",
+	}[status]
+	if message == "" {
+		status, message = "import-failed", "The browser source could not be checked."
+	}
+	return BrowserSourceCheck{Status: status, Label: label, Message: message, Ready: ready, Partial: partial}
+}
+
+// AnalyzeForAdmission is an explicit public-only trusted-Go seam used by the
+// existing public playlist and batch paths.
 func (m *Manager) AnalyzeForAdmission(ctx context.Context, rawURL string) (InfoSummary, []outputplan.Plan, error) {
+	return m.analyzeWithIntent(ctx, rawURL, jobmodel.AuthIntent{})
+}
+
+func (m *Manager) analyzeWithIntent(ctx context.Context, rawURL string, intent jobmodel.AuthIntent) (InfoSummary, []outputplan.Plan, error) {
 	if rawURL == "" {
 		return InfoSummary{}, nil, errors.New("analyze: empty url")
 	}
@@ -4932,21 +5688,29 @@ func (m *Manager) AnalyzeForAdmission(ctx context.Context, rawURL string) (InfoS
 		cancel(context.Canceled)
 		m.analysisWG.Done()
 	}()
-	req := engine.Request{
+	request, err := m.prepareOperationRequest(intent, engine.Request{
 		URL:      rawURL,
 		Simulate: true,
 		Playlist: engine.PlaylistOptions{Disabled: true},
 		Filesystem: engine.FilesystemOptions{
 			FfmpegLocation: ffmpegLocation,
 		},
+	})
+	if err != nil {
+		return InfoSummary{}, nil, err
 	}
-	result, err := runner(analysisCtx, req)
+	result, err := runner(analysisCtx, request)
 	if err != nil {
 		return InfoSummary{}, nil, err
 	}
 	summary, privatePlans, err := summarizeAnalysis(result.InfoJSON, rawURL)
 	if err != nil {
 		return InfoSummary{}, nil, err
+	}
+	if intent.RequiresAuthenticatedExecution {
+		summary.BrowserAccess = BrowserAccess{Mode: "browser-session", Label: "Browser session supplied"}
+	} else {
+		summary.BrowserAccess = BrowserAccess{Mode: "public", Label: "Public access"}
 	}
 	return summary, privatePlans, nil
 }
@@ -5039,6 +5803,132 @@ func summarizeAccess(info map[string]any) AccessSummary {
 func metadataText(info map[string]any, key string) string {
 	value, _ := info[key].(string)
 	return value
+}
+
+func rendererAnalysisKey(rawURL string) string {
+	trimmed := strings.TrimSpace(rawURL)
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return trimmed
+	}
+	host := strings.ToLower(strings.TrimPrefix(parsed.Hostname(), "www."))
+	videoID := ""
+	switch host {
+	case "youtube.com", "m.youtube.com", "music.youtube.com":
+		videoID = strings.TrimSpace(parsed.Query().Get("v"))
+		if videoID == "" {
+			parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+			if len(parts) == 2 && (parts[0] == "shorts" || parts[0] == "live") {
+				videoID = strings.TrimSpace(parts[1])
+			}
+		}
+	case "youtu.be":
+		videoID = strings.TrimSpace(strings.Split(strings.Trim(parsed.Path, "/"), "/")[0])
+	}
+	if videoID != "" {
+		return "youtube:" + videoID
+	}
+	return trimmed
+}
+
+// beginRendererAnalysis immediately revokes prior admission authority for the
+// same canonical item. The generation makes invocation order authoritative:
+// an older request that completes later cannot replace a newer selection.
+func (m *Manager) beginRendererAnalysis(rawURL string) (string, uint64, error) {
+	key := rendererAnalysisKey(rawURL)
+	if key == "" {
+		return "", 0, errors.New("analyze: empty url")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing || m.closed {
+		return "", 0, ErrClosed
+	}
+	generation := m.analysisGeneration[key] + 1
+	if generation == 0 {
+		generation = 1
+		for cacheKey := range m.analysisCache {
+			delete(m.analysisCache, cacheKey)
+		}
+	}
+	m.analysisGeneration[key] = generation
+	for token, cached := range m.analysisCache {
+		if cached.key == key {
+			delete(m.analysisCache, token)
+		}
+	}
+	for token, cached := range m.playlistReviewCache {
+		if cached.key == key {
+			delete(m.playlistReviewCache, token)
+		}
+	}
+	return key, generation, nil
+}
+
+func (m *Manager) completeRendererAnalysis(key string, generation uint64, rawURL, videoID string, plans []outputplan.Plan, intent jobmodel.AuthIntent) string {
+	token := uuid.NewString()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing || m.closed || m.analysisGeneration[key] != generation {
+		return ""
+	}
+	now := time.Now()
+	for cacheKey, cached := range m.analysisCache {
+		if !now.Before(cached.expiresAt) || cached.key == key || cached.videoID == videoID {
+			delete(m.analysisCache, cacheKey)
+		}
+	}
+	if len(m.analysisCache) >= 32 {
+		for cacheKey := range m.analysisCache {
+			delete(m.analysisCache, cacheKey)
+			break
+		}
+	}
+	if intent.RequiresAuthenticatedExecution {
+		delete(m.planCache, videoID)
+	} else {
+		m.planCache[videoID] = cachedPlans{plans: append([]outputplan.Plan(nil), plans...), expiresAt: now.Add(30 * time.Minute)}
+	}
+	m.analysisCache[token] = cachedAnalysis{key: key, url: rawURL, videoID: videoID, plans: append([]outputplan.Plan(nil), plans...), auth: intent, expiresAt: now.Add(30 * time.Minute)}
+	return token
+}
+
+// ResolveAnalysisAuthority treats the opaque backend token as the sole source
+// of access mode and exact binding. Renderer URL/video/plan values are used
+// only for drift detection and cannot change the cached authority.
+func (m *Manager) ResolveAnalysisAuthority(token, rawURL, videoID, planID string) (outputplan.Plan, jobmodel.AuthIntent, error) {
+	if token == "" || rawURL == "" || videoID == "" || planID == "" {
+		return outputplan.Plan{}, jobmodel.AuthIntent{}, errors.New("jobs: analysis authority is required")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing || m.closed {
+		return outputplan.Plan{}, jobmodel.AuthIntent{}, ErrClosed
+	}
+	cached, ok := m.analysisCache[token]
+	if !ok || !time.Now().Before(cached.expiresAt) {
+		delete(m.analysisCache, token)
+		return outputplan.Plan{}, jobmodel.AuthIntent{}, errors.New("jobs: analysis expired; analyze the video again")
+	}
+	if cached.url != rawURL || cached.videoID != videoID {
+		return outputplan.Plan{}, jobmodel.AuthIntent{}, errors.New("jobs: analysis authority does not match the video")
+	}
+	if cached.auth.RequiresAuthenticatedExecution {
+		if m.stateStore == nil {
+			delete(m.analysisCache, token)
+			return outputplan.Plan{}, jobmodel.AuthIntent{}, errors.New("jobs: browser source is no longer available; analyze the video again")
+		}
+		if _, err := resolveEnabledAuthBinding(m.stateStore.Snapshot(), cached.auth); err != nil {
+			delete(m.analysisCache, token)
+			return outputplan.Plan{}, jobmodel.AuthIntent{}, errors.New("jobs: browser source is no longer available; analyze the video again")
+		}
+	}
+	for _, plan := range cached.plans {
+		if plan.ID == planID {
+			return plan, cached.auth, nil
+		}
+	}
+	return outputplan.Plan{}, jobmodel.AuthIntent{}, errors.New("jobs: output option is no longer available")
 }
 
 func (m *Manager) cachePlans(videoID string, plans []outputplan.Plan) {

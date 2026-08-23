@@ -14,7 +14,13 @@ does not exist yet.
 
 ### Added
 
-- No entries yet.
+- Explicit macOS browser-session access for individual YouTube videos, Shorts,
+  and existing playlists using backend-discovered Chrome, Firefox, and Safari
+  profiles. Public-only access remains the default, consent is required, and
+  cookie values are never persisted by VidStow.
+- Authenticated playlist review with visible per-occurrence Ready, Auth required,
+  Unavailable, and Invalid outcomes, stable source ordering, atomic admission of
+  selected Ready children, exact parent counts, and durable source binding.
 
 ### Changed
 

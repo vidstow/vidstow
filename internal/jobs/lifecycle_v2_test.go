@@ -1179,9 +1179,10 @@ func TestExpiredMediaLinkFailureCopy(t *testing.T) {
 	if got := failureMessage(network, 5000, true); got != "Network error" {
 		t.Fatalf("post-processing copy = %q; want Network error", got)
 	}
-	// Unknown checkpoint evidence keeps the generic copy.
-	if got := failureMessage(errors.New("connection reset by peer"), -1, false); got != "connection reset by peer" {
-		t.Fatalf("unknown-evidence copy = %q; want raw message", got)
+	// Untyped errors may contain URLs, paths, or credential-adjacent provider
+	// details, so presentation keeps only backend-authored generic copy.
+	if got := failureMessage(errors.New("connection reset by peer COOKIE_CANARY"), -1, false); got != "Download failed" {
+		t.Fatalf("unknown-evidence copy = %q; want safe generic message", got)
 	}
 	if got := errorReason(errors.New("connection reset by peer")); got != "internal" {
 		t.Fatalf("generic reason = %q; want internal", got)

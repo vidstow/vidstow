@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/jobs"
 	"github.com/tejasa97/vidstow/internal/outputplan"
@@ -20,13 +21,20 @@ const MaxCollectionChildren = 500
 // Collection describes the durable parent identity. Policy is a reviewed,
 // server-authored label such as "video:1080p"; raw selectors never enter it.
 type Collection struct {
-	Kind       jobmodel.CollectionKind
-	PlaylistID string
-	SourceURL  string
-	Title      string
-	Channel    string
-	Thumbnail  string
-	Policy     string
+	Kind         jobmodel.CollectionKind
+	PlaylistID   string
+	SourceURL    string
+	Title        string
+	Channel      string
+	Thumbnail    string
+	Policy       string
+	AuthIntent   jobmodel.AuthIntent
+	Discovered   int
+	Ready        int
+	AuthRequired int
+	Unavailable  int
+	Invalid      int
+	Approved     int
 }
 
 // CollectionRequest contains children that the application has independently
@@ -153,10 +161,38 @@ func (c *Coordinator) AdmitCollection(ctx context.Context, root *reservationfs.R
 	if collectionID == "" || strings.ContainsAny(collectionID, `\/`) {
 		return CollectionResult{}, errors.New("admission: generated collection identity is invalid")
 	}
+	if request.Collection.AuthIntent.RequiresAuthenticatedExecution != (request.Collection.AuthIntent.AuthSourceBindingRef != "") {
+		return CollectionResult{}, errors.New("admission: invalid shared collection browser authority")
+	}
+	if request.Collection.AuthIntent.RequiresAuthenticatedExecution {
+		if request.Collection.Discovered <= 0 || request.Collection.Ready <= 0 || request.Collection.Approved != len(request.Children) ||
+			request.Collection.Approved > request.Collection.Ready || request.Collection.Discovered != request.Collection.Ready+request.Collection.AuthRequired+request.Collection.Unavailable+request.Collection.Invalid {
+			return CollectionResult{}, errors.New("admission: invalid authenticated playlist outcome counts")
+		}
+	} else if request.Collection.Discovered != 0 || request.Collection.Ready != 0 || request.Collection.AuthRequired != 0 || request.Collection.Unavailable != 0 || request.Collection.Invalid != 0 || request.Collection.Approved != 0 {
+		return CollectionResult{}, errors.New("admission: public collection cannot claim authenticated review counts")
+	}
 	prepared := make([]preparedCollectionChild, len(request.Children))
 	seenIDs := map[string]struct{}{collectionID: {}}
+	seenOccurrences := make(map[string]struct{}, len(request.Children))
+	lastSourceIndex := 0
 	for index, collectionChild := range request.Children {
 		child := collectionChild.Request
+		if child.AuthIntent != request.Collection.AuthIntent {
+			return CollectionResult{}, fmt.Errorf("admission: collection child %d browser authority differs from parent", index+1)
+		}
+		if request.Collection.AuthIntent.RequiresAuthenticatedExecution {
+			if child.SourceIndex <= lastSourceIndex || uuid.Validate(child.SourceOccurrenceID) != nil {
+				return CollectionResult{}, fmt.Errorf("admission: invalid authenticated collection occurrence %d", index+1)
+			}
+			if _, duplicate := seenOccurrences[child.SourceOccurrenceID]; duplicate {
+				return CollectionResult{}, errors.New("admission: duplicate authenticated collection occurrence")
+			}
+			seenOccurrences[child.SourceOccurrenceID] = struct{}{}
+			lastSourceIndex = child.SourceIndex
+		} else if child.SourceIndex != 0 || child.SourceOccurrenceID != "" {
+			return CollectionResult{}, errors.New("admission: public collection cannot claim authenticated occurrence authority")
+		}
 		if err := ctx.Err(); err != nil {
 			return CollectionResult{}, err
 		}
@@ -221,6 +257,9 @@ func (c *Coordinator) AdmitCollection(ctx context.Context, root *reservationfs.R
 	}
 	result := CollectionResult{Children: make([]CollectionChildResult, len(prepared))}
 	err := c.deps.Store.Transaction(nil, func(state *jobmodel.State) error {
+		if err := validateAuthIntent(*state, request.Collection.AuthIntent); err != nil {
+			return err
+		}
 		if state.NextQueueOrdinal > ^uint64(0)-uint64(len(prepared)) {
 			return errors.New("admission: queue ordinal exhausted")
 		}
@@ -245,13 +284,14 @@ func (c *Coordinator) AdmitCollection(ctx context.Context, root *reservationfs.R
 			}
 			durable := jobmodel.DurableJob{
 				ID: child.jobID, CollectionID: collectionID, CollectionIndex: index + 1,
+				SourceIndex: child.request.SourceIndex, SourceOccurrenceID: child.request.SourceOccurrenceID,
 				Revision: 1, AttemptID: child.attemptID, SessionID: child.sessionID,
 				QueueOrdinal: state.NextQueueOrdinal, Lifecycle: jobmodel.LifecyclePending,
 				Phase: jobmodel.PhasePreparing, Desired: jobmodel.DesiredRunning,
 				Request:    jobmodel.PersistedRequest{SourceURL: child.request.Queue.URL, VideoID: child.request.Queue.VideoID, Title: child.request.Queue.Title, Channel: child.request.Queue.Channel, Quality: string(quality), PlanID: child.request.Queue.PlanID, Duration: child.request.Queue.Duration},
 				Plan:       jobmodel.PersistedPlan{ID: child.plan.ID, Kind: string(child.plan.Kind), Label: child.plan.Label, Container: child.plan.Container, VideoCodec: child.plan.VideoCodec, AudioCodec: child.plan.AudioCodec, RequiresFFmpeg: child.plan.RequiresFFmpeg, PrivateSelector: child.plan.Selector},
 				OutputRoot: child.rootRef, Reservation: jobReservation, RetryMode: jobmodel.RetryModeNone,
-				CreatedAt: now, UpdatedAt: now,
+				AuthIntent: child.request.AuthIntent, CreatedAt: now, UpdatedAt: now,
 			}
 			state.Jobs = append(state.Jobs, durable)
 			state.NextQueueOrdinal++
@@ -263,7 +303,10 @@ func (c *Coordinator) AdmitCollection(ctx context.Context, root *reservationfs.R
 			ID: collectionID, Revision: 1, Kind: request.Collection.Kind, PlaylistID: request.Collection.PlaylistID,
 			SourceURL: request.Collection.SourceURL, Title: request.Collection.Title,
 			Channel: request.Collection.Channel, Thumbnail: request.Collection.Thumbnail,
-			Policy: request.Collection.Policy, ChildJobIDs: childIDs, CreatedAt: now, UpdatedAt: now,
+			Policy: request.Collection.Policy, AuthIntent: request.Collection.AuthIntent,
+			Discovered: request.Collection.Discovered, Ready: request.Collection.Ready, AuthRequired: request.Collection.AuthRequired,
+			Unavailable: request.Collection.Unavailable, Invalid: request.Collection.Invalid, Approved: request.Collection.Approved,
+			ChildJobIDs: childIDs, CreatedAt: now, UpdatedAt: now,
 		}
 		state.Collections = append(state.Collections, result.Collection)
 		return nil

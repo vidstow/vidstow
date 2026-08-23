@@ -49,8 +49,10 @@ A durable row separates three identities:
 - **Attempt ID** identifies one execution attempt and rejects stale events.
 - **Session ID** identifies one engine-owned resumable workspace.
 
-Transport URLs, cookies, request headers, and other expiring credentials are
-not durable media identity.
+Transport URLs, cookie values, request headers, and other expiring credentials
+are not durable media identity. An authenticated job instead retains an exact
+opaque browser-source binding. The binding identifies the validated local
+browser/profile descriptor without storing its filesystem path or any cookie.
 
 ## Durable lifecycle
 
@@ -75,6 +77,26 @@ manager fact and is not restored from disk as proof that a worker exists.
 
 High-frequency progress, speed, and ETA updates do not establish durable
 lifecycle authority.
+
+## Authenticated operation authority
+
+Public-only access is the default. Browser-session access requires current
+consent and an explicit renderer selection from backend-discovered macOS
+sources. The renderer cannot submit browser paths or engine cookie
+specifications.
+
+Analysis, authenticated playlist review, initial download, retry, and restored
+queue execution all resolve the same durable binding immediately before the
+engine operation. The engine imports from that source read-only for the
+operation. VidStow never writes cookies, persists cookie values, silently
+substitutes another configured profile, or retries an authenticated operation
+without its browser session. Missing or rejected session authority moves
+admitted work to Action required.
+
+Authenticated playlist review is one engine operation with one shared browser
+source. It returns one explicit outcome for every discovered occurrence. Only
+selected Ready occurrences are admitted, in source order, in one atomic parent
+and child transaction.
 
 ## Admission and destination ownership
 

@@ -21,14 +21,17 @@ import (
 
 // Settings is the JSON-serialized user settings document.
 type Settings struct {
-	DownloadFolder        string `json:"downloadFolder"`
-	FFmpegPath            string `json:"ffmpegPath"`
-	WindowWidth           int    `json:"windowWidth"`
-	WindowHeight          int    `json:"windowHeight"`
-	DownloadConcurrency   int    `json:"downloadConcurrency"`
-	PerVideoSubfolder     bool   `json:"perVideoSubfolder"`
-	ConfirmBeforeDownload bool   `json:"confirmBeforeDownload"`
-	AutomaticDiagnostics  string `json:"automaticDiagnostics"`
+	DownloadFolder              string `json:"downloadFolder"`
+	FFmpegPath                  string `json:"ffmpegPath"`
+	WindowWidth                 int    `json:"windowWidth"`
+	WindowHeight                int    `json:"windowHeight"`
+	DownloadConcurrency         int    `json:"downloadConcurrency"`
+	PerVideoSubfolder           bool   `json:"perVideoSubfolder"`
+	ConfirmBeforeDownload       bool   `json:"confirmBeforeDownload"`
+	AutomaticDiagnostics        string `json:"automaticDiagnostics"`
+	BrowserAccessEnabled        bool   `json:"browserAccessEnabled,omitempty"`
+	DefaultAuthSourceBindingRef string `json:"defaultAuthSourceBindingRef,omitempty"`
+	BrowserAccessConsentVersion int    `json:"browserAccessConsentVersion,omitempty"`
 }
 
 // HistoryEntry is one completed download shown in the Downloads page.
