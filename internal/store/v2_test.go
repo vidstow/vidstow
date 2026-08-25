@@ -1323,6 +1323,46 @@ func mustJSON(t *testing.T, value any) []byte {
 	return data
 }
 
+func TestCompletedOutputValidatesAndClones(t *testing.T) {
+	state := defaultStateV2()
+	job := testJob()
+	job.Lifecycle = jobmodel.LifecycleCompleted
+	job.CompletedOutput = &jobmodel.CompletedOutput{
+		Container: "MKV", Filename: "fallback.mkv", AbsolutePath: "/safe/root/fallback.mkv",
+		SizeBytes: 42, DeliveryNote: "Saved as MKV after MP4 compatibility fallback.",
+	}
+	state.Jobs = []jobmodel.DurableJob{job}
+	state.NextQueueOrdinal = 2
+	if err := validateState(state); err != nil {
+		t.Fatalf("valid completed output: %v", err)
+	}
+	clone := jobmodel.CloneState(state)
+	clone.Jobs[0].CompletedOutput.Filename = "changed.mkv"
+	if state.Jobs[0].CompletedOutput.Filename != "fallback.mkv" {
+		t.Fatal("CloneState aliased completed output")
+	}
+	state.Jobs[0].CompletedOutput.AbsolutePath = "/safe/root/not-the-filename.mkv"
+	if err := validateState(state); err == nil {
+		t.Fatal("mismatched completed output path passed strict validation")
+	}
+}
+
+func TestStrictStateRejectsInvalidOutputOptions(t *testing.T) {
+	state := defaultStateV2()
+	job := testJob()
+	job.Request.OutputOptions = jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleLanguages: []string{"en.*"}}
+	state.Jobs = []jobmodel.DurableJob{job}
+	state.NextQueueOrdinal = 2
+	if err := validateState(state); err == nil {
+		t.Fatal("invalid persisted request options passed strict validation")
+	}
+	state = defaultStateV2()
+	state.Settings.OutputOptions.SubtitleLanguages = []string{"en.*"}
+	if err := validateState(state); err == nil {
+		t.Fatal("invalid persisted settings options passed strict validation")
+	}
+}
+
 func TestHistoryDeliveryNoteProjection(t *testing.T) {
 	const note = "Saved as MKV after MP4 compatibility fallback."
 	v2 := historyEntryToV2(HistoryEntry{ID: "history-1", DeliveryNote: note})

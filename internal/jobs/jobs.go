@@ -676,6 +676,16 @@ func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 	if durable.OutputRoot.CanonicalPath != "" && filename != "" {
 		absolutePath = filepath.Join(durable.OutputRoot.CanonicalPath, filename)
 	}
+	container := durable.Plan.Container
+	sizeBytes := int64(0)
+	deliveryNote := ""
+	if durable.CompletedOutput != nil {
+		container = durable.CompletedOutput.Container
+		filename = durable.CompletedOutput.Filename
+		absolutePath = durable.CompletedOutput.AbsolutePath
+		sizeBytes = durable.CompletedOutput.SizeBytes
+		deliveryNote = durable.CompletedOutput.DeliveryNote
+	}
 	quality := Quality(durable.Request.Quality)
 	if quality == "" {
 		quality = QualityBest
@@ -684,12 +694,12 @@ func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 		ID: durable.ID, URL: durable.Request.SourceURL, VideoID: durable.Request.VideoID,
 		Title: durable.Request.Title, Channel: durable.Request.Channel, Quality: quality,
 		QualityLabel: durable.Plan.Label, PlanID: durable.Plan.ID, OutputKind: outputplan.Kind(durable.Plan.Kind),
-		Container: durable.Plan.Container, VideoCodec: durable.Plan.VideoCodec, AudioCodec: durable.Plan.AudioCodec,
+		Container: container, VideoCodec: durable.Plan.VideoCodec, AudioCodec: durable.Plan.AudioCodec,
 		RequiresFFmpeg: durable.Plan.RequiresFFmpeg, OutputDir: durable.OutputRoot.CanonicalPath,
 		DurationLabel: durable.Request.Duration, Status: status, Lifecycle: durable.Lifecycle,
 		Phase: durable.Phase, Desired: durable.Desired, OccupiesSlot: false, CreatedAt: durable.CreatedAt.UTC().Format(time.RFC3339Nano),
-		Filename: filename, AbsolutePath: absolutePath, ErrorReason: durable.LastErrorCode,
-		OptionsNote: durable.Request.OutputOptions.Note(),
+		Filename: filename, AbsolutePath: absolutePath, Bytes: sizeBytes, Total: sizeBytes,
+		ErrorReason: durable.LastErrorCode, OptionsNote: durable.Request.OutputOptions.Note(), DeliveryNote: deliveryNote,
 	}
 	switch status {
 	case StatusPaused:
@@ -703,6 +713,9 @@ func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 		snapshot.Message = "Canceled"
 	case StatusComplete:
 		snapshot.Message = "Completed"
+		if durable.CompletedOutput != nil && container != "" {
+			snapshot.Message = "Completed · saved as " + container
+		}
 		snapshot.Progress = 1
 		snapshot.CompletedAt = durable.UpdatedAt.UTC().Format(time.RFC3339Nano)
 	case StatusActionRequired:
@@ -983,6 +996,10 @@ func (m *Manager) settleDurable(state *jobState, lifecycle jobmodel.Lifecycle, d
 			job.ActionRequiredCode = ""
 		}
 		if lifecycle == jobmodel.LifecycleCompleted {
+			job.CompletedOutput = &jobmodel.CompletedOutput{
+				Container: snap.Container, Filename: snap.Filename, AbsolutePath: snap.AbsolutePath,
+				SizeBytes: snap.Bytes, DeliveryNote: snap.DeliveryNote,
+			}
 			entry := historyFromSnapshot(snap)
 			found := false
 			for _, existing := range document.History {
@@ -4245,9 +4262,12 @@ func (m *Manager) run(state *jobState, worker *worker) {
 	var delivery completeFileDelivery
 	var err error
 	if completeFile {
-		result, delivery, err = runCompleteFile(ctx, req, reservation, runner, handler)
+		result, delivery, err = runCompleteFile(ctx, req, reservation, runner, handler, worker.Arbiter)
 	} else {
 		result, err = runner(ctx, req, handler)
+	}
+	if delivery.Publication != nil {
+		defer delivery.Publication.FinishPublication()
 	}
 	diagnostic := terminalDownloadDiagnostic(err, sawDownload, sawPostprocess, time.Since(started))
 	if processingHeld {
@@ -4259,6 +4279,11 @@ func (m *Manager) run(state *jobState, worker *worker) {
 	canceled := errors.Is(cause, errCancelRequested)
 	if !paused && !canceled && errors.Is(cause, context.Canceled) {
 		canceled = true
+	}
+	if err == nil && delivery.Publication != nil {
+		// Publication won the arbiter. A concurrent Cancel is rejected, and a
+		// late pause cannot turn an already-published file into a paused row.
+		paused, canceled = false, false
 	}
 	if paused || canceled {
 		diagnostic = nil
@@ -4331,7 +4356,9 @@ func (m *Manager) run(state *jobState, worker *worker) {
 			}
 			switch {
 			case delivery.DegradedToSidecar:
-				terminal.DeliveryNote = "Saved as MKV with an SRT subtitle sidecar after embedding fallback."
+				terminal.DeliveryNote = "Saved as MKV with an SRT subtitle sidecar after embedding fallback; artwork and chapters could not be embedded."
+			case delivery.DegradedEmbedding:
+				terminal.DeliveryNote = "Saved as MKV after embedding fallback; artwork and chapters could not be embedded, and no subtitle track was available."
 			case delivery.UsedMKVFallback && delivery.SubtitleSidecar:
 				terminal.DeliveryNote = "Saved as MKV after MP4 compatibility fallback, with an additional SRT file."
 			case delivery.UsedMKVFallback:
@@ -5163,17 +5190,31 @@ func originalAutomaticSubtitleLanguages(raw any) []string {
 		return nil
 	}
 	seen := make(map[string]bool)
-	for code := range collection {
-		if !strings.HasSuffix(strings.ToLower(code), "-orig") {
+	for code, rawTracks := range collection {
+		if strings.HasSuffix(strings.ToLower(code), "-orig") {
+			base := code[:len(code)-len("-orig")]
+			// The base key is the only code we expose. The alias is evidence
+			// that the translation-heavy collection originated in this language.
+			if jobmodel.ValidSubtitleLanguage(base) {
+				seen[base] = true
+			}
 			continue
 		}
-		base := code[:len(code)-len("-orig")]
-		// The base key is the only code we may expose. The alias is evidence
-		// that the otherwise translation-heavy collection originated in this
-		// language; a missing base key simply means there is no safe track to
-		// list, rather than making every translation eligible again.
-		if jobmodel.ValidSubtitleLanguage(base) {
-			seen[base] = true
+		// YouTube translation URLs carry tlang; the transcribed source URL
+		// does not. This remains safe when an extractor omits the *-orig alias
+		// and prevents translated tracks from becoming an accidental default.
+		tracks, _ := rawTracks.([]any)
+		for _, rawTrack := range tracks {
+			track, ok := rawTrack.(map[string]any)
+			if !ok {
+				continue
+			}
+			rawURL, _ := track["url"].(string)
+			parsed, err := url.Parse(rawURL)
+			if err == nil && parsed.IsAbs() && parsed.Query().Get("tlang") == "" && jobmodel.ValidSubtitleLanguage(code) {
+				seen[code] = true
+				break
+			}
 		}
 	}
 	codes := make([]string, 0, len(seen))
@@ -5238,6 +5279,7 @@ func summarizeVideoLanguage(info map[string]any) string {
 		return language
 	}
 	formats, _ := info["formats"].([]any)
+	languages := make(map[string]string)
 	for _, raw := range formats {
 		format, ok := raw.(map[string]any)
 		if !ok {
@@ -5248,6 +5290,11 @@ func summarizeVideoLanguage(info map[string]any) string {
 			continue
 		}
 		if language := boundedText(metadataText(format, "language"), 16); jobmodel.ValidSubtitleLanguage(language) {
+			languages[strings.ToLower(language)] = language
+		}
+	}
+	if len(languages) == 1 {
+		for _, language := range languages {
 			return language
 		}
 	}

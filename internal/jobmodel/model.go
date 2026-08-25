@@ -353,11 +353,23 @@ type DurableJob struct {
 	// readers that predate these fields reject rows containing them, while
 	// this build decodes older rows as zero values and simply disables
 	// escalation until a new failure records fresh evidence.
-	LastFailureCommittedBytes int64     `json:"lastFailureCommittedBytes,omitempty"`
-	ZeroProgressResumes       int       `json:"zeroProgressResumes,omitempty"`
-	SessionRestarts           int       `json:"sessionRestarts,omitempty"`
-	CreatedAt                 time.Time `json:"createdAt"`
-	UpdatedAt                 time.Time `json:"updatedAt"`
+	LastFailureCommittedBytes int64            `json:"lastFailureCommittedBytes,omitempty"`
+	ZeroProgressResumes       int              `json:"zeroProgressResumes,omitempty"`
+	SessionRestarts           int              `json:"sessionRestarts,omitempty"`
+	CompletedOutput           *CompletedOutput `json:"completedOutput,omitempty"`
+	CreatedAt                 time.Time        `json:"createdAt"`
+	UpdatedAt                 time.Time        `json:"updatedAt"`
+}
+
+// CompletedOutput is the actual published primary and fallback outcome. It is
+// stored on the durable row as well as in history so a completed queue row
+// remains truthful after restart.
+type CompletedOutput struct {
+	Container    string `json:"container"`
+	Filename     string `json:"filename"`
+	AbsolutePath string `json:"absolutePath"`
+	SizeBytes    int64  `json:"sizeBytes"`
+	DeliveryNote string `json:"deliveryNote,omitempty"`
 }
 
 // PersistedRequest is deliberately limited to safe, user-originated metadata.
@@ -446,6 +458,10 @@ func CloneState(in State) State {
 	for i := range out.Jobs {
 		out.Jobs[i].Reservation.Artifacts = append([]ReservedArtifact(nil), in.Jobs[i].Reservation.Artifacts...)
 		out.Jobs[i].Request.OutputOptions = in.Jobs[i].Request.OutputOptions.Clone()
+		if in.Jobs[i].CompletedOutput != nil {
+			completed := *in.Jobs[i].CompletedOutput
+			out.Jobs[i].CompletedOutput = &completed
+		}
 	}
 	out.History = append([]HistoryEntry(nil), in.History...)
 	out.Cleanup = append([]CleanupTombstone(nil), in.Cleanup...)

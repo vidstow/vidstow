@@ -817,6 +817,9 @@ func validateState(state jobmodel.State) error {
 		if job.LastFailureCommittedBytes < 0 || job.ZeroProgressResumes < 0 || job.ZeroProgressResumes > maxRetryEscalationCounter || job.SessionRestarts < 0 || job.SessionRestarts > maxRetryEscalationCounter {
 			return errors.New("store: invalid retry escalation counters")
 		}
+		if job.CompletedOutput != nil && (job.Lifecycle != jobmodel.LifecycleCompleted || !validCompletedOutput(*job.CompletedOutput) || filepath.Join(job.OutputRoot.CanonicalPath, job.CompletedOutput.Filename) != job.CompletedOutput.AbsolutePath) {
+			return errors.New("store: invalid completed output")
+		}
 		if job.Lifecycle == jobmodel.LifecycleActionRequired && (job.ActionRequiredCode == "migration-reanalysis-required" || job.ActionRequiredCode == "migration-private-plan-unverified") && job.Phase == jobmodel.PhasePreparing && job.OutputRoot == (jobmodel.OutputRootRef{}) && job.Reservation.GroupID == "" && job.Reservation.Directory == (jobmodel.OutputRootRef{}) && len(job.Reservation.Artifacts) == 0 {
 			// V1 has no engine-rendered artifact declaration. Preserve such rows
 			// for user repair rather than inventing an unsafe reservation.
@@ -1085,7 +1088,12 @@ func validTimestampPair(created, updated time.Time) bool {
 }
 func validRequest(r jobmodel.PersistedRequest) bool {
 	sourceOK := r.SourceURL == "" && safeVideoID(r.VideoID) || validSourceURL(r.SourceURL, r.VideoID)
-	return sourceOK && validText(r.VideoID, maxIDBytes, true) && validText(r.Title, maxText, true) && validText(r.Channel, maxText, false) && validText(r.Quality, maxShortText, true) && validIDBounded(r.PlanID, maxIDBytes, false) && validText(r.Duration, maxShortText, false)
+	return sourceOK && validText(r.VideoID, maxIDBytes, true) && validText(r.Title, maxText, true) && validText(r.Channel, maxText, false) && validText(r.Quality, maxShortText, true) && validIDBounded(r.PlanID, maxIDBytes, false) && validText(r.Duration, maxShortText, false) && r.OutputOptions.Validate() == nil
+}
+func validCompletedOutput(output jobmodel.CompletedOutput) bool {
+	return validText(output.Container, maxShortText, true) && validBasename(output.Filename) &&
+		validText(output.AbsolutePath, maxPathBytes, true) && filepath.IsAbs(output.AbsolutePath) && filepath.Clean(output.AbsolutePath) == output.AbsolutePath &&
+		output.SizeBytes >= 0 && validText(output.DeliveryNote, maxText, false)
 }
 func validPlan(p jobmodel.PersistedPlan) bool {
 	return (p.ID == "" || validID(p.ID)) && validText(p.Kind, maxShortText, false) && validText(p.Label, maxText, false) && validText(p.Container, maxShortText, false) && validText(p.VideoCodec, maxShortText, false) && validText(p.AudioCodec, maxShortText, false) && validPrivateSelector(p.PrivateSelector)
@@ -1130,7 +1138,7 @@ func validHistory(h jobmodel.HistoryEntry) bool {
 
 func validSettings(s jobmodel.Settings) bool {
 	validDiagnostics := s.AutomaticDiagnostics == "" || s.AutomaticDiagnostics == "enabled" || s.AutomaticDiagnostics == "disabled"
-	return validDiagnostics && validText(s.DownloadFolder, maxPathBytes, false) && validText(s.FFmpegPath, maxPathBytes, false) && s.WindowWidth >= 0 && s.WindowWidth <= 10000 && s.WindowHeight >= 0 && s.WindowHeight <= 10000
+	return validDiagnostics && s.OutputOptions.Validate() == nil && validText(s.DownloadFolder, maxPathBytes, false) && validText(s.FFmpegPath, maxPathBytes, false) && s.WindowWidth >= 0 && s.WindowWidth <= 10000 && s.WindowHeight >= 0 && s.WindowHeight <= 10000
 }
 func validatePreconditionsInput(values []JobPrecondition) error {
 	if len(values) > maxPreconditions {
