@@ -90,7 +90,7 @@ func runCompleteFile(
 		return published, completeFileDelivery{Container: "MP4", SubtitleSidecar: sidecar, Publication: publication}, nil
 	}
 	_ = os.RemoveAll(attemptRoot)
-	if !completeFileFallbackEligible(ctx, err, sawPostprocess) {
+	if !completeFileFallbackEligible(ctx, err, sawPostprocess, false) {
 		return engine.Result{}, completeFileDelivery{}, err
 	}
 
@@ -103,7 +103,7 @@ func runCompleteFile(
 		return published, completeFileDelivery{Container: "MKV", UsedMKVFallback: true, SubtitleSidecar: sidecar, Publication: publication}, nil
 	}
 	_ = os.RemoveAll(attemptRoot)
-	if !completeFileFallbackEligible(ctx, err, sawPostprocess) || !base.Subtitles.Embed {
+	if !base.Subtitles.Embed || !completeFileFallbackEligible(ctx, err, sawPostprocess, true) {
 		return engine.Result{}, completeFileDelivery{}, err
 	}
 
@@ -158,20 +158,57 @@ func completeFileAttemptRequest(base engine.Request, reservation jobmodel.Reserv
 	return request, nil
 }
 
-func completeFileFallbackEligible(ctx context.Context, err error, sawPostprocess bool) bool {
+func completeFileFallbackEligible(ctx context.Context, err error, sawPostprocess, subtitleDegradation bool) bool {
 	if err == nil || ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || !sawPostprocess {
 		return false
 	}
-	var engineErr *engine.Error
-	if !errors.As(err, &engineErr) {
-		return true
-	}
-	switch engineErr.Category {
-	case engine.ErrorUnsupported, engine.ErrorInvalidInput, engine.ErrorInternal:
-		return true
-	default:
+	// A filesystem/resource failure cannot become compatible by downloading the
+	// same media again in another container. Fail once and preserve the original
+	// error instead of multiplying disk or permission failures.
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) || errors.Is(err, os.ErrPermission) {
 		return false
 	}
+	foundTyped, compatible := completeFileTypedFailureCompatible(err, subtitleDegradation, 0)
+	return foundTyped && compatible
+}
+
+func completeFileTypedFailureCompatible(err error, subtitleDegradation bool, depth int) (bool, bool) {
+	if err == nil {
+		return false, true
+	}
+	if depth > 16 {
+		return false, false
+	}
+	foundTyped := false
+	if engineErr, ok := err.(*engine.Error); ok {
+		foundTyped = true
+		switch engineErr.Category {
+		case engine.ErrorUnsupported, engine.ErrorInvalidInput, engine.ErrorInternal:
+		default:
+			return true, false
+		}
+		operation := strings.ToLower(strings.TrimSpace(engineErr.Op))
+		compatible := operation == "embed subtitles" || (!subtitleDegradation && (operation == "run postprocessors" || operation == "embed metadata" || operation == "embed thumbnail"))
+		if !compatible {
+			return true, false
+		}
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, cause := range joined.Unwrap() {
+			childFound, childCompatible := completeFileTypedFailureCompatible(cause, subtitleDegradation, depth+1)
+			foundTyped = foundTyped || childFound
+			if !childCompatible {
+				return foundTyped, false
+			}
+		}
+		return foundTyped, true
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		childFound, childCompatible := completeFileTypedFailureCompatible(cause, subtitleDegradation, depth+1)
+		return foundTyped || childFound, childCompatible
+	}
+	return foundTyped, true
 }
 
 func publishCompleteFile(ctx context.Context, arbiter *engine.PublicationArbiter, result engine.Result, attemptRoot string, reservation jobmodel.ReservationSet) (engine.Result, bool, *engine.PublicationReservation, error) {
