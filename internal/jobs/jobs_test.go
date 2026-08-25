@@ -495,6 +495,8 @@ func TestPlanSubmissionUsesCachedPrivateSelectorAndMP3Postprocessor(t *testing.T
 func TestSubmitPropagatesOutputOptionsToEngineRequest(t *testing.T) {
 	subtitles := jobmodel.OutputOptions{
 		SubtitleMode:         jobmodel.SubtitleModeEmbed,
+		SubtitleSidecar:      true,
+		SubtitleFormat:       "srt",
 		SubtitleLanguages:    []string{"en", "de"},
 		SubtitleAutoCaptions: true,
 		EmbedMetadata:        true,
@@ -537,11 +539,14 @@ func TestSubmitPropagatesOutputOptionsToEngineRequest(t *testing.T) {
 					t.Fatalf("Embed = %v; want %v", got, options.SubtitleMode == jobmodel.SubtitleModeEmbed)
 				}
 				wantConvert := options.SubtitleFormat
-				if options.SubtitleMode == jobmodel.SubtitleModeEmbed {
+				if options.SubtitleMode == jobmodel.SubtitleModeEmbed && !options.SubtitleSidecar {
 					wantConvert = "vtt"
 				}
 				if req.Subtitles.ConvertFormat != wantConvert {
 					t.Fatalf("ConvertFormat = %q; want %q", req.Subtitles.ConvertFormat, wantConvert)
+				}
+				if req.Subtitles.KeepFiles != options.SubtitleSidecar {
+					t.Fatalf("KeepFiles = %v; want %v", req.Subtitles.KeepFiles, options.SubtitleSidecar)
 				}
 				if strings.Join(req.Subtitles.Languages, ",") != strings.Join(options.SubtitleLanguages, ",") {
 					t.Fatalf("Languages = %v; want %v", req.Subtitles.Languages, options.SubtitleLanguages)
