@@ -359,7 +359,7 @@
     border-top: 1px solid var(--border-subtle);
   }
   .missing-note { grid-column: 1 / -1; margin: 0; color: var(--status-warning); font-size: var(--fs-xs); }
-  .delivery-note { grid-column: 1 / -1; margin: 0; color: var(--text-secondary); font-size: var(--fs-xs); font-weight: 650; }
+  .delivery-note { grid-column: 1 / -1; margin: 0; color: var(--text-secondary); font-size: var(--fs-xs); font-weight: 500; }
   .path-full {
     min-width: 0;
     margin: 0;

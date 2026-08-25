@@ -321,6 +321,26 @@
     return 'no chapter markers reported';
   }
 
+  function preferredLanguageLabel(code: string): string {
+    const labels: Record<string, string> = {
+      en: 'English', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian', pt: 'Portuguese',
+      ja: 'Japanese', ko: 'Korean', zh: 'Chinese', ar: 'Arabic', hi: 'Hindi', ru: 'Russian',
+    };
+    return labels[code] ? `${labels[code]} (${code})` : code;
+  }
+
+  function playlistSubtitleOutcome(options: OutputOptions): string {
+    if (options.subtitleMode !== 'embed') return 'Off';
+    const language = options.subtitleLanguages?.[0];
+    return language ? `On · ${preferredLanguageLabel(language)}` : 'On · each video’s own language';
+  }
+
+  function settingsSubtitleOutcome(options: OutputOptions): string {
+    if (options.subtitleMode !== 'embed' && options.subtitleMode !== 'sidecar') return 'Off';
+    const language = options.subtitleLanguages?.[0];
+    return language ? `On · ${preferredLanguageLabel(language)}` : 'On · each video’s own language';
+  }
+
   async function analyze() {
     const submittedURL = url.trim();
     if (!submittedURL) return;
@@ -623,6 +643,14 @@
               <option value="256">MP3 · 256 kbps</option>
             </select>
           {/if}
+          {#if batchTab === 'video'}
+            <p class="batch-complete-note">
+              Subtitles: {settingsSubtitleOutcome($settings.outputOptions)} (Settings default)
+              · SRT: {(($settings.outputOptions.subtitleMode === 'embed' || $settings.outputOptions.subtitleMode === 'sidecar') && ($settings.outputOptions.subtitleSidecar || $settings.outputOptions.subtitleMode === 'sidecar')) ? 'On' : 'Off'}
+              · Title &amp; channel details: {$settings.outputOptions.embedMetadata ? 'On' : 'Off'}
+              · Artwork and chapters: automatic
+            </p>
+          {/if}
         </div>
 
         <footer class="batch-save-bar">
@@ -691,6 +719,11 @@
               <option value="256">MP3 · 256 kbps</option>
             </select>
           {/if}
+          <OutputOptionsEditor
+            bind:value={playlistOptions}
+            collectionMode={true}
+            allowSubtitles={playlistTab === 'video'}
+          />
         </div>
       </header>
 
@@ -735,18 +768,14 @@
       {#if playlistTab === 'video'}
         <aside class="complete-summary" aria-label="Complete file contents">
           <strong>Complete video files</strong>
-          <span>Subtitles: {playlistOptions.subtitleMode === 'embed' ? (playlistOptions.subtitleLanguages?.[0] ? `On · ${playlistOptions.subtitleLanguages[0]}` : 'On · each video’s own language') : 'Off'}. Artwork and chapter markers are included when provided. VidStow targets MP4 and falls back to MKV when needed.</span>
+          <span>Subtitles: {playlistSubtitleOutcome(playlistOptions)}.</span>
+          <span>Artwork and chapter markers are included when provided.</span>
+          {#if playlistOptions.subtitleMode === 'embed' && playlistOptions.subtitleSidecar}<span>An additional .srt will be saved when a track is available.</span>{/if}
+          <span>MP4 preferred · MKV fallback when needed.</span>
+          <label class="summary-option"><input type="checkbox" checked={!!playlistOptions.embedMetadata} on:change={(event) => (playlistOptions = { ...playlistOptions, embedMetadata: event.currentTarget.checked })} /> Title &amp; channel details</label>
           {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required before these videos can be added. Configure it in Settings.</span>{/if}
         </aside>
       {/if}
-
-      <OutputOptionsEditor
-        bind:value={playlistOptions}
-        collectionMode={true}
-        allowSubtitles={playlistTab === 'video'}
-        ffmpegAvailable={$ffmpeg.available}
-        on:goto-settings={() => dispatch('goto', 'settings')}
-      />
 
       <footer class="save-bar">
         <div class="destination">
@@ -788,6 +817,12 @@
             <button type="button" aria-pressed={tab === 'video'} class:active={tab === 'video'} on:click={() => setTab('video')}>Video</button>
             <button type="button" aria-pressed={tab === 'audio'} class:active={tab === 'audio'} on:click={() => setTab('audio')}>Audio</button>
           </div>
+          <OutputOptionsEditor
+            bind:value={videoOptions}
+            languages={preview?.subtitles ?? []}
+            videoLanguage={preview.language}
+            allowSubtitles={tab === 'video'}
+          />
         </div>
       </header>
 
@@ -817,19 +852,12 @@
           <span>Subtitles: {subtitleOutcome(preview, videoOptions)}.</span>
           <span>Artwork: {preview.thumbnail ? 'thumbnail artwork will be embedded' : 'none reported'}.</span>
           <span>Chapters: {chapterOutcome(preview)}.</span>
+          {#if videoOptions.subtitleMode === 'embed' && videoOptions.subtitleSidecar}<span>Additional SRT: saved when the selected track is available.</span>{/if}
           <span>Container: likely MP4, with MKV fallback when needed.</span>
+          <label class="summary-option"><input type="checkbox" checked={!!videoOptions.embedMetadata} on:change={(event) => (videoOptions = { ...videoOptions, embedMetadata: event.currentTarget.checked })} /> Title &amp; channel details</label>
           {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required to create this complete file. Configure it in Settings before adding.</span>{/if}
         </aside>
       {/if}
-
-      <OutputOptionsEditor
-        bind:value={videoOptions}
-        languages={preview?.subtitles ?? []}
-        videoLanguage={preview.language}
-        allowSubtitles={tab === 'video'}
-        ffmpegAvailable={$ffmpeg.available}
-        on:goto-settings={() => dispatch('goto', 'settings')}
-      />
 
       <footer class="save-bar">
         <div class="destination">
@@ -877,14 +905,14 @@
   .batch-review {
     display: flex;
     min-height: 0;
-    margin: 14px 20px 20px;
+    margin: 10px 12px 12px;
     flex-direction: column;
     border: 1px solid var(--border-default);
-    border-radius: var(--r-lg);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-card);
+    border-radius: var(--r-md);
+    background: var(--surface-base);
+    box-shadow: none;
   }
-  .batch-composer { padding: var(--sp-5); gap: var(--sp-3); overflow: auto; }
+  .batch-composer { padding: var(--sp-3); gap: var(--sp-3); overflow: auto; }
   .batch-composer > label { font-weight: 700; }
   .batch-composer textarea {
     width: 100%;
@@ -915,16 +943,16 @@
   .batch-lines { display: flex; min-height: 0; flex: 1; overflow: auto; flex-direction: column; border-top: 1px solid var(--border-subtle); }
   .batch-line {
     display: grid;
-    grid-template-columns: 34px 112px minmax(0, 1fr) minmax(150px, 230px);
+    grid-template-columns: 28px 64px minmax(0, 1fr) minmax(130px, 210px);
     align-items: center;
     gap: var(--sp-3);
-    padding: var(--sp-3) var(--sp-4);
+    padding: 7px 12px;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-base);
   }
   .batch-line-number { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: center; }
   .batch-thumbnail {
-    width: 112px;
+    width: 64px;
     aspect-ratio: 16 / 9;
     position: relative;
     display: grid;
@@ -955,15 +983,16 @@
     display: grid;
     grid-template-columns: minmax(180px, 1fr) auto minmax(170px, 220px);
     align-items: center;
-    gap: var(--sp-4);
-    padding: var(--sp-4);
+    gap: 8px var(--sp-3);
+    padding: 9px 12px;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-sunken);
   }
   .batch-policy > div:first-child { display: flex; flex-direction: column; }
   .batch-policy small { color: var(--text-muted); }
-  .batch-policy select { height: 40px; }
-  .batch-save-bar { padding: var(--sp-4); }
+  .batch-policy select { height: 32px; font-size: var(--fs-xs); }
+  .batch-complete-note { grid-column: 1 / -1; margin: -1px 0 0; color: var(--text-muted); font-size: var(--fs-xs); }
+  .batch-save-bar { padding: 9px 12px; }
   .batch-save-bar .destination { flex: 1; min-width: 0; }
 
   .analyze-bar {
@@ -1015,21 +1044,21 @@
   .workspace {
     flex: 1;
     min-height: 0;
-    margin: 14px 20px 20px;
+    margin: 10px 12px 12px;
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border-default);
-    border-radius: var(--r-lg);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-card);
+    border-radius: var(--r-md);
+    background: var(--surface-base);
+    box-shadow: none;
     overflow: hidden;
   }
   .identity {
     display: grid;
-    grid-template-columns: 88px minmax(0, 1fr) auto;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
     gap: 14px;
     align-items: center;
-    padding: 14px 16px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
   }
@@ -1039,7 +1068,7 @@
     background: var(--surface-sunken);
   }
   .thumb {
-    width: 88px;
+    width: 72px;
     aspect-ratio: 16 / 9;
     position: relative;
   }
@@ -1132,7 +1161,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 12px;
-    padding: 10px 16px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-subtle);
     flex-shrink: 0;
@@ -1170,7 +1199,7 @@
 
   .entry-list {
     flex: 1;
-    min-height: 220px;
+    min-height: 150px;
     overflow: auto;
   }
   .entry {
@@ -1178,7 +1207,7 @@
     grid-template-columns: 16px 36px 64px minmax(0, 1fr) auto;
     gap: 10px;
     align-items: center;
-    padding: 8px 16px;
+    padding: 7px 12px;
     border-bottom: 1px solid var(--border-subtle);
     cursor: pointer;
   }
@@ -1208,23 +1237,25 @@
   .complete-summary {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 12px;
-    padding: 10px 16px;
+    gap: 3px 10px;
+    padding: 7px 12px;
     border-top: 1px solid var(--border-subtle);
-    background: var(--accent-soft);
+    background: var(--surface-subtle);
     color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.45;
   }
   .complete-summary strong { flex-basis: 100%; color: var(--text-primary); font-size: var(--fs-xs); }
   .complete-summary .ffmpeg-required { flex-basis: 100%; color: var(--status-warning); font-weight: 700; }
+  .summary-option { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-secondary); font-size: 10px; white-space: nowrap; cursor: pointer; }
+  .summary-option input { margin: 0; }
 
   .save-bar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 10px;
     align-items: center;
-    padding: 12px 16px;
+    padding: 9px 12px;
     border-top: 1px solid var(--border-subtle);
     background: var(--surface-base);
     flex-shrink: 0;
@@ -1248,7 +1279,7 @@
     color: var(--text-muted);
     font-size: 11px;
   }
-  .queue { min-width: 168px; min-height: 40px; gap: 6px; }
+  .queue { min-width: 168px; min-height: 30px; gap: 6px; }
   .queue.queued:disabled {
     border-color: rgba(34, 197, 94, 0.4);
     background: var(--status-success-soft);
@@ -1271,8 +1302,8 @@
     gap: 12px;
     align-items: center;
     width: 100%;
-    min-height: 52px;
-    padding: 10px 18px;
+    min-height: 44px;
+    padding: 8px 14px;
     border-top: 1px solid var(--border-subtle);
     text-align: left;
     color: var(--text-secondary);
