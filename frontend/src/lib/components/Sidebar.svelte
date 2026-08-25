@@ -1,24 +1,26 @@
 <script lang="ts">
-  import { route, counts, ffmpeg, history } from '../stores.js';
-  import brandMark from '../../assets/images/brand-mark.svg';
+  import { counts, ffmpeg, history, route } from '../stores.js';
+
   type Route = 'home' | 'queue' | 'downloads' | 'settings' | 'about';
+  type Item = { key: Route; label: string; icon: 'home' | 'queue' | 'downloads' | 'settings' | 'about' };
 
   $: c = $counts;
   $: saved = $history.length;
 
-  const items: Array<{ key: Route; label: string; icon: string }> = [
-    { key: 'home',      label: 'Home',      icon: 'home' },
-    { key: 'queue',     label: 'Queue',     icon: 'queue' },
+  const items: Item[] = [
+    { key: 'home', label: 'Home', icon: 'home' },
+    { key: 'queue', label: 'Queue', icon: 'queue' },
     { key: 'downloads', label: 'Downloads', icon: 'downloads' },
   ];
-  const utility: Array<{ key: Route; label: string; icon: string }> = [
+  const utility: Item[] = [
     { key: 'settings', label: 'Settings', icon: 'settings' },
-    { key: 'about',    label: 'About',    icon: 'about' },
+    { key: 'about', label: 'About', icon: 'about' },
   ];
 
   function go(target: Route) {
     route.set(target);
   }
+
   function openFFmpeg() {
     window.runtime?.BrowserOpenURL?.('https://ffmpeg.org/download.html');
   }
@@ -26,13 +28,10 @@
 
 <aside class="sidebar" aria-label="Primary">
   <button type="button" class="brand" onclick={() => go('home')} aria-label="VidStow home">
-    <span class="brand-mark" aria-hidden="true">
-      <img src={brandMark} alt="" width="26" height="26" />
-    </span>
-    <span class="brand-title">VidStow</span>
+    VidStow
   </button>
 
-  <nav aria-label="Primary navigation">
+  <nav class="primary" aria-label="Primary navigation">
     <ul>
       {#each items as item}
         <li>
@@ -45,15 +44,11 @@
           >
             <span class="nav-icon" aria-hidden="true">
               {#if item.icon === 'home'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/></svg>
+                <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4Z" /></svg>
               {:else if item.icon === 'queue'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/></svg>
-              {:else if item.icon === 'downloads'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
-              {:else if item.icon === 'about'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 11v5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
+                <svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h14" /></svg>
               {:else}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                <svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14" /></svg>
               {/if}
             </span>
             <span class="nav-label">{item.label}</span>
@@ -61,7 +56,7 @@
               <span class="nav-badge" aria-label={`${c.active + c.pending} jobs`}>{c.active + c.pending}</span>
             {/if}
             {#if item.key === 'downloads' && saved > 0}
-              <span class="nav-badge subtle" aria-label={`${saved} downloads`}>{saved}</span>
+              <span class="nav-badge" aria-label={`${saved} downloads`}>{saved}</span>
             {/if}
           </button>
         </li>
@@ -82,9 +77,9 @@
           >
             <span class="nav-icon" aria-hidden="true">
               {#if item.icon === 'about'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 11v5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>
               {:else}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7a7 7 0 0 0-.8-1.8l.9-1.9L15 4l-1.9.9a7 7 0 0 0-2.1 0L9 4 6.9 6.1 7.8 8a7 7 0 0 0-.8 1.8l-2 .7v3l2 .7a7 7 0 0 0 .8 1.8l-.9 1.9L9 20l2-.9a7 7 0 0 0 2.1 0l1.9.9 2.1-2.1-.9-1.9a7 7 0 0 0 .8-1.8Z" /></svg>
               {/if}
             </span>
             <span class="nav-label">{item.label}</span>
@@ -94,14 +89,11 @@
     </ul>
   </nav>
 
-  <div class="ffmpeg" aria-label="FFmpeg status">
-    <span class="dot" class:ok={$ffmpeg.available} class:missing={!$ffmpeg.available} aria-hidden="true"></span>
-    <div class="ffmpeg-copy">
-      <strong>FFmpeg</strong>
-      <span>{$ffmpeg.available ? 'Ready' : 'Required'}</span>
-    </div>
+  <div class="ffmpeg" class:ready={$ffmpeg.available} aria-label={$ffmpeg.available ? 'FFmpeg ready' : 'FFmpeg required'}>
+    <span class="dot" aria-hidden="true"></span>
+    <span>{$ffmpeg.available ? 'FFmpeg ready' : 'FFmpeg required'}</span>
     {#if !$ffmpeg.available}
-      <button type="button" class="ffmpeg-link" onclick={openFFmpeg} aria-label="Open FFmpeg download page">Get</button>
+      <button type="button" onclick={openFFmpeg} aria-label="Open FFmpeg download page">Get</button>
     {/if}
   </div>
 </aside>
@@ -109,128 +101,115 @@
 <style>
   .sidebar {
     width: var(--sidebar-w);
-    flex-shrink: 0;
-    background: var(--surface-sidebar);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    min-width: var(--sidebar-w);
+    height: 100%;
     display: flex;
     flex-direction: column;
-    /* Keep navigation below the native macOS traffic-light/titlebar region. */
-    padding: 38px 10px 12px;
+    flex-shrink: 0;
+    padding: 0 7px 9px;
+    border-right: 1px solid var(--border-default);
+    background: var(--surface-sidebar);
   }
 
   .brand {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    padding: 2px 8px 16px;
-    color: #F4EEE4;
-    text-decoration: none;
-    border-radius: var(--r-sm);
-  }
-  .brand-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 7px;
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  .brand-mark img {
-    width: 100%;
-    height: 100%;
-    display: block;
-    object-fit: cover;
-  }
-  .brand-title {
-    font-size: 15px;
+    height: var(--topbar-h);
+    min-height: var(--topbar-h);
+    padding: 0 28px;
+    color: var(--text-primary);
+    font-size: 11px;
     font-weight: 650;
     letter-spacing: -0.01em;
+    text-align: left;
   }
 
-  nav { flex: 1; padding-top: 2px; }
-  nav.utility { flex: 0; padding-top: 8px; }
+  nav.primary {
+    padding-top: 16px;
+    flex: 1;
+  }
+  nav.utility { padding-top: 8px; }
   nav ul {
-    list-style: none;
+    display: flex;
     margin: 0;
     padding: 0;
-    display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
+    list-style: none;
   }
 
   .nav-item {
     width: 100%;
+    min-height: 32px;
     display: flex;
     align-items: center;
-    gap: var(--sp-3);
-    min-height: 38px;
-    padding: 0 11px;
-    border-radius: var(--r-sm);
-    color: #C9BBA8;
-    font-size: 13.5px;
-    transition: background 120ms ease, color 120ms ease;
+    gap: 9px;
+    padding: 0 8px;
+    border-radius: var(--r-md);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 450;
+    transition: background 100ms ease, color 100ms ease;
   }
-
   .nav-item:hover {
-    background: rgba(255, 251, 245, 0.08);
-    color: #F4EEE4;
+    background: rgba(255, 255, 255, 0.045);
+    color: var(--text-primary);
   }
-
   .nav-item.active {
-    background: rgba(255, 251, 245, 0.12);
-    color: #FFFBF5;
-    box-shadow: inset 2px 0 0 var(--accent-400);
+    background: var(--surface-active);
+    color: var(--text-primary);
+    font-weight: 550;
   }
 
-  .nav-icon { display: inline-flex; }
-
-  .nav-label { flex: 1; text-align: left; }
-
+  .nav-icon {
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+  .nav-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .nav-label { min-width: 0; flex: 1; text-align: left; }
   .nav-badge {
-    background: var(--accent-500);
-    color: var(--text-on-accent);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    padding: 1px 8px;
+    min-width: 16px;
+    height: 16px;
+    display: inline-grid;
+    padding: 0 4px;
+    place-items: center;
     border-radius: var(--r-full);
-    min-width: 22px;
-    text-align: center;
-  }
-  .nav-badge.subtle {
-    background: rgba(255, 255, 255, 0.12);
-    color: #C9BBA8;
+    background: var(--border-strong);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
   }
 
   .ffmpeg {
+    min-height: 26px;
     display: flex;
     align-items: center;
-    gap: var(--sp-2);
-    padding: 10px;
-    margin-top: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--r-sm);
-    background: rgba(255, 255, 255, 0.03);
+    gap: 8px;
+    padding: 0 10px;
+    color: var(--text-muted);
+    font-size: 9px;
+    white-space: nowrap;
   }
   .ffmpeg .dot {
-    width: 8px;
-    height: 8px;
+    width: 5px;
+    height: 5px;
+    flex: 0 0 auto;
     border-radius: 50%;
-    flex-shrink: 0;
-    background: #B9BCC3;
+    background: var(--status-danger);
   }
-  .ffmpeg .dot.ok { background: #3FBF6F; }
-  .ffmpeg .dot.missing { background: #E05D54; }
-  .ffmpeg-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .ffmpeg-copy strong { color: #F4EEE4; font-size: 12px; font-weight: 600; }
-  .ffmpeg-copy span { color: #C9BBA8; font-size: 11px; margin-top: 1px; }
-  .ffmpeg-link {
+  .ffmpeg.ready .dot { background: var(--status-success); }
+  .ffmpeg button {
+    margin-left: auto;
     color: var(--accent-400);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border: 1px solid rgba(79, 127, 240, 0.4);
-    border-radius: var(--r-sm);
+    font-size: 9px;
   }
 </style>

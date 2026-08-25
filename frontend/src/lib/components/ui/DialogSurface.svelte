@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { trapModalFocus } from '../../lifecycle-ui/modal.js';
   import Button from './Button.svelte';
 
   interface Props {
@@ -37,7 +38,15 @@
 
 {#if open}
   <div class="overlay" role="presentation" onclick={onOverlayClick}>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <div
+      class="dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={title ? 'dialog-title' : undefined}
+      aria-label={title ? undefined : 'Dialog'}
+      tabindex="-1"
+      use:trapModalFocus
+    >
       <header class="header">
         {#if title}<h2 id="dialog-title">{title}</h2>{/if}
         {#if closable}
@@ -60,16 +69,16 @@
     inset: 0;
     display: grid;
     place-items: center;
-    padding: var(--sp-5);
-    background: rgba(24, 25, 28, 0.45);
+    padding: var(--sp-4);
+    background: rgba(0, 0, 0, 0.72);
     z-index: 100;
-    backdrop-filter: blur(2px);
+    backdrop-filter: blur(3px);
   }
   .dialog {
     width: min(460px, 94vw);
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-lg);
     box-shadow: var(--shadow-modal);
     overflow: hidden;
   }
@@ -78,16 +87,18 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-3);
-    padding: var(--sp-4);
-    border-bottom: 1px solid var(--border-subtle);
+    min-height: 42px;
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: 1px solid var(--border-default);
   }
-  .header h2 { margin: 0; font-size: var(--fs-lg); font-weight: 600; }
-  .body { padding: var(--sp-4); color: var(--text-secondary); font-size: var(--fs-sm); }
+  .header h2 { margin: 0; font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.015em; }
+  .body { padding: var(--sp-3); color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.5; }
   .footer {
     display: flex;
     justify-content: flex-end;
     gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-4);
-    border-top: 1px solid var(--border-subtle);
+    padding: var(--sp-2) var(--sp-3);
+    border-top: 1px solid var(--border-default);
+    background: var(--surface-base);
   }
 </style>
