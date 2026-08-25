@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/reservationfs"
@@ -582,6 +583,31 @@ func TestQueueTelemetryLabelsAreSafeAndHumanReadable(t *testing.T) {
 				t.Fatalf("queueETALabel(%v) = %q; want %q", test.in, got, test.want)
 			}
 		})
+	}
+}
+
+func TestStateFromDurableRestoresActualMKVDelivery(t *testing.T) {
+	now := time.Now().UTC()
+	root := t.TempDir()
+	durable := jobmodel.DurableJob{
+		ID: "completed", Revision: 2, AttemptID: "attempt", SessionID: "0123456789abcdef0123456789abcdef", QueueOrdinal: 1,
+		Lifecycle: jobmodel.LifecycleCompleted, Phase: jobmodel.PhaseReadyToPublish, Desired: jobmodel.DesiredRunning,
+		Request:     jobmodel.PersistedRequest{SourceURL: "https://www.youtube.com/watch?v=abc12345678", VideoID: "abc12345678", Title: "Demo", Quality: "best"},
+		Plan:        jobmodel.PersistedPlan{ID: "video-1080-mp4", Kind: "video", Label: "1080p", Container: "MP4"},
+		OutputRoot:  jobmodel.OutputRootRef{CanonicalPath: root},
+		Reservation: jobmodel.ReservationSet{Artifacts: []jobmodel.ReservedArtifact{{Kind: "primary", Identity: "primary", Basename: "Demo.mp4"}}},
+		CompletedOutput: &jobmodel.CompletedOutput{
+			Container: "MKV", Filename: "Demo.mkv", AbsolutePath: filepath.Join(root, "Demo.mkv"), SizeBytes: 42,
+			DeliveryNote: "Saved as MKV after MP4 compatibility fallback.",
+		},
+		CreatedAt: now, UpdatedAt: now,
+	}
+	state, err := stateFromDurable(durable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.snap.Container != "MKV" || state.snap.Filename != "Demo.mkv" || state.snap.AbsolutePath != filepath.Join(root, "Demo.mkv") || state.snap.Bytes != 42 || state.snap.DeliveryNote == "" {
+		t.Fatalf("restored snapshot = %#v", state.snap)
 	}
 }
 

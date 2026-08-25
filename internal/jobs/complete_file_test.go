@@ -60,13 +60,14 @@ func TestRunCompleteFilePublishesMP4AndOptionalSRTAtomically(t *testing.T) {
 		Subtitles:  engine.SubtitleOptions{WriteManual: true, Embed: true, KeepFiles: true, ConvertFormat: "srt", Languages: []string{"en"}},
 		Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true},
 	}
-	result, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &calls), nil)
+	result, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &calls), nil, engine.NewPublicationArbiter())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 1 || delivery.Container != "MP4" || delivery.UsedMKVFallback || !delivery.SubtitleSidecar {
+	if len(calls) != 1 || delivery.Container != "MP4" || delivery.UsedMKVFallback || !delivery.SubtitleSidecar || delivery.Publication == nil {
 		t.Fatalf("calls=%d delivery=%#v", len(calls), delivery)
 	}
+	delivery.Publication.FinishPublication()
 	if result.Filename != filepath.Join(root, "Video.mp4") {
 		t.Fatalf("filename = %q", result.Filename)
 	}
@@ -91,13 +92,14 @@ func TestRunCompleteFileFallsBackFromMP4ToMKV(t *testing.T) {
 		Subtitles:  engine.SubtitleOptions{WriteManual: true, Embed: true, ConvertFormat: "vtt"},
 		Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true},
 	}
-	result, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 1, &calls), nil)
+	result, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 1, &calls), nil, engine.NewPublicationArbiter())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || delivery.Container != "MKV" || !delivery.UsedMKVFallback || delivery.SubtitleSidecar {
+	if len(calls) != 2 || delivery.Container != "MKV" || !delivery.UsedMKVFallback || delivery.SubtitleSidecar || delivery.Publication == nil {
 		t.Fatalf("calls=%d delivery=%#v", len(calls), delivery)
 	}
+	delivery.Publication.FinishPublication()
 	if result.Filename != filepath.Join(root, "Video.mkv") {
 		t.Fatalf("filename = %q", result.Filename)
 	}
@@ -114,13 +116,14 @@ func TestRunCompleteFileFallsBackToMKVWithSidecar(t *testing.T) {
 		Subtitles:  engine.SubtitleOptions{WriteManual: true, Embed: true, ConvertFormat: "vtt", Languages: []string{"en"}},
 		Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true},
 	}
-	_, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 2, &calls), nil)
+	_, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 2, &calls), nil, engine.NewPublicationArbiter())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 3 || delivery.Container != "MKV" || !delivery.UsedMKVFallback || !delivery.SubtitleSidecar {
+	if len(calls) != 3 || delivery.Container != "MKV" || !delivery.UsedMKVFallback || !delivery.SubtitleSidecar || !delivery.DegradedEmbedding || delivery.Publication == nil {
 		t.Fatalf("calls=%d delivery=%#v", len(calls), delivery)
 	}
+	delivery.Publication.FinishPublication()
 	degraded := calls[2]
 	if degraded.Subtitles.Embed || degraded.Subtitles.ConvertFormat != "srt" || degraded.EmbedMetadata || degraded.EmbedChapters != nil || degraded.Thumbnails.Embed {
 		t.Fatalf("degraded attempt still embeds: %#v", degraded)
@@ -142,7 +145,7 @@ func TestRunCompleteFileNeverOverwritesAnOccupiedReservation(t *testing.T) {
 	_, _, err := runCompleteFile(
 		context.Background(),
 		engine.Request{OutputDir: root, Subtitles: engine.SubtitleOptions{Embed: true}},
-		completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &calls), nil,
+		completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &calls), nil, engine.NewPublicationArbiter(),
 	)
 	if err == nil {
 		t.Fatal("occupied reservation unexpectedly published")
@@ -156,6 +159,30 @@ func TestRunCompleteFileNeverOverwritesAnOccupiedReservation(t *testing.T) {
 	}
 }
 
+func TestRunCompleteFileHonorsCancelWinnerBeforePublication(t *testing.T) {
+	root := t.TempDir()
+	arbiter := engine.NewPublicationArbiter()
+	cancelReservation, err := arbiter.BeginCancel(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelReservation.WinCancel()
+	var calls []engine.Request
+	_, delivery, err := runCompleteFile(
+		context.Background(),
+		engine.Request{OutputDir: root, Subtitles: engine.SubtitleOptions{Embed: true}},
+		completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &calls), nil, arbiter,
+	)
+	if err == nil || delivery.Publication != nil {
+		t.Fatalf("cancel winner published: delivery=%#v err=%v", delivery, err)
+	}
+	for _, name := range []string{"Video.mp4", "Video.mkv", "Video.srt"} {
+		if _, statErr := os.Stat(filepath.Join(root, name)); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("cancel winner left public artifact %s: %v", name, statErr)
+		}
+	}
+}
+
 func TestRunCompleteFileDoesNotFallbackForTransferFailure(t *testing.T) {
 	root := t.TempDir()
 	calls := 0
@@ -166,7 +193,7 @@ func TestRunCompleteFileDoesNotFallbackForTransferFailure(t *testing.T) {
 		}
 		return engine.Result{}, &engine.Error{Category: engine.ErrorNetwork, Op: "download", Err: errors.New("fixture network failure")}
 	}
-	_, _, err := runCompleteFile(context.Background(), engine.Request{OutputDir: root, Subtitles: engine.SubtitleOptions{Embed: true}}, completeFileTestReservation(root), runner, nil)
+	_, _, err := runCompleteFile(context.Background(), engine.Request{OutputDir: root, Subtitles: engine.SubtitleOptions{Embed: true}}, completeFileTestReservation(root), runner, nil, engine.NewPublicationArbiter())
 	if err == nil || calls != 1 {
 		t.Fatalf("err=%v calls=%d; want one terminal transfer failure", err, calls)
 	}
@@ -179,12 +206,13 @@ func TestRunCompleteFileDoesNotFallbackForTransferFailure(t *testing.T) {
 	// A fresh retry starts from an empty private workspace and can publish the
 	// same reservation without inheriting junk from the failed transfer.
 	var retryCalls []engine.Request
-	result, _, retryErr := runCompleteFile(
+	result, retryDelivery, retryErr := runCompleteFile(
 		context.Background(),
 		engine.Request{OutputDir: root, Subtitles: engine.SubtitleOptions{Embed: true}},
-		completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &retryCalls), nil,
+		completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &retryCalls), nil, engine.NewPublicationArbiter(),
 	)
-	if retryErr != nil || result.Filename != filepath.Join(root, "Video.mp4") || len(retryCalls) != 1 {
-		t.Fatalf("clean retry result=%#v calls=%d err=%v", result, len(retryCalls), retryErr)
+	if retryErr != nil || result.Filename != filepath.Join(root, "Video.mp4") || len(retryCalls) != 1 || retryDelivery.Publication == nil {
+		t.Fatalf("clean retry result=%#v calls=%d delivery=%#v err=%v", result, len(retryCalls), retryDelivery, retryErr)
 	}
+	retryDelivery.Publication.FinishPublication()
 }

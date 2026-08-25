@@ -120,6 +120,12 @@ func Open(path string) (*Store, error) {
 		s.state.Version = 1
 	}
 	s.state.Settings = normalizeSettings(s.state.Settings)
+	if err := s.state.Settings.OutputOptions.Validate(); err != nil {
+		// Legacy JSON was permissive. Invalid subtitle rules must not cross
+		// into a restored engine request; retain the rest of the settings and
+		// return output behavior to the reviewed product default.
+		s.state.Settings.OutputOptions = jobmodel.DefaultOutputOptions()
+	}
 	return s, nil
 }
 

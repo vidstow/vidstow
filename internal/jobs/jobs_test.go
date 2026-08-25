@@ -343,6 +343,22 @@ func TestSummarizeAnalysisFiltersTranslatedAutomaticCaptions(t *testing.T) {
 	}
 }
 
+func TestSummarizeAnalysisFiltersTranslatedAutomaticCaptionsWithoutOrigAlias(t *testing.T) {
+	raw := json.RawMessage(`{
+		"automatic_captions":{
+			"en":[{"url":"https://www.youtube.com/api/timedtext?lang=en"}],
+			"fr":[{"url":"https://www.youtube.com/api/timedtext?lang=en&tlang=fr"}]
+		}
+	}`)
+	summary, _, err := summarizeAnalysis(raw, "https://www.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.Subtitles) != 1 || summary.Subtitles[0].Code != "en" || !summary.Subtitles[0].Auto || summary.Language != "en" {
+		t.Fatalf("automatic subtitle summary = %#v language=%q", summary.Subtitles, summary.Language)
+	}
+}
+
 func TestSummarizeAnalysisDoesNotGuessAmbiguousAutomaticLanguage(t *testing.T) {
 	raw := json.RawMessage(`{"automatic_captions":{"en":[],"en-orig":[],"es":[],"es-orig":[]}}`)
 	summary, _, err := summarizeAnalysis(raw, "https://www.youtube.com/watch?v=abc123")
