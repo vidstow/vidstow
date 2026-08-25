@@ -4126,7 +4126,14 @@ func subtitleEngineOptions(options jobmodel.OutputOptions) engine.SubtitleOption
 	}
 	if options.SubtitleMode == jobmodel.SubtitleModeEmbed {
 		subs.Embed = true
-		subs.ConvertFormat = "vtt"
+		subs.KeepFiles = options.SubtitleSidecar
+		// An additional sidecar is always SRT. Both MP4 and MKV can embed SRT;
+		// without retention, VTT remains the broadest internal embed format.
+		if options.SubtitleSidecar {
+			subs.ConvertFormat = "srt"
+		} else {
+			subs.ConvertFormat = "vtt"
+		}
 	} else {
 		subs.ConvertFormat = options.SubtitleFormat
 	}

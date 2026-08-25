@@ -132,6 +132,12 @@ func DefaultOutputOptions() OutputOptions {
 // sidecar-only choice becomes embedded subtitles plus an SRT sidecar, while
 // language and automatic-caption choices are preserved.
 func (o OutputOptions) ForCompleteVideo() OutputOptions {
+	// An omitted option object requests the product default. Persisted jobs do
+	// not pass through this normalizer, so their historical zero value remains
+	// media-only when restored.
+	if o.IsZero() {
+		return DefaultOutputOptions()
+	}
 	out := o.Clone()
 	if out.SubtitleMode == SubtitleModeSidecar {
 		out.SubtitleSidecar = true
@@ -141,6 +147,8 @@ func (o OutputOptions) ForCompleteVideo() OutputOptions {
 	out.EmbedChapters = true
 	if out.SubtitleSidecar {
 		out.SubtitleFormat = "srt"
+	} else {
+		out.SubtitleFormat = ""
 	}
 	return out
 }
@@ -200,6 +208,12 @@ func (o OutputOptions) Validate() error {
 	case "", "srt", "vtt":
 	default:
 		return fmt.Errorf("unsupported subtitle format %q", o.SubtitleFormat)
+	}
+	if o.SubtitleSidecar && o.SubtitleMode != SubtitleModeEmbed {
+		return fmt.Errorf("subtitle sidecar requires embedded subtitles")
+	}
+	if o.SubtitleSidecar && o.SubtitleFormat != "" && o.SubtitleFormat != "srt" {
+		return fmt.Errorf("additional subtitle sidecar must use srt")
 	}
 	if len(o.SubtitleLanguages) > maxSubtitleLanguages {
 		return fmt.Errorf("too many subtitle languages (max %d)", maxSubtitleLanguages)

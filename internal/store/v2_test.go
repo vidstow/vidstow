@@ -1339,7 +1339,7 @@ func TestV2SettingsOutputOptionsRoundTrip(t *testing.T) {
 		DownloadFolder:      "/tmp/downloads",
 		DownloadConcurrency: 2,
 		OutputOptions: jobmodel.OutputOptions{
-			SubtitleMode:      jobmodel.SubtitleModeSidecar,
+			SubtitleMode:      jobmodel.SubtitleModeEmbed,
 			SubtitleSidecar:   true,
 			SubtitleFormat:    "srt",
 			SubtitleLanguages: []string{"en", "de"},

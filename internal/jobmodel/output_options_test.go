@@ -24,6 +24,8 @@ func TestOutputOptionsValidateRejectsOutOfContractShapes(t *testing.T) {
 		{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"en", ""}},
 		{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"en.*"}},
 		{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"all,-en"}},
+		{SubtitleSidecar: true, SubtitleFormat: "srt"},
+		{SubtitleMode: SubtitleModeEmbed, SubtitleSidecar: true, SubtitleFormat: "vtt"},
 		{SubtitleLanguages: make([]string, maxSubtitleLanguages+1)},
 	}
 	for _, options := range invalid {
@@ -123,5 +125,16 @@ func TestDefaultOutputOptionsAndCompleteVideoNormalization(t *testing.T) {
 	got = explicit.ForCompleteVideo()
 	if got.SubtitleMode != SubtitleModeEmbed || !got.SubtitleSidecar || got.SubtitleFormat != "srt" || !got.SubtitleAutoCaptions || got.SubtitleLanguages[0] != "fr" {
 		t.Fatalf("explicit.ForCompleteVideo() = %#v", got)
+	}
+
+	got = (OutputOptions{}).ForCompleteVideo()
+	if !got.Equal(defaults) {
+		t.Fatalf("zero.ForCompleteVideo() = %#v; want defaults %#v", got, defaults)
+	}
+
+	withoutSidecar := OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleFormat: "srt", SubtitleLanguages: []string{"en"}}
+	got = withoutSidecar.ForCompleteVideo()
+	if got.SubtitleFormat != "" || got.SubtitleSidecar {
+		t.Fatalf("sidecar-off normalization retained a subtitle format: %#v", got)
 	}
 }
