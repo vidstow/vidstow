@@ -46,6 +46,26 @@ func TestPreparePlanArtifactsReservesCompleteFileFallbackSet(t *testing.T) {
 	}
 }
 
+func TestPreparePlanArtifactsSubtitleOffReservesContainersWithoutSRT(t *testing.T) {
+	plan := outputplan.Plan{ID: "video-1080-mp4", Kind: outputplan.KindVideo, Container: "MP4", Selector: "137+140"}
+	metadata := value.NewInfo(value.NewObject(
+		value.Field{Key: "title", Value: value.String("Demo")},
+		value.Field{Key: "id", Value: value.String("abc123")},
+	))
+	effective, artifacts, err := preparePlanArtifacts(plan, jobmodel.DefaultOutputOptions(), metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective.Container != "MP4" || !effective.RequiresFFmpeg || len(artifacts) != 2 {
+		t.Fatalf("effective=%#v artifacts=%#v", effective, artifacts)
+	}
+	for _, artifact := range artifacts {
+		if artifact.Kind == completeSubtitleArtifactKind || strings.HasSuffix(artifact.ProposedBasename, ".srt") {
+			t.Fatalf("subtitle-off admission invented SRT: %#v", artifact)
+		}
+	}
+}
+
 func TestPreparePlanArtifactsLeavesAudioPlanAlone(t *testing.T) {
 	plan := outputplan.Plan{ID: "audio-m4a-original", Kind: outputplan.KindAudio, Label: "M4A", Container: "M4A", Selector: "140"}
 	metadata := value.NewInfo(value.NewObject(

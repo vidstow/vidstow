@@ -30,7 +30,8 @@ type completeFileDelivery struct {
 
 func usesCompleteFileStaging(state *jobState) bool {
 	return state != nil && state.fromStateV2 && state.plan != nil &&
-		state.plan.Kind == "video" && state.options.SubtitleMode == jobmodel.SubtitleModeEmbed
+		state.plan.Kind == "video" && (state.options.SubtitleMode == jobmodel.SubtitleModeEmbed ||
+		state.options.EmbedThumbnail || state.options.EmbedChapters)
 }
 
 // runCompleteFile keeps every processing attempt in a private same-volume
@@ -102,13 +103,13 @@ func runCompleteFile(
 		return published, completeFileDelivery{Container: "MKV", UsedMKVFallback: true, SubtitleSidecar: sidecar, Publication: publication}, nil
 	}
 	_ = os.RemoveAll(attemptRoot)
-	if !completeFileFallbackEligible(ctx, err, sawPostprocess) {
+	if !completeFileFallbackEligible(ctx, err, sawPostprocess) || !base.Subtitles.Embed {
 		return engine.Result{}, completeFileDelivery{}, err
 	}
 
-	// Final degradation keeps a playable MKV and an SRT when captions exist.
-	// All embedding is disabled because both complete-container attempts have
-	// failed; publication remains an all-or-nothing reserved set.
+	// Final subtitle degradation keeps the requested non-subtitle embedding
+	// and emits an SRT when captions exist. Publication remains an
+	// all-or-nothing reserved set.
 	result, attemptRoot, _, err = attempt("mkv", false)
 	if err != nil {
 		_ = os.RemoveAll(attemptRoot)
@@ -154,9 +155,6 @@ func completeFileAttemptRequest(base engine.Request, reservation jobmodel.Reserv
 	request.Subtitles.Embed = false
 	request.Subtitles.KeepFiles = false
 	request.Subtitles.ConvertFormat = "srt"
-	request.EmbedMetadata = false
-	request.EmbedChapters = nil
-	request.Thumbnails = engine.ThumbnailOptions{}
 	return request, nil
 }
 

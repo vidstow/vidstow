@@ -9,8 +9,27 @@ import (
 	"testing"
 
 	"github.com/tejasa97/vidstow/internal/jobmodel"
+	"github.com/tejasa97/vidstow/internal/outputplan"
 	"github.com/tejasa97/ytdlp-go/engine"
 )
+
+func TestUsesCompleteFileStagingForEveryVideoEmbedding(t *testing.T) {
+	plan := &outputplan.Plan{Kind: outputplan.KindVideo}
+	for name, options := range map[string]jobmodel.OutputOptions{
+		"subtitles": {SubtitleMode: jobmodel.SubtitleModeEmbed},
+		"artwork":   {EmbedThumbnail: true},
+		"chapters":  {EmbedChapters: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !usesCompleteFileStaging(&jobState{fromStateV2: true, plan: plan, options: options}) {
+				t.Fatalf("video %s embedding did not use complete-file staging", name)
+			}
+		})
+	}
+	if usesCompleteFileStaging(&jobState{fromStateV2: true, plan: &outputplan.Plan{Kind: outputplan.KindAudio}, options: jobmodel.OutputOptions{EmbedThumbnail: true}}) {
+		t.Fatal("audio embedding unexpectedly used video complete-file staging")
+	}
+}
 
 func completeFileTestReservation(root string) jobmodel.ReservationSet {
 	return jobmodel.ReservationSet{
@@ -32,7 +51,7 @@ func completeFileFixtureRunner(t *testing.T, failEmbeds int, calls *[]engine.Req
 				return engine.Result{}, err
 			}
 		}
-		if len(*calls) <= failEmbeds && request.Subtitles.Embed {
+		if len(*calls) <= failEmbeds && (request.Subtitles.Embed || request.Thumbnails.Embed || request.EmbedChapters != nil) {
 			return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: "postprocess", Err: errors.New("fixture mux failure")}
 		}
 		target := request.Postprocessors[len(request.Postprocessors)-1].Remux.Format
@@ -41,7 +60,7 @@ func completeFileFixtureRunner(t *testing.T, failEmbeds int, calls *[]engine.Req
 			return engine.Result{}, err
 		}
 		result := engine.Result{Filename: media, Bytes: 14, Artifacts: []engine.Artifact{{Path: media, Kind: "media"}}}
-		if request.Subtitles.KeepFiles || !request.Subtitles.Embed {
+		if (request.Subtitles.WriteManual || request.Subtitles.WriteAutomatic) && (request.Subtitles.KeepFiles || !request.Subtitles.Embed) {
 			subtitle := filepath.Join(request.OutputDir, "Video.en.srt")
 			if err := os.WriteFile(subtitle, []byte("1\n00:00:00,000 --> 00:00:01,000\nHello\n"), 0o600); err != nil {
 				return engine.Result{}, err
@@ -84,6 +103,63 @@ func TestRunCompleteFilePublishesMP4AndOptionalSRTAtomically(t *testing.T) {
 	}
 }
 
+func TestRunCompleteFileSubtitleOffStagesAtomicMP4WithoutInventingSRT(t *testing.T) {
+	root := t.TempDir()
+	var calls []engine.Request
+	request := engine.Request{OutputDir: root, Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true}}
+	result, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 0, &calls), nil, engine.NewPublicationArbiter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0].OutputDir == root || calls[0].Subtitles.WriteManual || calls[0].Subtitles.WriteAutomatic || calls[0].Subtitles.Embed || calls[0].Subtitles.KeepFiles || calls[0].Subtitles.ConvertFormat != "" || len(calls[0].Subtitles.Languages) != 0 {
+		t.Fatalf("subtitle-off staged request = %#v", calls)
+	}
+	if result.Filename != filepath.Join(root, "Video.mp4") || delivery.Container != "MP4" || delivery.SubtitleSidecar || delivery.Publication == nil {
+		t.Fatalf("result=%#v delivery=%#v", result, delivery)
+	}
+	delivery.Publication.FinishPublication()
+	if _, statErr := os.Stat(filepath.Join(root, "Video.srt")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("subtitle-off attempt invented SRT: %v", statErr)
+	}
+}
+
+func TestRunCompleteFileSubtitleOffStillFallsBackMP4ToMKV(t *testing.T) {
+	root := t.TempDir()
+	var calls []engine.Request
+	request := engine.Request{OutputDir: root, Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true}}
+	result, delivery, err := runCompleteFile(context.Background(), request, completeFileTestReservation(root), completeFileFixtureRunner(t, 1, &calls), nil, engine.NewPublicationArbiter())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || result.Filename != filepath.Join(root, "Video.mkv") || !delivery.UsedMKVFallback || delivery.DegradedEmbedding || delivery.SubtitleSidecar || delivery.Publication == nil {
+		t.Fatalf("calls=%d result=%#v delivery=%#v", len(calls), result, delivery)
+	}
+	delivery.Publication.FinishPublication()
+	if _, statErr := os.Stat(filepath.Join(root, "Video.srt")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("subtitle-off fallback invented SRT: %v", statErr)
+	}
+}
+
+func TestRunCompleteFileSubtitleOffDoesNotAttemptSRTDegradation(t *testing.T) {
+	root := t.TempDir()
+	calls := 0
+	runner := func(ctx context.Context, request engine.Request, handler engine.EventHandler) (engine.Result, error) {
+		calls++
+		if handler != nil {
+			_ = handler(ctx, engine.Event{Kind: engine.EventPostprocessStarting})
+		}
+		return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: "postprocess", Err: errors.New("fixture mux failure")}
+	}
+	_, _, err := runCompleteFile(
+		context.Background(),
+		engine.Request{OutputDir: root, Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true}},
+		completeFileTestReservation(root), runner, nil, engine.NewPublicationArbiter(),
+	)
+	if err == nil || calls != 2 {
+		t.Fatalf("subtitle-off failure err=%v calls=%d; want MP4 then MKV only", err, calls)
+	}
+}
+
 func TestRunCompleteFileFallsBackFromMP4ToMKV(t *testing.T) {
 	root := t.TempDir()
 	var calls []engine.Request
@@ -111,8 +187,9 @@ func TestRunCompleteFileFallsBackFromMP4ToMKV(t *testing.T) {
 func TestRunCompleteFileFallsBackToMKVWithSidecar(t *testing.T) {
 	root := t.TempDir()
 	var calls []engine.Request
+	embedChapters := true
 	request := engine.Request{
-		OutputDir: root, EmbedMetadata: true,
+		OutputDir: root, EmbedMetadata: true, EmbedChapters: &embedChapters,
 		Subtitles:  engine.SubtitleOptions{WriteManual: true, Embed: true, ConvertFormat: "vtt", Languages: []string{"en"}},
 		Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true},
 	}
@@ -125,8 +202,8 @@ func TestRunCompleteFileFallsBackToMKVWithSidecar(t *testing.T) {
 	}
 	delivery.Publication.FinishPublication()
 	degraded := calls[2]
-	if degraded.Subtitles.Embed || degraded.Subtitles.ConvertFormat != "srt" || degraded.EmbedMetadata || degraded.EmbedChapters != nil || degraded.Thumbnails.Embed {
-		t.Fatalf("degraded attempt still embeds: %#v", degraded)
+	if degraded.Subtitles.Embed || degraded.Subtitles.KeepFiles || degraded.Subtitles.ConvertFormat != "srt" || !degraded.EmbedMetadata || degraded.EmbedChapters == nil || !*degraded.EmbedChapters || !degraded.Thumbnails.Embed {
+		t.Fatalf("degraded attempt did not preserve non-subtitle embedding: %#v", degraded)
 	}
 	for _, name := range []string{"Video.mkv", "Video.srt"} {
 		if _, statErr := os.Stat(filepath.Join(root, name)); statErr != nil {

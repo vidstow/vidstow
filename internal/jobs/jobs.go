@@ -4356,9 +4356,9 @@ func (m *Manager) run(state *jobState, worker *worker) {
 			}
 			switch {
 			case delivery.DegradedToSidecar:
-				terminal.DeliveryNote = "Saved as MKV with an SRT subtitle sidecar after embedding fallback; artwork and chapters could not be embedded."
+				terminal.DeliveryNote = "Saved as MKV with an SRT subtitle sidecar after subtitle embedding fallback; artwork and chapters were retained."
 			case delivery.DegradedEmbedding:
-				terminal.DeliveryNote = "Saved as MKV after embedding fallback; artwork and chapters could not be embedded, and no subtitle track was available."
+				terminal.DeliveryNote = "Saved as MKV after subtitle embedding fallback; artwork and chapters were retained, and no subtitle track was available."
 			case delivery.UsedMKVFallback && delivery.SubtitleSidecar:
 				terminal.DeliveryNote = "Saved as MKV after MP4 compatibility fallback, with an additional SRT file."
 			case delivery.UsedMKVFallback:

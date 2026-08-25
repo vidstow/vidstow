@@ -121,7 +121,8 @@ type OutputOptions struct {
 // download choices. Persisted jobs retain their exact legacy values.
 func DefaultOutputOptions() OutputOptions {
 	return OutputOptions{
-		SubtitleMode:         SubtitleModeEmbed,
+		// Automatic captions are the fallback policy if subtitles are later
+		// enabled; with an empty mode the policy is intentionally dormant.
 		SubtitleAutoCaptions: true,
 		EmbedThumbnail:       true,
 		EmbedChapters:        true,
@@ -129,8 +130,9 @@ func DefaultOutputOptions() OutputOptions {
 }
 
 // ForCompleteVideo normalizes video output to a complete media file. A legacy
-// sidecar-only choice becomes embedded subtitles plus an SRT sidecar, while
-// language and automatic-caption choices are preserved.
+// sidecar-only choice becomes embedded subtitles plus an SRT sidecar. Complete
+// video requests select at most one language and use automatic captions as the
+// fallback policy whenever subtitle embedding is requested.
 func (o OutputOptions) ForCompleteVideo() OutputOptions {
 	// An omitted option object requests the product default. Persisted jobs do
 	// not pass through this normalizer, so their historical zero value remains
@@ -140,12 +142,18 @@ func (o OutputOptions) ForCompleteVideo() OutputOptions {
 	}
 	out := o.Clone()
 	if out.SubtitleMode == SubtitleModeSidecar {
+		out.SubtitleMode = SubtitleModeEmbed
 		out.SubtitleSidecar = true
 	}
-	out.SubtitleMode = SubtitleModeEmbed
 	out.EmbedThumbnail = true
 	out.EmbedChapters = true
-	if out.SubtitleSidecar {
+	if len(out.SubtitleLanguages) > 1 {
+		out.SubtitleLanguages = out.SubtitleLanguages[:1]
+	}
+	if out.SubtitleMode == SubtitleModeEmbed {
+		out.SubtitleAutoCaptions = true
+	}
+	if out.SubtitleMode == SubtitleModeEmbed && out.SubtitleSidecar {
 		out.SubtitleFormat = "srt"
 	} else {
 		out.SubtitleFormat = ""
@@ -164,7 +172,7 @@ func (o OutputOptions) IsZero() bool {
 func (o OutputOptions) RequiresFFmpeg() bool {
 	return o.SubtitleMode == SubtitleModeEmbed ||
 		o.EmbedMetadata || o.EmbedThumbnail || o.EmbedChapters ||
-		((o.SubtitleMode == SubtitleModeSidecar || o.SubtitleSidecar) && o.SubtitleFormat != "")
+		(o.SubtitleMode == SubtitleModeSidecar && o.SubtitleFormat != "")
 }
 
 // Equal compares two option sets, including language order.
@@ -209,10 +217,9 @@ func (o OutputOptions) Validate() error {
 	default:
 		return fmt.Errorf("unsupported subtitle format %q", o.SubtitleFormat)
 	}
-	if o.SubtitleSidecar && o.SubtitleMode != SubtitleModeEmbed {
-		return fmt.Errorf("subtitle sidecar requires embedded subtitles")
-	}
-	if o.SubtitleSidecar && o.SubtitleFormat != "" && o.SubtitleFormat != "srt" {
+	// SubtitleSidecar may remain set while subtitles are off. This dormant
+	// preference is persisted by clients and takes effect only with embedding.
+	if o.SubtitleSidecar && o.SubtitleMode == SubtitleModeEmbed && o.SubtitleFormat != "" && o.SubtitleFormat != "srt" {
 		return fmt.Errorf("additional subtitle sidecar must use srt")
 	}
 	if len(o.SubtitleLanguages) > maxSubtitleLanguages {
@@ -251,7 +258,7 @@ func (o OutputOptions) Note() string {
 	case SubtitleModeEmbed:
 		parts = append(parts, "embedded subtitles"+o.noteLanguages())
 	}
-	if o.SubtitleSidecar && o.SubtitleMode != SubtitleModeSidecar {
+	if o.SubtitleSidecar && o.SubtitleMode == SubtitleModeEmbed {
 		parts = append(parts, "SRT sidecar"+o.noteLanguages())
 	}
 	var embeds []string
