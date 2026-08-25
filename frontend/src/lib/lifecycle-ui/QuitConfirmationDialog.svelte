@@ -47,7 +47,7 @@
   }
 
   function onOverlayClick(event: MouseEvent): void {
-    if (event.target === event.currentTarget) dispatch('close');
+    if (event.target === event.currentTarget) close();
   }
 </script>
 
@@ -66,7 +66,7 @@
     >
       <header class="dialog-header">
         <h2 id="lifecycle-quit-title">Quit VidStow?</h2>
-    <button type="button" class="close-button" aria-label="Close" onclick={close}>×</button>
+        <button type="button" class="close-button" aria-label="Close" onclick={close}>×</button>
       </header>
 
       <div class="dialog-body">
@@ -97,23 +97,19 @@
 {/if}
 
 <style>
-  .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: var(--sp-5); background: rgba(24, 25, 28, 0.45); backdrop-filter: blur(2px); }
-  .dialog { width: min(548px, 94vw); overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); }
-  .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-5) var(--sp-6) var(--sp-3); }
-  h2 { margin: 0; font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.02em; }
-  .close-button { width: 32px; height: 32px; border-radius: var(--r-sm); color: var(--text-secondary); font-size: var(--fs-2xl); line-height: 1; }
-  .close-button:hover { background: var(--surface-hover); }
-  .dialog-body { padding: 0 var(--sp-6) var(--sp-4); }
-  .lead, .preservation-copy { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm); }
-  .summary-list { margin: var(--sp-4) 0; border: 1px solid var(--border-subtle); border-radius: var(--r-md); }
-  .summary-list > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-3); }
-  .summary-list > div + div { border-top: 1px solid var(--border-subtle); }
+  .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: var(--sp-4); background: rgba(0, 0, 0, 0.74); backdrop-filter: blur(3px); }
+  .dialog { width: min(520px, 94vw); overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface-raised); box-shadow: var(--shadow-modal); font-family: var(--font-sans); }
+  .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--border-default); }
+  h2 { margin: 0; font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; }
+  .close-button { display: grid; width: 26px; height: 26px; place-items: center; border-radius: var(--r-md); color: var(--text-muted); font-size: 18px; line-height: 1; }
+  .close-button:hover { background: var(--surface-active); color: var(--text-primary); }
+  .dialog-body { padding: var(--sp-4); }
+  .lead, .preservation-copy { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.5; }
+  .summary-list { margin: var(--sp-3) 0; border: 1px solid var(--border-default); border-radius: var(--r-md); background: var(--surface-sunken); }
+  .summary-list > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-2) var(--sp-3); }
+  .summary-list > div + div { border-top: 1px solid var(--border-default); }
   dt { color: var(--text-primary); font-size: var(--fs-sm); }
-  dd { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); text-align: right; }
-  .dialog-footer { display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--sp-6) var(--sp-5); }
-  @media (max-width: 560px) {
-    .dialog-header, .dialog-body { padding-left: var(--sp-4); padding-right: var(--sp-4); }
-    .dialog-footer { flex-direction: column-reverse; padding-left: var(--sp-4); padding-right: var(--sp-4); }
-    .dialog-footer .app-btn { width: 100%; }
-  }
+  dd { margin: 0; color: var(--text-muted); font-size: var(--fs-xs); text-align: right; }
+  .dialog-footer { display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border-default); background: var(--surface-base); }
+  @media (max-width: 560px) { .dialog-footer { flex-direction: column-reverse; } .dialog-footer .app-btn { width: 100%; } }
 </style>

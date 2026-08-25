@@ -38,7 +38,8 @@
   }
 
   async function copyDiagnostics() {
-    try { await api.diagnostics.copy(); showBanner('info', 'Diagnostics copied'); }
+    try { await api.diagnostics.copy(); showBanner('info', 'Diagnostics copied');
+    }
     catch (err) { showError(err, 'Could not copy diagnostics'); }
   }
 </script>
@@ -110,7 +111,7 @@
     <h2 id="legal-title">Legal</h2>
     <p class="legal">
       VidStow is distributed under the Apache License 2.0. It is not affiliated with, or endorsed by,
-      YouTube, Google, or yt-dlp. Video and audio content is downloaded only where you have the right to do so —
+      YouTube or Google. Video and audio content is downloaded only where you have the right to do so —
       please respect each creator's terms and local laws. FFmpeg, ytdlp-go, Go, Wails, and Svelte are
       independent open-source projects with their own licenses.
     </p>
@@ -119,88 +120,86 @@
 </section>
 
 <style>
+  .page { min-height: 100%; padding: 0 var(--page-pad-x) var(--page-pad-bottom); gap: var(--sp-3); }
+  .page-header {
+    display: flex;
+    height: var(--topbar-h);
+    min-height: var(--topbar-h);
+    margin: 0 calc(-1 * var(--page-pad-x));
+    padding: 0 12px;
+    align-items: center;
+    gap: var(--sp-3);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--surface-sunken);
+  }
+  .page-header h1 { font-size: var(--fs-lg); font-weight: 650; line-height: 1; letter-spacing: -0.015em; }
+  .page-header p { margin: 0; color: var(--text-muted); }
   .group {
-    padding: 2px 20px 8px;
+    overflow: hidden;
+    padding: 0 var(--sp-3) var(--sp-1);
     border: 1px solid var(--border-default);
-    border-radius: var(--r-lg);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-card);
+    border-radius: var(--r-md);
+    background: var(--surface-base);
   }
   .group h2 {
     margin: 0;
-    padding: 12px 0 2px;
+    padding: var(--sp-2) 0 6px;
+    color: var(--text-muted);
     font-size: var(--fs-xs);
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
+    line-height: 1;
     text-transform: uppercase;
-    color: var(--text-muted);
   }
   .lede, .legal {
-    margin: 8px 0 10px;
-    color: var(--text-secondary);
-    font-size: var(--fs-sm);
-    line-height: 1.5;
-  }
-  .facts {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--sp-4);
-    margin: 8px 0 4px;
-    padding: 10px 0 12px;
+    margin: 0;
+    padding: var(--sp-2) 0;
     border-top: 1px solid var(--border-subtle);
-  }
-  .facts dt {
-    color: var(--text-muted);
-    font-size: var(--fs-xs);
-    font-weight: 650;
-    letter-spacing: 0.02em;
-  }
-  .facts dd {
-    margin: 4px 0 0;
-    color: var(--text-primary);
-    font-size: var(--fs-sm);
-    overflow-wrap: anywhere;
-  }
-
-  .setting {
-    min-height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-4);
-    padding: 8px 0;
-    border-top: 1px solid var(--border-subtle);
-  }
-  .group > h2 + .setting, .group > h2 + .lede + .setting { border-top: 0; }
-  .copy { min-width: 0; flex: 1; }
-  .copy strong, .copy span { display: block; }
-  .copy strong { font-size: var(--fs-sm); color: var(--text-primary); font-weight: 600; }
-  .copy span {
-    margin-top: 4px;
     color: var(--text-secondary);
     font-size: var(--fs-xs);
     line-height: 1.45;
   }
-
-  .actions {
-    display: flex;
+  .facts { margin: 0; border-top: 1px solid var(--border-subtle); }
+  .facts div {
+    display: grid;
+    grid-template-columns: 100px minmax(0, 1fr);
+    min-height: 34px;
     align-items: center;
-    justify-content: flex-end;
-    gap: var(--sp-2);
-    flex-shrink: 0;
+    border-bottom: 1px solid var(--border-subtle);
   }
-  .stack {
-    list-style: none;
+  .facts dt { color: var(--text-muted); font-size: var(--fs-xs); font-weight: 600; }
+  .facts dd {
     margin: 0;
-    padding: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+  }
+  .setting {
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-4);
+    padding: 7px 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .copy { min-width: 0; flex: 1; }
+  .copy strong, .copy span { display: block; }
+  .copy strong { color: var(--text-primary); font-size: var(--fs-sm); font-weight: 600; }
+  .copy span { margin-top: 2px; color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.4; }
+  .actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-1); flex-shrink: 0; }
+  .stack {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
-    gap: var(--sp-2);
+    gap: var(--sp-1);
+    list-style: none;
+    margin: 0;
+    padding: 0;
   }
   @media (max-width: 720px) {
-    .setting { flex-direction: column; align-items: flex-start; }
-    .facts { grid-template-columns: 1fr; gap: var(--sp-3); }
+    .setting { align-items: flex-start; flex-direction: column; }
     .actions, .stack { width: 100%; justify-content: flex-start; }
   }
 </style>

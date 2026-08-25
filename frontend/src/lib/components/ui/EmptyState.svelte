@@ -31,23 +31,23 @@
     align-items: center;
     text-align: center;
     gap: var(--sp-2);
-    padding: var(--sp-8) var(--sp-4);
-    border: 1px dashed var(--border-default);
-    border-radius: var(--r-md);
-    background: var(--surface-sunken);
+    padding: var(--sp-6) var(--sp-4);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-lg);
+    background: var(--surface-subtle);
   }
   .art {
     display: grid;
     place-items: center;
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     border-radius: var(--r-md);
-    background: var(--surface-base);
+    background: var(--surface-raised);
     border: 1px solid var(--border-subtle);
     color: var(--text-secondary);
     margin-bottom: var(--sp-2);
   }
-  .title { margin: 0; font-size: var(--fs-md); font-weight: 600; }
+  .title { margin: 0; font-size: var(--fs-md); font-weight: 650; }
   .message { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm); max-width: 34ch; }
-  .action { margin-top: var(--sp-3); }
+  .action { margin-top: var(--sp-2); }
 </style>

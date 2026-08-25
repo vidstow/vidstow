@@ -20,13 +20,13 @@
   .container {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    font-size: var(--fs-sm);
-    font-weight: 500;
+    gap: 5px;
+    font-size: var(--fs-xs);
+    font-weight: 550;
   }
   .dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--text-muted);
     flex-shrink: 0;

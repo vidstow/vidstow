@@ -33,13 +33,13 @@
     display: inline-flex;
     align-items: center;
     align-self: flex-start;
-    gap: var(--sp-4);
-    min-height: 44px;
-    padding: 0 var(--sp-4);
-    border: 1px solid var(--border-subtle);
+    gap: var(--sp-3);
+    min-height: 30px;
+    padding: 0 var(--sp-3);
+    border: 1px solid var(--border-default);
     border-radius: var(--r-md);
     color: var(--text-secondary);
-    background: var(--surface-base);
+    background: var(--surface-raised);
     font-size: var(--fs-sm);
     white-space: nowrap;
   }
@@ -51,8 +51,8 @@
 
   .divider {
     width: 1px;
-    height: 18px;
-    background: var(--border-subtle);
+    height: 14px;
+    background: var(--border-default);
   }
 
   @media (max-width: 560px) {
@@ -60,7 +60,7 @@
       align-items: flex-start;
       flex-wrap: wrap;
       gap: var(--sp-2) var(--sp-3);
-      padding: var(--sp-3) var(--sp-4);
+      padding: var(--sp-2) var(--sp-3);
       white-space: normal;
     }
 

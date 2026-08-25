@@ -14,6 +14,7 @@
   import Sidebar from './lib/components/Sidebar.svelte';
   import Modal from './lib/components/Modal.svelte';
   import Banner from './lib/components/Banner.svelte';
+  import StatusBar from './lib/components/StatusBar.svelte';
   import Home from './pages/Home.svelte';
   import Queue from './pages/Queue.svelte';
   import Downloads from './pages/Downloads.svelte';
@@ -242,23 +243,26 @@
     </div>
   </main>
 {:else}
-  <Sidebar />
+  <div class="workstation">
+    <Sidebar />
 
-  <main class="main">
-    <div class="scroll">
-      {#if $route === 'home'}
-        <Home on:goto={(e) => navigate(e.detail)} />
-      {:else if $route === 'queue'}
-        <Queue />
-      {:else if $route === 'downloads'}
-        <Downloads />
-      {:else if $route === 'settings'}
-        <Settings />
-      {:else if $route === 'about'}
-        <About />
-      {/if}
-    </div>
-  </main>
+    <main class="main">
+      <div class="scroll">
+        {#if $route === 'home'}
+          <Home on:goto={(e) => navigate(e.detail)} />
+        {:else if $route === 'queue'}
+          <Queue />
+        {:else if $route === 'downloads'}
+          <Downloads />
+        {:else if $route === 'settings'}
+          <Settings />
+        {:else if $route === 'about'}
+          <About />
+        {/if}
+      </div>
+    </main>
+  </div>
+  <StatusBar />
 {/if}
 
 <Modal />
@@ -280,20 +284,30 @@
 />
 
 <style>
-  .main {
-    flex: 1;
-    min-width: 0;
+  .workstation {
+    width: 100%;
+    min-height: 0;
     display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  .main {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex: 1;
     flex-direction: column;
-    background:
-      radial-gradient(900px 420px at 0% 0%, rgba(47,111,237,0.045), transparent 60%),
-      var(--surface-bg);
+    background: var(--surface-bg);
   }
   .scroll {
+    min-height: 0;
+    display: flex;
     flex: 1;
     overflow-y: auto;
   }
+  .scroll :global(> *) { flex: 1; }
   .startup-shell {
+    width: 100%;
     align-items: center;
     justify-content: center;
   }

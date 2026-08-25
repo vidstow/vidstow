@@ -1,128 +1,76 @@
 <script lang="ts">
   import LifecycleJobRow, { type LifecycleJobActionEvent } from './LifecycleJobRow.svelte';
   import { isValidCommandToken } from './types.js';
-  import type {
-    LifecycleJobViewModel,
-    QueueCollectionAction,
-    QueueCollectionActionEvent,
-    QueueCollectionViewModel,
-  } from './types.js';
+  import type { LifecycleJobViewModel, QueueCollectionActionEvent, QueueCollectionViewModel } from './types.js';
 
   interface Props {
     collection: QueueCollectionViewModel;
     children: LifecycleJobViewModel[];
+    selectedJobId?: string;
+    onSelect?: (jobId: string) => void;
     onAction?: (event: LifecycleJobActionEvent) => void;
     onCollectionAction?: (event: QueueCollectionActionEvent) => void;
   }
 
-  let { collection, children, onAction, onCollectionAction }: Props = $props();
+  let { collection, children, selectedJobId, onSelect, onAction, onCollectionAction }: Props = $props();
   let expanded = $state(true);
   const panelId = $derived(`collection-children-${collection.id.replace(/[^A-Za-z0-9_-]/g, '-')}`);
   const progress = $derived(Math.max(0, Math.min(100, Math.round(collection.progress * 100))));
   const collectionLabel = $derived(collection.kind === 'batch' ? 'batch' : 'playlist');
 
-  function enabled(action: QueueCollectionAction): boolean {
+  function enabled(action: 'pause' | 'cancel'): boolean {
     return isValidCommandToken(collection.commandToken) && collection.capabilities?.[action] === true;
   }
 
-  function trigger(action: QueueCollectionAction): void {
+  function trigger(action: 'pause' | 'cancel'): void {
     if (!enabled(action) || !collection.commandToken) return;
     onCollectionAction?.({ collectionId: collection.id, commandToken: collection.commandToken, action });
   }
 </script>
 
 <section class="collection" aria-labelledby={`${panelId}-title`}>
-  <div class="parent-row" class:without-thumbnail={collection.kind === 'batch'}>
-    <button
-      type="button"
-      class="toggle"
-      aria-expanded={expanded}
-      aria-controls={panelId}
-      aria-label={`${expanded ? 'Collapse' : 'Expand'} ${collection.title}`}
-      onclick={() => expanded = !expanded}
-    >
-      <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+  <div class="parent-row">
+    <button type="button" class="toggle" aria-expanded={expanded} aria-controls={panelId} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${collection.title}`} onclick={() => expanded = !expanded}>
+      <svg viewBox="0 0 12 12" aria-hidden="true" class:expanded><path d="m4 2.5 3.5 3.5L4 9.5" /></svg>
     </button>
-
-    {#if collection.kind === 'playlist'}
-      {#if collection.thumbnailUrl}
-        <img class="thumbnail" src={collection.thumbnailUrl} alt="" referrerpolicy="no-referrer" />
-      {:else}
-        <div class="thumbnail placeholder" aria-hidden="true">{collection.title.slice(0, 1).toUpperCase()}</div>
-      {/if}
-    {/if}
-
     <div class="identity">
-      <h3 id={`${panelId}-title`}>{collection.title}</h3>
-      <p>
-        {#if collection.kind === 'playlist'}
-          {collection.metadata ? `${collection.metadata} · ` : ''}{collection.policy} · {collection.total} videos
-        {:else}
-          {collection.policy}
-        {/if}
-      </p>
-      <div class="progress-line">
-        <div class="track" role="progressbar" aria-label={`${collection.title} progress`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
-          <span style={`width: ${progress}%`}></span>
-        </div>
-        <span>{collection.progressLabel}</span>
-        {#if collection.failed}<strong class="failed">{collection.failed} failed</strong>{/if}
-        {#if collection.canceled}<strong>{collection.canceled} canceled</strong>{/if}
-      </div>
+      <strong id={`${panelId}-title`}>{collection.title}</strong>
+      <span>{collection.policy} · {collection.total} items</span>
     </div>
-
+    <div class="progress-line">
+      <div class="track" role="progressbar" aria-label={`${collection.title} progress`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}><span style={`width: ${progress}%`}></span></div>
+      <b>{collection.progressLabel}</b>
+    </div>
     <div class="actions" aria-label={`${collectionLabel} actions`}>
-      {#if collection.capabilities?.resume}
-        <button type="button" class="app-btn primary" disabled={!enabled('resume')} onclick={() => trigger('resume')}>Resume</button>
-      {:else if collection.capabilities?.pause}
-        <button type="button" class="app-btn" disabled={!enabled('pause')} onclick={() => trigger('pause')}>Pause</button>
-      {/if}
-      {#if collection.capabilities?.retry}
-        <button type="button" class="app-btn primary" disabled={!enabled('retry')} onclick={() => trigger('retry')}>Retry failed</button>
-      {/if}
-      {#if collection.capabilities?.cancel}
-        <button type="button" class="app-btn" disabled={!enabled('cancel')} onclick={() => trigger('cancel')}>Cancel</button>
-      {/if}
-      {#if collection.capabilities?.remove}
-        <button type="button" class="app-btn" disabled={!enabled('remove')} onclick={() => trigger('remove')}>Remove</button>
-      {/if}
+      {#if collection.capabilities?.pause}<button type="button" class="app-btn" disabled={!enabled('pause')} onclick={() => trigger('pause')}>Pause</button>{/if}
+      {#if collection.capabilities?.cancel}<button type="button" class="app-btn" disabled={!enabled('cancel')} onclick={() => trigger('cancel')}>Cancel</button>{/if}
     </div>
   </div>
-
   {#if expanded}
-    <div class="children" id={panelId}>
+    <ul class="children" id={panelId} aria-label={`${collection.title} items`}>
       {#each children as child, index (child.id)}
-        <LifecycleJobRow job={child} index={index + 1} {onAction} />
+        <LifecycleJobRow job={child} index={index + 1} nested selected={selectedJobId === child.id} {onSelect} {onAction} />
       {/each}
-    </div>
+    </ul>
   {/if}
 </section>
 
 <style>
-  .collection { border-bottom: 1px solid var(--border-default); background: var(--surface-base); }
-  .collection:last-child { border-bottom: 0; }
-  .parent-row { display: grid; grid-template-columns: 36px 128px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-3); padding: var(--sp-4); background: var(--surface-sunken); }
-  .parent-row.without-thumbnail { grid-template-columns: 36px minmax(0, 1fr) auto; }
-  .toggle { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--border-default); border-radius: var(--r-md); background: var(--surface-base); color: var(--text-primary); font-size: var(--fs-lg); }
-  .toggle:hover { background: var(--surface-hover); }
-  .thumbnail { width: 128px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-sm); background: var(--surface-base); }
-  .placeholder { display: grid; place-items: center; color: var(--text-muted); font-weight: 650; }
+  .collection { border-bottom: 1px solid var(--border-subtle); }
+  .parent-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(150px, 35%) auto; min-height: 44px; padding: 5px 10px; align-items: center; gap: 8px; background: var(--surface-base); }
+  .toggle { display: grid; width: 20px; height: 20px; place-items: center; color: var(--text-muted); }
+  .toggle svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.5; transition: transform 120ms ease; }
+  .toggle svg.expanded { transform: rotate(90deg); }
   .identity { min-width: 0; }
-  h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); }
-  p { margin: 3px 0 var(--sp-2); color: var(--text-muted); font-size: var(--fs-sm); }
-  .progress-line { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-muted); font-size: var(--fs-xs); }
-  .track { width: min(220px, 35vw); height: 6px; overflow: hidden; border-radius: var(--r-full); background: var(--surface-active); }
-  .track span { display: block; height: 100%; border-radius: inherit; background: var(--accent-500); }
-  .failed { color: var(--status-danger); }
-  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
-  .children { margin-left: 48px; border-left: 3px solid var(--accent-soft); }
-  .children :global(.job-row) { border-radius: 0; }
-
-  @media (max-width: 760px) {
-    .parent-row { grid-template-columns: 36px 72px minmax(0, 1fr); }
-    .parent-row.without-thumbnail { grid-template-columns: 36px minmax(0, 1fr); }
-    .thumbnail { width: 72px; height: 44px; }
-    .actions { grid-column: 2 / -1; max-width: none; justify-content: flex-start; }
-    .children { margin-left: 20px; }
-  }
+  .identity strong, .identity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .identity strong { font-size: var(--fs-sm); }
+  .identity span { margin-top: 2px; color: var(--text-muted); font-size: var(--fs-xs); }
+  .progress-line { display: grid; grid-template-columns: minmax(60px, 1fr) auto; align-items: center; gap: 8px; color: var(--text-muted); font-size: var(--fs-xs); }
+  .progress-line b { font-weight: 550; }
+  .track { height: 3px; overflow: hidden; background: var(--surface-active); }
+  .track span { display: block; height: 100%; background: var(--accent-500); }
+  .actions { display: flex; gap: 4px; }
+  .actions :global(.app-btn) { min-height: 24px; padding: 0 7px; }
+  .children { margin: 0; padding: 0; border-top: 1px solid var(--border-subtle); list-style: none; }
+  @media (max-width: 760px) { .parent-row { grid-template-columns: 20px minmax(0, 1fr) auto; } .progress-line { grid-column: 2 / -1; } }
 </style>

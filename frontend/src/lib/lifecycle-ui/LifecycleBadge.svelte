@@ -31,10 +31,10 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 24px;
-    padding: 3px 9px;
+    min-height: 20px;
+    padding: 2px 7px;
     border: 1px solid transparent;
-    border-radius: var(--r-full);
+    border-radius: var(--r-md);
     font-size: var(--fs-xs);
     font-weight: 550;
     letter-spacing: 0.01em;
@@ -42,8 +42,8 @@
   }
 
   .badge.compact {
-    min-height: 22px;
-    padding: 2px 8px;
+    min-height: 18px;
+    padding: 1px 6px;
   }
 
   .badge[data-tone='neutral'] {
@@ -77,8 +77,8 @@
   }
 
   .dot {
-    width: 7px;
-    height: 7px;
+    width: 5px;
+    height: 5px;
     flex: 0 0 auto;
     border-radius: 50%;
     background: currentColor;

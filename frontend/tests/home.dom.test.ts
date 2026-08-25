@@ -31,9 +31,13 @@ function installBindings() {
   }));
   const AnalyzeURL = vi.fn(async (raw: string) => videoSummary(raw));
   const AnalyzeBatchURLs = vi.fn();
+  const StartDownload = vi.fn();
+  const StartPlaylistDownload = vi.fn();
   const StartBatchDownload = vi.fn();
-  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload } } };
-  return { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload };
+  const ClipboardGetText = vi.fn(async () => '');
+  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartDownload, StartPlaylistDownload, StartBatchDownload } } };
+  (window as any).runtime = { ClipboardGetText };
+  return { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartDownload, StartPlaylistDownload, StartBatchDownload, ClipboardGetText };
 }
 
 describe('Home analysis authority', () => {
@@ -64,7 +68,29 @@ describe('Home analysis authority', () => {
     await user.clear(input);
     await user.type(input, 'https://www.youtube.com/watch?v=fixture0002');
     await waitFor(() => expect(screen.queryByText('Fixture video')).not.toBeInTheDocument());
-    expect(screen.getByText('Add a YouTube link')).toBeInTheDocument();
+    expect(screen.getByText('Paste a YouTube URL to analyze')).toBeInTheDocument();
+  });
+
+  test('auto-fills an empty URL strip from the clipboard', async () => {
+    const { ClipboardGetText } = installBindings();
+    ClipboardGetText.mockResolvedValue(firstURL);
+    render(Home);
+
+    await waitFor(() => expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(firstURL));
+  });
+
+  test('a delayed clipboard read never overwrites typed input', async () => {
+    const user = userEvent.setup();
+    let finishClipboard!: (value: string) => void;
+    const { ClipboardGetText } = installBindings();
+    ClipboardGetText.mockImplementation(() => new Promise((resolve) => { finishClipboard = resolve; }));
+    render(Home);
+
+    const input = screen.getByLabelText('YouTube video, Short, or playlist URL');
+    const typedURL = 'https://www.youtube.com/watch?v=typed00002';
+    await user.type(input, typedURL);
+    finishClipboard(firstURL);
+    await waitFor(() => expect(input).toHaveValue(typedURL));
   });
 
   test('re-analyzes a URL dropped while that URL is already in the field', async () => {
@@ -123,6 +149,18 @@ describe('Home analysis authority', () => {
     expect(screen.getByRole('button', { name: 'Add 1 Video to Queue' })).toBeDisabled();
   });
 
+  test('does not enable single-video admission without a destination', async () => {
+    const user = userEvent.setup();
+    settings.update((current) => ({ ...current, downloadFolder: '' }));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeDisabled();
+  });
+
   test('badges a Short from extracted media type, not the submitted URL', async () => {
     const user = userEvent.setup();
     const { AnalyzeURL } = installBindings();
@@ -164,6 +202,19 @@ describe('Home analysis authority', () => {
     expect(review).toBeDisabled();
     await user.type(input, '\n\ntwo');
     expect(review).toBeEnabled();
+  });
+
+  test('a URL submitted above the batch composer opens its video workspace', async () => {
+    const user = userEvent.setup();
+    render(Home);
+    await user.click(screen.getByRole('button', { name: 'Batch URLs' }));
+    expect(screen.getByLabelText('YouTube video or Short URLs')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(screen.queryByLabelText('YouTube video or Short URLs')).not.toBeInTheDocument();
   });
 
   test('does not publish an in-flight batch review after the lines change', async () => {
@@ -342,6 +393,30 @@ describe('Home analysis authority', () => {
     expect(await screen.findByText('Subtitles: Off.')).toBeInTheDocument();
     expect(screen.getByText(/FFmpeg is required to create this complete file/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeDisabled();
+  });
+
+  test('locks single-video admission while its request is in flight', async () => {
+    const user = userEvent.setup();
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    let finishStart!: (value: string) => void;
+    const { StartDownload } = installBindings();
+    StartDownload.mockImplementation(() => new Promise((resolve) => { finishStart = resolve; }));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
+    const adding = screen.getByRole('button', { name: 'Adding…' });
+    expect(adding).toBeDisabled();
+    await user.click(adding);
+    expect(StartDownload).toHaveBeenCalledOnce();
+
+    finishStart('job-1');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Added to Queue' })).toBeDisabled());
+  });
+
   });
 
   test('switching output types selects a visible compatible plan', async () => {

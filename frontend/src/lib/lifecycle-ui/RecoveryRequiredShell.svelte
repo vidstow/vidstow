@@ -72,32 +72,22 @@
 </section>
 
 <style>
-  .recovery-shell { width: min(100%, 900px); margin: 0 auto; padding: var(--sp-8) var(--sp-9) var(--sp-9); }
-  .page-header h1 { margin: 0; font-size: var(--fs-3xl); letter-spacing: -0.03em; }
-  .page-header p { margin: var(--sp-1) 0 0; color: var(--text-muted); font-size: var(--fs-md); }
-  .recovery-card { display: flex; flex-direction: column; align-items: center; margin: var(--sp-7) auto 0; padding: var(--sp-7) var(--sp-8); border: 1px solid var(--border-default); border-radius: var(--r-md); background: var(--surface-base); box-shadow: var(--shadow-card); text-align: center; }
-  .warning-icon { width: 68px; height: 68px; color: var(--status-warning); }
+  .recovery-shell { width: min(100%, 780px); margin: 0 auto; padding: var(--sp-6) var(--sp-5) var(--sp-7); font-family: var(--font-sans); }
+  .page-header h1 { margin: 0; font-size: var(--fs-2xl); font-weight: 650; letter-spacing: -0.025em; }
+  .page-header p { margin: var(--sp-1) 0 0; color: var(--text-muted); font-size: var(--fs-sm); }
+  .recovery-card { display: flex; flex-direction: column; align-items: center; margin: var(--sp-5) auto 0; padding: var(--sp-6); border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface-raised); box-shadow: none; text-align: center; }
+  .warning-icon { width: 44px; height: 44px; color: var(--status-warning); }
   .warning-icon svg { width: 100%; height: 100%; }
-  h2 { margin: var(--sp-4) 0 0; font-size: var(--fs-2xl); letter-spacing: -0.025em; }
-  .intro { max-width: 62ch; margin: var(--sp-3) 0 0; color: var(--text-secondary); font-size: var(--fs-lg); line-height: 1.55; }
-  .status-list { width: min(100%, 560px); margin: var(--sp-6) 0 0; border: 1px solid var(--border-subtle); border-radius: var(--r-md); text-align: left; }
-  .status-list > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); }
-  .status-list > div + div { border-top: 1px solid var(--border-subtle); }
-  dt { color: var(--text-primary); font-size: var(--fs-md); }
-  dd { margin: 0; color: var(--text-muted); font-size: var(--fs-md); text-align: right; }
-  .actions { display: flex; gap: var(--sp-3); width: min(100%, 560px); margin-top: var(--sp-5); }
+  h2 { margin: var(--sp-3) 0 0; font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; }
+  .intro { max-width: 62ch; margin: var(--sp-2) 0 0; color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.5; }
+  .status-list { width: min(100%, 520px); margin: var(--sp-5) 0 0; border: 1px solid var(--border-default); border-radius: var(--r-md); background: var(--surface-sunken); text-align: left; }
+  .status-list > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-2) var(--sp-3); }
+  .status-list > div + div { border-top: 1px solid var(--border-default); }
+  dt { color: var(--text-primary); font-size: var(--fs-sm); }
+  dd { margin: 0; color: var(--text-muted); font-size: var(--fs-xs); text-align: right; }
+  .actions { display: flex; gap: var(--sp-2); width: min(100%, 520px); margin-top: var(--sp-4); }
   .actions .app-btn { flex: 1; }
-  .footer-message { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-5) 0 0; color: var(--text-secondary); font-size: var(--fs-md); }
-  .small-warning { display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1.5px solid var(--status-warning); border-radius: 5px; color: var(--status-warning); font-size: var(--fs-sm); font-weight: 700; }
-
-  @media (max-width: 700px) {
-    .recovery-shell { padding: var(--sp-6) var(--sp-4) var(--sp-7); }
-    .recovery-card { padding: var(--sp-6) var(--sp-4); }
-    .intro { font-size: var(--fs-md); }
-    .actions { flex-direction: column; width: 100%; }
-    .actions .app-btn { width: 100%; }
-    .status-list { width: 100%; }
-    .status-list > div { align-items: flex-start; flex-direction: column; gap: var(--sp-1); }
-    dd { text-align: left; }
-  }
+  .footer-message { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-4) 0 0; color: var(--text-secondary); font-size: var(--fs-xs); }
+  .small-warning { display: inline-grid; width: 18px; height: 18px; place-items: center; border: 1px solid var(--status-warning); border-radius: var(--r-md); color: var(--status-warning); font-size: var(--fs-xs); font-weight: 700; }
+  @media (max-width: 700px) { .recovery-shell { padding: var(--sp-5) var(--sp-4); } .recovery-card { padding: var(--sp-5) var(--sp-4); } .actions { flex-direction: column; width: 100%; } .actions .app-btn, .status-list { width: 100%; } .status-list > div { align-items: flex-start; flex-direction: column; gap: var(--sp-1); } dd { text-align: left; } }
 </style>
