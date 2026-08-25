@@ -1323,6 +1323,17 @@ func mustJSON(t *testing.T, value any) []byte {
 	return data
 }
 
+func TestHistoryDeliveryNoteProjection(t *testing.T) {
+	const note = "Saved as MKV after MP4 compatibility fallback."
+	v2 := historyEntryToV2(HistoryEntry{ID: "history-1", DeliveryNote: note})
+	if v2.DeliveryNote != note {
+		t.Fatalf("v2 delivery note = %q; want %q", v2.DeliveryNote, note)
+	}
+	if got := historyEntryFromV2(v2).DeliveryNote; got != note {
+		t.Fatalf("desktop delivery note = %q; want %q", got, note)
+	}
+}
+
 func TestNewV2StateUsesDefaultOutputOptions(t *testing.T) {
 	got := defaultStateV2().Settings.OutputOptions
 	if !got.Equal(jobmodel.DefaultOutputOptions()) {
