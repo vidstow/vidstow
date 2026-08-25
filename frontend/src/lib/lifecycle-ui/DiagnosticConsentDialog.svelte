@@ -39,12 +39,13 @@
 {/if}
 
 <style>
-  .overlay { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(17,24,39,.34); }
-  .dialog { width: min(500px, 94vw); padding: 22px; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); }
-  header { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }
-  h2 { margin: 0; font-size: 18px; }
-  .close { color: var(--text-muted); font-size: 20px; }
-  p { margin: 16px 0 10px; color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
-  .privacy { padding: 0; color: var(--accent-primary); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
-  footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+  .overlay { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: var(--sp-4); background: rgba(0, 0, 0, 0.74); backdrop-filter: blur(3px); }
+  .dialog { width: min(480px, 94vw); overflow: hidden; padding: var(--sp-4); border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--surface-raised); box-shadow: var(--shadow-modal); font-family: var(--font-sans); }
+  header { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--sp-3); }
+  h2 { margin: 0; font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.02em; }
+  .close { display: grid; width: 26px; height: 26px; place-items: center; border-radius: var(--r-md); color: var(--text-muted); font-size: 18px; line-height: 1; }
+  .close:hover { background: var(--surface-active); color: var(--text-primary); }
+  p { margin: var(--sp-3) 0 var(--sp-2); color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.55; }
+  .privacy { padding: 0; color: var(--accent-400); font-size: var(--fs-xs); text-decoration: underline; text-underline-offset: 3px; }
+  footer { display: flex; justify-content: flex-end; gap: var(--sp-2); margin: var(--sp-4) calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border-default); background: var(--surface-base); }
 </style>
