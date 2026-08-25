@@ -34,7 +34,7 @@
   let rangeEnd = '';
   let selectAllBox: HTMLInputElement | undefined;
   let linkedPlaylist: UrlCheckResult | null = null;
-  let queuedVideoPlanId = '';
+  let queuedVideoKey = '';
   let queuedPlaylistKey = '';
   let videoQueueBusy = false;
   let playlistQueueBusy = false;
@@ -73,10 +73,20 @@
   $: batchExpiry = batchReview?.expiresAt ? Date.parse(batchReview.expiresAt) : Number.NaN;
   $: batchTokenValid = !!batchReview?.token && Number.isFinite(batchExpiry) && batchExpiry > batchNow;
   $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy && (batchTab !== 'video' || $ffmpeg.available);
-  $: playlistSelectionKey = playlist
-    ? [playlist.id, playlistTab, playlistTab === 'audio' ? audioChoice : playlistQuality, [...selectedItems].sort((a, b) => a - b).join(',')].join('|')
+  $: videoRequestKey = preview && selectedPlan
+    ? [preview.videoId, tab, selectedPlan.id, folder, outputOptionsIdentity(effectiveOptions(videoOptions, tab === 'video'))].join('|')
     : '';
-  $: videoJustQueued = !!selectedPlan && queuedVideoPlanId === selectedPlan.id;
+  $: playlistSelectionKey = playlist
+    ? [
+        playlist.id,
+        playlistTab,
+        playlistTab === 'audio' ? audioChoice : playlistQuality,
+        [...selectedItems].sort((a, b) => a - b).join(','),
+        folder,
+        outputOptionsIdentity(effectiveOptions(playlistOptions, playlistTab === 'video')),
+      ].join('|')
+    : '';
+  $: videoJustQueued = !!videoRequestKey && queuedVideoKey === videoRequestKey;
   $: playlistJustQueued = !!playlistSelectionKey && queuedPlaylistKey === playlistSelectionKey;
   $: if (selectAllBox && playlist) {
     selectAllBox.indeterminate = selectedItems.size > 0 && selectedItems.size < availableCount;
@@ -110,7 +120,7 @@
   function clearAnalysis() {
     preview = null;
     playlist = null;
-    queuedVideoPlanId = '';
+    queuedVideoKey = '';
     queuedPlaylistKey = '';
     selectedItems = new Set();
     selectedPlanId = '';
@@ -255,18 +265,31 @@
     };
   }
 
+  function outputOptionsIdentity(options: OutputOptions): string {
+    return JSON.stringify({
+      subtitleMode: options.subtitleMode ?? '',
+      subtitleSidecar: !!options.subtitleSidecar,
+      subtitleLanguages: options.subtitleLanguages?.slice(0, 1) ?? [],
+      subtitleAutoCaptions: !!options.subtitleAutoCaptions,
+      subtitleFormat: options.subtitleFormat ?? '',
+      embedMetadata: !!options.embedMetadata,
+      embedThumbnail: !!options.embedThumbnail,
+      embedChapters: !!options.embedChapters,
+    });
+  }
+
   function effectiveOptions(options: OutputOptions, completeVideo: boolean): OutputOptions {
     if (completeVideo) {
       const subtitlesOn = options.subtitleMode === 'embed';
       return {
-      ...options,
-      subtitleMode: subtitlesOn ? 'embed' : '',
-      subtitleLanguages: subtitlesOn ? options.subtitleLanguages?.slice(0, 1) : undefined,
-      subtitleAutoCaptions: subtitlesOn,
-      subtitleFormat: options.subtitleSidecar ? 'srt' : '',
-      embedThumbnail: true,
-      embedChapters: true,
-    };
+        ...options,
+        subtitleMode: subtitlesOn ? 'embed' : '',
+        subtitleLanguages: subtitlesOn ? options.subtitleLanguages?.slice(0, 1) : undefined,
+        subtitleAutoCaptions: subtitlesOn,
+        subtitleFormat: options.subtitleSidecar ? 'srt' : '',
+        embedThumbnail: true,
+        embedChapters: true,
+      };
     }
     return {
       ...options,
@@ -446,6 +469,7 @@
       return;
     }
     const options = effectiveOptions(videoOptions, tab === 'video');
+    const submittedKey = videoRequestKey;
     videoQueueBusy = true;
     try {
       await api.jobs.start({
@@ -459,7 +483,7 @@
         thumbnail: submittedPreview.thumbnail,
         options,
       });
-      queuedVideoPlanId = submittedPlan.id;
+      queuedVideoKey = submittedKey;
       showBanner('success', 'Added to queue');
     } catch (err) {
       modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });

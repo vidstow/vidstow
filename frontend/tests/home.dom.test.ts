@@ -415,8 +415,9 @@ describe('Home analysis authority', () => {
 
     finishStart('job-1');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Added to Queue' })).toBeDisabled());
-  });
 
+    await user.click(screen.getByLabelText('Include subtitles'));
+    expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeEnabled();
   });
 
   test('switching output types selects a visible compatible plan', async () => {
