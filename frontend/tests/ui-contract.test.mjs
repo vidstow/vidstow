@@ -62,6 +62,34 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(settings, /await api\.diagnostics\.clear\(\)/);
 });
 
+test('complete video policy is fixed, truthful, and shared by single and playlist admission', async () => {
+  const [home, editor, settings, types, downloads] = await Promise.all([
+    read('../src/pages/Home.svelte'),
+    read('../src/lib/components/OutputOptionsEditor.svelte'),
+    read('../src/pages/Settings.svelte'),
+    read('../src/lib/types.ts'),
+    read('../src/pages/Downloads.svelte'),
+  ]);
+  assert.match(types, /subtitleSidecar\?: boolean/);
+  assert.match(types, /language: string/);
+  assert.match(types, /chapterCount: number/);
+  assert.match(home, /subtitleMode: 'embed'/);
+  assert.match(home, /embedThumbnail: true/);
+  assert.match(home, /embedChapters: true/);
+  assert.match(home, /seedOutputOptions\(summary\.subtitles \?\? \[\], summary\.language\)/);
+  assert.equal((home.match(/\n          options,/g) || []).length, 2);
+  assert.match(home, /likely MP4, with MKV fallback/);
+  assert.match(home, /FFmpeg is required to create this complete file/);
+  assert.doesNotMatch(home, /withoutFFmpegChoices|seeded\.embedThumbnail = false/);
+  assert.match(editor, /Also save an \.srt file/);
+  assert.match(editor, /subtitles remain embedded in the video/);
+  assert.doesNotMatch(editor, />Off<|>Subtitle file<|>Embed in video</);
+  assert.doesNotMatch(settings, /Default subtitle mode|Embed thumbnail artwork|Embed chapter markers/);
+  assert.match(settings, /Thumbnail artwork and chapter markers are also included automatically when available/);
+  assert.match(downloads, /actualContainer\(entry\)/);
+  assert.match(downloads, /filename\.match\(\/\\\.\(\[a-z0-9\]\+\)\$\/i\)/);
+});
+
 test('first launch asks for explicit diagnostic consent without a default', async () => {
   const [app, dialog] = await Promise.all([
     read('../src/App.svelte'),

@@ -127,49 +127,25 @@
 
     <div class="setting">
       <span class="copy">
-        <strong>Subtitles by default</strong>
-        <small>Pre-selects subtitles for new downloads when the video offers them.</small>
+        <strong>Complete video files</strong>
+        <small>Subtitles are embedded by default. Thumbnail artwork and chapter markers are also included automatically when available.</small>
       </span>
-      <div class="actions">
-        <select
-          aria-label="Default subtitle mode"
-          value={$settings.outputOptions.subtitleMode ?? ''}
-          on:change={(e) => updateOutputOptions({ subtitleMode: (e.currentTarget as HTMLSelectElement).value as OutputOptions['subtitleMode'] })}
-        >
-          <option value="">Off</option>
-          <option value="sidecar">Subtitle file</option>
-          <option value="embed" disabled={!$ffmpeg.available}>Embed in video</option>
-        </select>
-      </div>
     </div>
 
-    {#if $settings.outputOptions.subtitleMode === 'sidecar'}
-      <div class="setting">
-        <span class="copy">
-          <strong>Subtitle file format</strong>
-          <small>{$ffmpeg.available ? 'Converted with FFmpeg when needed.' : 'FFmpeg is needed to convert; the original format is kept.'}</small>
-        </span>
-        <div class="actions">
-          <select
-            aria-label="Default subtitle format"
-            disabled={!$ffmpeg.available}
-            value={$settings.outputOptions.subtitleFormat ?? ''}
-            on:change={(e) => updateOutputOptions({ subtitleFormat: (e.currentTarget as HTMLSelectElement).value as OutputOptions['subtitleFormat'] })}
-          >
-            <option value="">Original</option>
-            <option value="srt">SRT</option>
-            <option value="vtt">VTT</option>
-          </select>
-        </div>
-      </div>
-    {/if}
+    <label class="setting">
+      <span class="copy">
+        <strong>Also save an .srt file</strong>
+        <small>Saves an additional subtitle file without removing embedded subtitles.</small>
+      </span>
+      <input type="checkbox" checked={$settings.outputOptions.subtitleSidecar ?? $settings.outputOptions.subtitleMode === 'sidecar'} on:change={(e) => updateOutputOptions({ subtitleMode: 'embed', subtitleSidecar: e.currentTarget.checked, subtitleFormat: e.currentTarget.checked ? 'srt' : '' })} />
+    </label>
 
     <label class="setting">
       <span class="copy">
         <strong>Include auto-generated captions</strong>
         <small>Uses auto-generated tracks when a language has no real subtitles.</small>
       </span>
-      <input type="checkbox" checked={!!$settings.outputOptions.subtitleAutoCaptions} on:change={(e) => updateOutputOptions({ subtitleAutoCaptions: e.currentTarget.checked })} />
+      <input type="checkbox" checked={$settings.outputOptions.subtitleAutoCaptions !== false} on:change={(e) => updateOutputOptions({ subtitleAutoCaptions: e.currentTarget.checked })} />
     </label>
 
     <label class="setting">
@@ -177,23 +153,7 @@
         <strong>Embed title &amp; channel details</strong>
         <small>Writes the video's details into the downloaded file.</small>
       </span>
-      <input type="checkbox" disabled={!$ffmpeg.available} checked={!!$settings.outputOptions.embedMetadata} on:change={(e) => updateOutputOptions({ embedMetadata: e.currentTarget.checked })} />
-    </label>
-
-    <label class="setting">
-      <span class="copy">
-        <strong>Embed thumbnail artwork</strong>
-        <small>Shows the video's artwork in media players.</small>
-      </span>
-      <input type="checkbox" disabled={!$ffmpeg.available} checked={!!$settings.outputOptions.embedThumbnail} on:change={(e) => updateOutputOptions({ embedThumbnail: e.currentTarget.checked })} />
-    </label>
-
-    <label class="setting">
-      <span class="copy">
-        <strong>Embed chapter markers</strong>
-        <small>Adds the video's chapters where the format supports them.</small>
-      </span>
-      <input type="checkbox" disabled={!$ffmpeg.available} checked={!!$settings.outputOptions.embedChapters} on:change={(e) => updateOutputOptions({ embedChapters: e.currentTarget.checked })} />
+      <input type="checkbox" checked={!!$settings.outputOptions.embedMetadata} on:change={(e) => updateOutputOptions({ embedMetadata: e.currentTarget.checked })} />
     </label>
 
     <QueueSettingsCard
@@ -213,9 +173,9 @@
         <strong>FFmpeg status</strong>
         <span>
           {#if $ffmpeg.available && ffmpegVersion}
-            Version {ffmpegVersion} · ready for merging and MP3 conversion
+            Version {ffmpegVersion} · ready for complete video files and MP3 conversion
           {:else}
-            Needed to merge video and audio, and to convert to MP3.
+            Required for complete video files, including embedded subtitles, artwork, and chapters.
           {/if}
         </span>
       </div>
@@ -329,7 +289,6 @@
     gap: var(--sp-2);
     flex-shrink: 0;
   }
-  .actions select { min-width: 130px; }
 
   .badge {
     padding: 4px 10px;

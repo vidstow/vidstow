@@ -13,7 +13,13 @@ export const settings = writable<Settings>({
   downloadConcurrency: 2,
   perVideoSubfolder: true,
   confirmBeforeDownload: false,
-  outputOptions: {},
+  outputOptions: {
+    subtitleMode: 'embed',
+    subtitleSidecar: false,
+    subtitleAutoCaptions: true,
+    embedThumbnail: true,
+    embedChapters: true,
+  },
   automaticDiagnostics: '',
 });
 
