@@ -51,65 +51,27 @@
     justify-content: center;
     gap: var(--sp-2);
     border-radius: var(--r-md);
-    font-family: inherit;
-    font-weight: 600;
+    font-family: var(--font-sans);
+    font-weight: 550;
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
     transition: background 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
   }
-  .btn:focus-visible {
-    outline: 2px solid var(--accent-400);
-    outline-offset: 2px;
-  }
-  .btn:disabled { cursor: not-allowed; opacity: 0.55; }
-
-  /* Sizes */
-  .size-sm { min-height: 28px; padding: 0 var(--sp-3); font-size: var(--fs-xs); }
-  .size-md { min-height: 36px; padding: 0 var(--sp-4); font-size: var(--fs-sm); }
-  .size-lg { min-height: 42px; padding: 0 var(--sp-5); font-size: var(--fs-md); }
-
+  .btn:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 2px; }
+  .btn:disabled { cursor: not-allowed; opacity: 0.42; }
+  .size-sm { min-height: 24px; padding: 0 var(--sp-2); font-size: var(--fs-xs); }
+  .size-md { min-height: 28px; padding: 0 10px; font-size: var(--fs-sm); }
+  .size-lg { min-height: 32px; padding: 0 var(--sp-3); font-size: var(--fs-md); }
   .full { width: 100%; }
-
-  /* Variants */
-  .variant-primary {
-    color: var(--text-on-accent);
-    background: var(--accent-600);
-    border: 1px solid var(--accent-600);
-  }
-  .variant-primary:hover:not(:disabled) { background: var(--accent-500); border-color: var(--accent-500); }
-
-  .variant-secondary {
-    color: var(--text-primary);
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-  }
-  .variant-secondary:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
-
-  .variant-ghost {
-    color: var(--accent-600);
-    background: transparent;
-    border: 1px solid transparent;
-  }
-  .variant-ghost:hover:not(:disabled) { background: var(--accent-soft); }
-
-  .variant-danger {
-    color: var(--status-danger);
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-  }
-  .variant-danger:hover:not(:disabled) {
-    background: var(--status-danger-soft);
-    border-color: rgba(214, 69, 61, 0.4);
-  }
-
-  .spinner {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    border: 2px solid currentColor;
-    border-top-color: transparent;
-    animation: spin 700ms linear infinite;
-  }
+  .variant-primary { border: 1px solid var(--accent-500); background: var(--accent-500); color: var(--text-on-accent); }
+  .variant-primary:hover:not(:disabled) { border-color: var(--accent-400); background: var(--accent-400); }
+  .variant-secondary { border: 1px solid var(--border-default); background: var(--surface-raised); color: var(--text-secondary); }
+  .variant-secondary:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-hover); color: var(--text-primary); }
+  .variant-ghost { border: 1px solid transparent; background: transparent; color: var(--text-secondary); }
+  .variant-ghost:hover:not(:disabled) { background: var(--surface-active); color: var(--text-primary); }
+  .variant-danger { border: 1px solid var(--border-default); background: var(--surface-raised); color: var(--status-danger); }
+  .variant-danger:hover:not(:disabled) { border-color: rgba(239, 68, 68, 0.45); background: var(--status-danger-soft); }
+  .spinner { width: 12px; height: 12px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 700ms linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
