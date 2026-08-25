@@ -661,6 +661,7 @@ func (a *App) StartDownload(req jobs.Request) (string, error) {
 	if plan.Kind == outputplan.KindVideo {
 		req.Options = req.Options.ForCompleteVideo()
 	}
+	req.Options = a.jobs.DefaultSubtitleOptions(req.VideoID, req.Options)
 	if req.Options.RequiresFFmpeg() && !a.ffmpegStatus().Available {
 		a.recordDiagnosticProblem(operationID, localdiagnostics.Problem{Stage: "postprocessing", Category: "ffmpeg_missing", Outcome: "terminal", RetryBucket: "none"})
 		if plan.Kind == outputplan.KindVideo {

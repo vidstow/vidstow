@@ -114,12 +114,13 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 
 	admissionChildren := make([]admission.CollectionChildRequest, len(children))
 	for index, child := range children {
+		childOptions := jobs.ApplyDefaultSubtitleLanguage(options, child.summary)
 		admissionChildren[index] = admission.CollectionChildRequest{
 			Request: admission.Request{Queue: jobs.Request{
 				URL: child.entry.URL, VideoID: child.entry.VideoID, Title: child.summary.Title,
 				Channel: child.summary.Channel, Quality: req.Quality, PlanID: child.plan.ID,
 				OutputDir: outputDir, Duration: child.summary.Duration, Thumbnail: child.summary.Thumbnail,
-				Options: options,
+				Options: childOptions,
 			}, Metadata: value.NewInfo(value.NewObject(
 				value.Field{Key: "title", Value: value.String(child.summary.Title)},
 				value.Field{Key: "id", Value: value.String(child.entry.VideoID)},
