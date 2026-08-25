@@ -70,65 +70,52 @@
   .queue-settings { display: contents; }
   h2 {
     margin: 0;
-    padding: 10px 0 0;
+    padding: var(--sp-2) 0 6px;
     border-top: 1px solid var(--border-subtle);
+    color: var(--text-muted);
     font-size: var(--fs-xs);
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
+    line-height: 1;
     text-transform: uppercase;
-    color: var(--text-muted);
   }
   .setting {
     display: flex;
+    min-height: 44px;
     align-items: center;
     justify-content: space-between;
     gap: var(--sp-4);
-    min-height: 48px;
-    padding: 8px 0;
+    padding: 7px 0;
     border-top: 1px solid var(--border-subtle);
   }
   .setting > div { min-width: 0; }
-  strong, label {
-    display: block;
-    color: var(--text-primary);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-  }
-  p {
-    margin: 4px 0 0;
-    color: var(--text-secondary);
-    font-size: var(--fs-xs);
-    line-height: 1.45;
-  }
-
+  strong, label { display: block; color: var(--text-primary); font-size: var(--fs-sm); font-weight: 600; }
+  p { margin: 2px 0 0; color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.4; }
   .fixed-value {
     flex: 0 0 auto;
     color: var(--text-muted);
-    font-size: var(--fs-sm);
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
     white-space: nowrap;
   }
-
   select {
-    width: 84px;
-    flex: 0 0 84px;
-    height: 36px;
-    padding: 0 28px 0 12px;
+    width: 68px;
+    height: 32px;
+    flex: 0 0 68px;
+    padding: 0 26px 0 10px;
     border: 1px solid var(--border-default);
-    border-radius: var(--r-md);
-    background-color: var(--surface-base);
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'><path d='M2.5 4.5L6 8l3.5-3.5' stroke='%235C544C' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    border-radius: var(--r-sm);
+    background-color: var(--surface-sunken);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'><path d='M2.5 4.5L6 8l3.5-3.5' stroke='%2371717A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
     background-repeat: no-repeat;
-    background-position: right 10px center;
+    background-position: right 8px center;
     color: var(--text-primary);
-    font-size: var(--fs-sm);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
     font-weight: 600;
     box-shadow: none;
   }
-  select:hover:not(:disabled) {
-    background-color: var(--surface-hover);
-    border-color: var(--border-strong);
-  }
+  select:hover:not(:disabled) { border-color: var(--border-strong); background-color: var(--surface-hover); }
 
   @media (max-width: 620px) {
     .setting { align-items: flex-start; flex-direction: column; gap: var(--sp-2); }

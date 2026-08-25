@@ -2,9 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   import LifecycleJobRow, { type LifecycleJobActionEvent } from './LifecycleJobRow.svelte';
   import CollectionRow from './CollectionRow.svelte';
-  import QueueSummary from './QueueSummary.svelte';
   import { queueDisplayItems } from '../queue-view.js';
-  import { isValidCommandToken } from './types.js';
+  import { isValidCommandToken, lifecycleLabel } from './types.js';
   import type { LifecycleJobEventDetail, QueueCollectionActionEvent, QueueOverviewViewModel } from './types.js';
 
   export interface QueueOverviewEvents {
@@ -12,15 +11,6 @@
     'clear-completed': void;
     pause: LifecycleJobEventDetail;
     cancel: LifecycleJobEventDetail;
-    resume: LifecycleJobEventDetail;
-    retry: LifecycleJobEventDetail;
-    'download-again': LifecycleJobEventDetail;
-    'start-again': LifecycleJobEventDetail;
-    'open-source': LifecycleJobEventDetail;
-    'copy-link': LifecycleJobEventDetail;
-    review: LifecycleJobEventDetail;
-    open: LifecycleJobEventDetail;
-    remove: LifecycleJobEventDetail;
     'collection-action': QueueCollectionActionEvent;
   }
 
@@ -35,9 +25,14 @@
 
   let { model, title = 'Queue', onPauseAll, onClearCompleted, onAction, onCollectionAction }: Props = $props();
   const dispatch = createEventDispatcher<QueueOverviewEvents>();
+  let selectedJobId = $state<string | undefined>();
   const hasQueueAuthority = $derived(isValidCommandToken(model.commandToken));
   const collections = $derived(model.collections ?? []);
-  const displayItems = $derived(queueDisplayItems(model.jobs, collections));
+  const jobsById = $derived(new Map(model.jobs.map((job) => [job.id, job])));
+  const activeJobs = $derived(model.jobs.filter((job) => job.lifecycle !== 'completed'));
+  const completedJobs = $derived(model.jobs.filter((job) => job.lifecycle === 'completed'));
+  const displayItems = $derived(queueDisplayItems(activeJobs, collections));
+  const selectedJob = $derived(jobsById.get(selectedJobId ?? '') ?? activeJobs[0]);
 
   function forward(event: LifecycleJobActionEvent): void {
     dispatch(event.action, { jobId: event.jobId, commandToken: event.commandToken });
@@ -60,125 +55,112 @@
     dispatch('clear-completed');
     onClearCompleted?.();
   }
+
+  function inspectorAction(action: 'pause' | 'cancel'): void {
+    if (!selectedJob || !isValidCommandToken(selectedJob.commandToken) || selectedJob.capabilities?.[action] !== true) return;
+    forward({ action, jobId: selectedJob.id, commandToken: selectedJob.commandToken });
+  }
 </script>
 
-<section class="page queue-page" aria-labelledby="lifecycle-queue-title">
-  <header class="page-header queue-header">
-    <div>
+<section class="queue-shell" aria-labelledby="lifecycle-queue-title">
+  <div class="queue-master">
+    <header class="queue-header">
       <h1 id="lifecycle-queue-title">{title}</h1>
-      <p>{model.summary.totalJobs} {model.summary.totalJobs === 1 ? 'job' : 'jobs'} · {model.summary.runningJobs} running</p>
-    </div>
-    <div class="header-actions">
-      <button
-        type="button"
-        class="app-btn"
-        disabled={!(model.canPauseAll === true && hasQueueAuthority)}
-        onclick={pauseAll}
-      >Pause All</button>
-      <button
-        type="button"
-        class="app-btn"
-        disabled={!(model.canClearCompleted === true && hasQueueAuthority)}
-        onclick={clearCompleted}
-      >Clear Completed</button>
-    </div>
-  </header>
+      <div class="header-actions">
+        <button type="button" class="tool-button" aria-label="Pause all" disabled={!(model.canPauseAll === true && hasQueueAuthority)} onclick={pauseAll}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3v10M11.5 3v10" /></svg><span>Pause all</span>
+        </button>
+        <button type="button" class="tool-button" aria-label="Clear completed" disabled={!(model.canClearCompleted === true && hasQueueAuthority)} onclick={clearCompleted}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h1M5.5 4h8M2 8h1M5.5 8h4.5M2 12h1M5.5 12h8M11.5 8h2.5" /></svg><span>Clear completed</span>
+        </button>
+      </div>
+    </header>
 
-  <QueueSummary summary={model.summary} />
+    {#if model.notice}
+      <div class="notice" data-tone={model.noticeTone ?? 'info'} role="status"><span aria-hidden="true">i</span>{model.notice}</div>
+    {/if}
 
-  {#if model.notice}
-    <p class="notice" data-tone={model.noticeTone ?? 'info'} role="status" aria-live="polite">
-      <span class="notice-icon" aria-hidden="true">i</span>
-      <span>{model.notice}</span>
-    </p>
-  {/if}
-
-  <section class="job-section" aria-labelledby="lifecycle-job-section-title">
-    <h2 id="lifecycle-job-section-title">
-      {model.sectionTitle ?? 'Active & queued'}
-      <span class="count" aria-label={`${model.jobs.length} jobs`}>{model.jobs.length}</span>
-    </h2>
-
-    {#if model.jobs.length || collections.length}
-      <div class="job-list">
+    <div class="queue-list">
+      {#if displayItems.length}
         {#each displayItems as item, index (item.key)}
           {#if item.kind === 'collection'}
-            <CollectionRow
-              collection={item.collection}
-              children={item.children}
-              onAction={forward}
-              onCollectionAction={forwardCollection}
-            />
+            <CollectionRow collection={item.collection} children={item.children} selectedJobId={selectedJob?.id} onSelect={(id) => selectedJobId = id} onAction={forward} onCollectionAction={forwardCollection} />
           {:else}
-            <LifecycleJobRow
-              job={item.job}
-              index={index + 1}
-              onAction={forward}
-            />
+            <ul class="standalone-list" aria-label="Queue items">
+              <LifecycleJobRow job={item.job} index={index + 1} selected={selectedJob?.id === item.job.id} onSelect={(id) => selectedJobId = id} onAction={forward} />
+            </ul>
           {/if}
         {/each}
+      {:else if completedJobs.length === 0}
+        <div class="empty" role="status">Nothing in the queue.</div>
+      {/if}
+
+      {#if completedJobs.length > 0}
+        <div class="completed-strip">Completed · {completedJobs.length}</div>
+      {/if}
+    </div>
+  </div>
+
+  <aside class="inspector" aria-label="Queue item details">
+    {#if selectedJob}
+      <div class="inspector-content">
+        <h2>{selectedJob.title}</h2>
+        <dl>
+          <div><dt>Status</dt><dd>{lifecycleLabel(selectedJob.lifecycle, selectedJob.phase)}</dd></div>
+          {#if selectedJob.progress !== undefined}<div><dt>Progress</dt><dd>{selectedJob.progressLabel ?? `${Math.max(0, Math.min(100, Math.round(selectedJob.progress * 100)))}%`}</dd></div>{/if}
+          {#if selectedJob.speedLabel}<div><dt>Speed</dt><dd>{selectedJob.speedLabel}</dd></div>{/if}
+          {#if selectedJob.etaLabel}<div><dt>ETA</dt><dd>{selectedJob.etaLabel}</dd></div>{/if}
+          {#if selectedJob.metadata}<div><dt>Format</dt><dd>{selectedJob.metadata}</dd></div>{/if}
+        </dl>
+      </div>
+      <div class="inspector-actions">
+        {#if selectedJob.capabilities?.pause}
+          <button type="button" class="app-btn" disabled={!isValidCommandToken(selectedJob.commandToken)} onclick={() => inspectorAction('pause')}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3v10M11.5 3v10" /></svg>Pause
+          </button>
+        {/if}
+        {#if selectedJob.capabilities?.cancel}
+          <button type="button" class="app-btn" disabled={!isValidCommandToken(selectedJob.commandToken)} onclick={() => inspectorAction('cancel')}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8" /></svg>Cancel
+          </button>
+        {/if}
       </div>
     {:else}
-      <div class="empty" role="status">Nothing in the queue. Add a video, Short, or playlist from Home to get started.</div>
+      <p class="inspector-empty">Select a queue item to see its details.</p>
     {/if}
-  </section>
-
-  <footer>{model.footerText ?? 'Jobs are saved automatically.'}</footer>
+  </aside>
 </section>
 
 <style>
-  .queue-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--sp-6);
-  }
-  .header-actions { display: flex; gap: var(--sp-2); padding-top: 2px; }
-
-
-
-  .notice {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    margin: 0;
-    padding: var(--sp-3) var(--sp-4);
-    border: 1px solid var(--accent-400);
-    border-radius: var(--r-md);
-    color: var(--accent-600);
-    background: var(--accent-soft);
-    font-size: var(--fs-sm);
-  }
-
-  .notice[data-tone='warning'] {
-    border-color: rgba(176, 118, 7, 0.4);
-    color: var(--status-warning);
-    background: var(--status-warning-soft);
-  }
-
-  .notice-icon {
-    display: grid;
-    place-items: center;
-    width: 18px;
-    height: 18px;
-    flex: 0 0 auto;
-    border: 1.5px solid currentColor;
-    border-radius: 50%;
-    font-size: var(--fs-xs);
-    font-weight: 700;
-  }
-
-  .job-section { margin-top: 0; }
-  h2 { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-3); font-size: var(--fs-lg); }
-  .count { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: var(--r-full); background: var(--surface-active); color: var(--text-secondary); font-size: var(--fs-xs); font-weight: 600; }
-
-  .job-list { overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-md); box-shadow: var(--shadow-card); }
-  .empty { display: grid; min-height: 150px; place-items: center; border: 1px dashed var(--border-default); border-radius: var(--r-md); color: var(--text-muted); font-size: var(--fs-sm); }
-  footer { margin-top: var(--sp-5); color: var(--text-muted); font-size: var(--fs-xs); text-align: center; }
-
-  @media (max-width: 700px) {
-    .queue-header { flex-direction: column; }
-    .header-actions { width: 100%; }
-    .header-actions .app-btn { flex: 1; }
+  .queue-shell { display: grid; width: 100%; height: 100%; min-height: 0; grid-template-columns: minmax(430px, 2fr) minmax(230px, 1fr); overflow: hidden; background: var(--surface-bg); }
+  .queue-master { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border-default); }
+  .queue-header { display: flex; height: 32px; padding: 0 10px 0 14px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-default); background: var(--surface-sunken); }
+  h1 { margin: 0; font-size: var(--fs-sm); font-weight: 650; }
+  .header-actions { display: grid; width: max-content; grid-template-columns: 1fr 1fr; }
+  .tool-button { display: flex; height: 26px; padding: 0 10px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border-default); background: var(--surface-sunken); color: var(--text-secondary); font-size: var(--fs-sm); white-space: nowrap; }
+  .tool-button:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+  .tool-button:last-child { margin-left: -1px; border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+  .tool-button:hover:not(:disabled) { background: var(--surface-hover); color: var(--text-primary); }
+  .tool-button svg, .inspector-actions svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .notice { display: flex; min-height: 30px; padding: 6px 10px; align-items: center; gap: 8px; border-bottom: 1px solid rgba(245, 158, 11, .35); background: var(--status-warning-soft); color: var(--status-warning); font-size: var(--fs-xs); }
+  .notice > span { display: grid; width: 14px; height: 14px; place-items: center; border: 1px solid currentColor; border-radius: 50%; }
+  .queue-list { min-height: 0; flex: 1; overflow: auto; }
+  .standalone-list { margin: 0; padding: 0; list-style: none; }
+  .completed-strip { height: 24px; margin: 4px 10px; padding: 0 10px; display: flex; align-items: center; border-radius: 2px; background: var(--surface-raised); color: var(--text-muted); font-size: var(--fs-xs); }
+  .empty { display: grid; min-height: 120px; place-items: center; color: var(--text-muted); font-size: var(--fs-sm); }
+  .inspector { position: sticky; top: 0; display: flex; min-width: 0; height: 100%; min-height: 360px; flex-direction: column; background: var(--surface-inspector); }
+  .inspector-content { padding: 13px 14px; }
+  .inspector h2 { margin: 0; padding-bottom: 10px; border-bottom: 1px solid var(--border-default); overflow: hidden; font-size: var(--fs-sm); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+  dl { margin: 10px 0 0; }
+  dl div { display: grid; grid-template-columns: 78px minmax(0, 1fr); min-height: 20px; align-items: start; font-size: var(--fs-xs); }
+  dt { color: var(--text-muted); }
+  dd { margin: 0; overflow: hidden; color: var(--text-primary); font-family: var(--font-mono); font-weight: 550; text-overflow: ellipsis; white-space: nowrap; }
+  .inspector-actions { display: flex; margin-top: auto; padding: 10px 14px 14px; gap: 5px; }
+  .inspector-actions :global(.app-btn) { gap: 6px; min-height: 26px; }
+  .inspector-empty { margin: 14px; color: var(--text-muted); font-size: var(--fs-xs); }
+  @media (max-width: 760px) {
+    .queue-shell { grid-template-columns: 1fr; }
+    .queue-master { border-right: 0; }
+    .inspector { position: static; min-height: 180px; border-top: 1px solid var(--border-default); }
   }
 </style>
