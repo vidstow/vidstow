@@ -26,9 +26,16 @@
     { value: 'all', label: 'All', count: $history.length },
   ];
 
+  function actualContainer(entry: HistoryEntry): string {
+    const filename = entry.filename || entry.absolutePath.split(/[\\/]/).pop() || '';
+    const match = filename.match(/\.([a-z0-9]+)$/i);
+    return match?.[1]?.toLowerCase() || entry.container || '';
+  }
+
   function formatLabel(entry: HistoryEntry): string {
     const quality = qualityLabel(entry.quality);
-    return entry.container ? `${quality} · ${entry.container}` : quality;
+    const container = actualContainer(entry);
+    return container ? `${quality} · ${container}` : quality;
   }
 
   function codecSummary(entry: HistoryEntry): string {

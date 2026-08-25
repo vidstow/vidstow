@@ -55,7 +55,7 @@
   $: batchReadyCount = batchReview?.counts.ready ?? 0;
   $: batchExpiry = batchReview?.expiresAt ? Date.parse(batchReview.expiresAt) : Number.NaN;
   $: batchTokenValid = !!batchReview?.token && Number.isFinite(batchExpiry) && batchExpiry > batchNow;
-  $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy;
+  $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy && (batchTab !== 'video' || $ffmpeg.available);
   $: if (selectAllBox && playlist) {
     selectAllBox.indeterminate = selectedItems.size > 0 && selectedItems.size < availableCount;
   }
@@ -148,6 +148,10 @@
     if (!batchReview?.token || !batchCanStart) return;
     const quality: Quality = batchTab === 'audio' ? 'audio' : batchQuality;
     const audioBitrate = batchTab === 'audio' && batchAudioChoice !== 'original' ? Number(batchAudioChoice) : 0;
+    if (batchTab === 'video' && !$ffmpeg.available) {
+      requireFFmpeg('FFmpeg is required to create complete video files with embedded subtitles, artwork, and chapters.');
+      return;
+    }
     if (audioBitrate && !$ffmpeg.available) {
       requireFFmpeg('MP3 conversion needs FFmpeg. Choose original audio or configure FFmpeg.');
       return;
@@ -185,46 +189,80 @@
       if (requestGeneration !== analysisGeneration) return;
       url = canonicalURL;
       preview = summary;
-      videoOptions = seedOutputOptions(summary.subtitles ?? []);
+      videoOptions = seedOutputOptions(summary.subtitles ?? [], summary.language);
       const recommended = summary.plans.find((plan) => plan.recommended) ?? summary.plans[0];
       selectedPlanId = recommended?.id ?? '';
       tab = recommended?.kind ?? 'video';
     }
   }
 
-  // Seeds the advanced section from the saved defaults. Language preference
-  // is not persisted: English is pre-selected when the video offers it,
-  // otherwise the engine's first-available default applies.
-  function seedOutputOptions(languages: SubtitleLanguage[]): OutputOptions {
-    const seeded = { ...($settings.outputOptions ?? {}) };
-    if (!$ffmpeg.available) {
-      seeded.subtitleMode = seeded.subtitleMode === 'embed' ? '' : seeded.subtitleMode;
-      seeded.subtitleFormat = '';
-      seeded.embedMetadata = false;
-      seeded.embedThumbnail = false;
-      seeded.embedChapters = false;
-    }
-    if (seeded.subtitleMode && !seeded.subtitleLanguages?.length && languages.some((language) => language.code === 'en')) {
-      seeded.subtitleLanguages = ['en'];
-    }
-    return seeded;
+  // Complete-file is the fixed video policy. Saved preferences may choose the
+  // language, auto-caption fallback, metadata, and an additional SRT, but may
+  // not turn embedded subtitles/artwork/chapters off.
+  function seedOutputOptions(languages: SubtitleLanguage[], videoLanguage = ''): OutputOptions {
+    const saved = $settings.outputOptions ?? {};
+    const savedLanguages = saved.subtitleLanguages?.filter(Boolean) ?? [];
+    const creators = languages.filter((language) => !language.auto);
+    const automatic = languages.filter((language) => language.auto);
+    const matchLanguage = (choices: SubtitleLanguage[], wanted: string) => {
+      const normalized = wanted.trim().toLowerCase();
+      if (!normalized) return undefined;
+      const root = normalized.split('-')[0];
+      return choices.find((item) => item.code.toLowerCase() === normalized)
+        ?? choices.find((item) => item.code.toLowerCase().split('-')[0] === root);
+    };
+    const defaultTrack = creators.length
+      ? matchLanguage(creators, videoLanguage) ?? matchLanguage(creators, 'en') ?? creators[0]
+      : matchLanguage(automatic, videoLanguage) ?? matchLanguage(automatic, 'en') ?? automatic[0];
+    const sidecar = saved.subtitleSidecar ?? saved.subtitleMode === 'sidecar';
+    return {
+      ...saved,
+      subtitleMode: 'embed',
+      subtitleSidecar: sidecar,
+      subtitleLanguages: savedLanguages.length ? savedLanguages : defaultTrack ? [defaultTrack.code] : undefined,
+      subtitleAutoCaptions: typeof saved.subtitleAutoCaptions === 'boolean' ? saved.subtitleAutoCaptions : true,
+      subtitleFormat: sidecar ? 'srt' : '',
+      embedThumbnail: true,
+      embedChapters: true,
+    };
   }
 
-  // Subtitles only ride along with video outputs; captions cannot be embedded
-  // in or written beside audio-only downloads.
-  function effectiveOptions(options: OutputOptions, subtitlesAllowed: boolean): OutputOptions {
-    if (subtitlesAllowed) return options;
-    return { ...options, subtitleMode: '', subtitleLanguages: undefined, subtitleAutoCaptions: false, subtitleFormat: '' };
+  function effectiveOptions(options: OutputOptions, completeVideo: boolean): OutputOptions {
+    if (completeVideo) return {
+      ...options,
+      subtitleMode: 'embed',
+      subtitleFormat: options.subtitleSidecar ? 'srt' : '',
+      embedThumbnail: true,
+      embedChapters: true,
+    };
+    return {
+      ...options,
+      subtitleMode: '',
+      subtitleSidecar: false,
+      subtitleLanguages: undefined,
+      subtitleAutoCaptions: false,
+      subtitleFormat: '',
+      embedThumbnail: false,
+      embedChapters: false,
+    };
   }
 
-  function optionsNeedFFmpeg(options: OutputOptions): boolean {
-    return (
-      options.subtitleMode === 'embed' ||
-      !!options.embedMetadata ||
-      !!options.embedThumbnail ||
-      !!options.embedChapters ||
-      (options.subtitleMode === 'sidecar' && !!options.subtitleFormat)
-    );
+  function subtitleOutcome(summary: InfoSummary, options: OutputOptions): string {
+    const tracks = summary.subtitles ?? [];
+    const selected = new Set(options.subtitleLanguages ?? []);
+    const creator = tracks.find((track) => !track.auto && selected.has(track.code));
+    if (creator) return `${creator.name || creator.code} creator subtitles`;
+    if (options.subtitleAutoCaptions !== false) {
+      const automatic = tracks.find((track) => !!track.auto && selected.has(track.code)) ?? tracks.find((track) => !!track.auto);
+      if (automatic) return `${automatic.name || automatic.code} auto-generated transcript`;
+    }
+    return 'no subtitles (no suitable track was reported)';
+  }
+
+  function chapterOutcome(summary: InfoSummary): string {
+    if (typeof summary.chapterCount !== 'number') return 'chapter markers when available';
+    if (summary.chapterCount > 0) return `${summary.chapterCount} chapter marker${summary.chapterCount === 1 ? '' : 's'}`;
+    return 'no chapter markers reported';
   }
 
   async function analyze() {
@@ -362,15 +400,15 @@
 
   async function enqueueVideo() {
     if (!preview || !selectedPlan || !folder) return;
+    if (tab === 'video' && !$ffmpeg.available) {
+      requireFFmpeg('FFmpeg is required to create a complete video file with embedded subtitles, artwork, and chapters. Install FFmpeg or set its path in Settings.');
+      return;
+    }
     if (selectedPlan.requiresFfmpeg && !$ffmpeg.available) {
       requireFFmpeg('This output needs FFmpeg for merging or conversion. Install FFmpeg, set its path in Settings, or choose an original audio option.');
       return;
     }
     const options = effectiveOptions(videoOptions, tab === 'video');
-    if (optionsNeedFFmpeg(options) && !$ffmpeg.available) {
-      requireFFmpeg('Subtitles and embedded details need FFmpeg. Install FFmpeg, set its path in Settings, or turn those options off.');
-      return;
-    }
     const start = async () => {
       try {
         await api.jobs.start({
@@ -414,8 +452,8 @@
       return;
     }
     const options = effectiveOptions(playlistOptions, playlistTab === 'video');
-    if (optionsNeedFFmpeg(options) && !$ffmpeg.available) {
-      requireFFmpeg('Subtitles and embedded details need FFmpeg. Install FFmpeg, set its path in Settings, or turn those options off.');
+    if (playlistTab === 'video' && !$ffmpeg.available) {
+      requireFFmpeg('FFmpeg is required to create complete video files with embedded subtitles, artwork, and chapters. Install FFmpeg or set its path in Settings.');
       return;
     }
     const start = async () => {
@@ -511,12 +549,14 @@
           {#if batchTab === 'video'}
             <label class="visually-hidden" for="batch-quality">Batch video quality</label>
             <select id="batch-quality" bind:value={batchQuality}>
+
               <option value="best">Best available</option>
               <option value="4k">Up to 4K</option>
               <option value="1440p">Up to 1440p</option>
               <option value="1080p">Up to 1080p</option>
               <option value="720p">Up to 720p</option>
             </select>
+            {#if !$ffmpeg.available}<small class="batch-ffmpeg">FFmpeg is required for complete video files.</small>{/if}
           {:else}
             <label class="visually-hidden" for="batch-audio">Batch audio format</label>
             <select id="batch-audio" bind:value={batchAudioChoice}>
@@ -641,6 +681,14 @@
         {/each}
       </div>
 
+      {#if playlistTab === 'video'}
+        <aside class="complete-summary" aria-label="Complete file contents">
+          <strong>Complete video files</strong>
+          <span>Each selected video will embed its preferred creator subtitle or an auto-generated transcript when available, plus artwork and chapter markers when provided. VidStow targets MP4 and falls back to MKV when needed.</span>
+          {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required before these videos can be added. Configure it in Settings.</span>{/if}
+        </aside>
+      {/if}
+
       <OutputOptionsEditor
         bind:value={playlistOptions}
         collectionMode={true}
@@ -656,7 +704,7 @@
           <small title={`${playlist.title} [${playlist.id}]`}>Playlist folder · {shortTitle(playlist.title, 48)}</small>
         </div>
         <button type="button" class="app-btn" on:click={pickFolder}>Change…</button>
-        <button type="button" class="app-btn primary queue" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder}>
+        <button type="button" class="app-btn primary queue" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || (playlistTab === 'video' && !$ffmpeg.available)} title={playlistTab === 'video' && !$ffmpeg.available ? 'FFmpeg is required for complete video files' : ''}>
           Add {selectedItems.size} {selectedItems.size === 1 ? 'Video' : 'Videos'} to Queue
         </button>
       </footer>
@@ -705,6 +753,17 @@
         <div class="empty pane">No {tab} outputs were reported for this video.</div>
       {/if}
 
+      {#if tab === 'video'}
+        <aside class="complete-summary" aria-label="Complete file contents">
+          <strong>What this file will include</strong>
+          <span>Subtitles: {subtitleOutcome(preview, videoOptions)}.</span>
+          <span>Artwork: {preview.thumbnail ? 'thumbnail artwork will be embedded' : 'none reported'}.</span>
+          <span>Chapters: {chapterOutcome(preview)}.</span>
+          <span>Container: likely MP4, with MKV fallback when the selected streams or subtitles require it.</span>
+          {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required to create this complete file. Configure it in Settings before adding.</span>{/if}
+        </aside>
+      {/if}
+
       <OutputOptionsEditor
         bind:value={videoOptions}
         languages={preview?.subtitles ?? []}
@@ -722,7 +781,7 @@
           {/if}
         </div>
         <button type="button" class="app-btn" on:click={pickFolder}>Change…</button>
-        <button type="button" class="app-btn primary queue" on:click={enqueueVideo} disabled={!selectedPlan}>Add to Queue</button>
+        <button type="button" class="app-btn primary queue" on:click={enqueueVideo} disabled={!selectedPlan || !folder || (tab === 'video' && !$ffmpeg.available)} title={tab === 'video' && !$ffmpeg.available ? 'FFmpeg is required for a complete video file' : ''}>Add to Queue</button>
       </footer>
     </section>
   {:else}
@@ -857,6 +916,7 @@
   .batch-policy > div:first-child { display: flex; flex-direction: column; }
   .batch-policy small { color: var(--text-muted); }
   .batch-policy select { height: 40px; }
+  .batch-ffmpeg { grid-column: 1 / -1; color: var(--status-warning) !important; font-weight: 700; }
   .batch-save-bar { padding: var(--sp-4); }
   .batch-save-bar .destination { flex: 1; min-width: 0; }
 
@@ -1072,6 +1132,20 @@
     color: var(--text-muted);
     font-size: var(--fs-sm);
   }
+
+  .complete-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--accent-soft);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .complete-summary strong { flex-basis: 100%; color: var(--text-primary); font-size: var(--fs-xs); }
+  .complete-summary .ffmpeg-required { flex-basis: 100%; color: var(--status-warning); font-weight: 700; }
 
   .save-bar {
     display: grid;
