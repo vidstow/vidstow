@@ -48,7 +48,7 @@
   .tabs {
     display: inline-flex;
     gap: 2px;
-    padding: 3px;
+    padding: 2px;
     background: var(--surface-sunken);
     border: 1px solid var(--border-default);
     border-radius: var(--r-md);
@@ -57,9 +57,9 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 30px;
-    padding: 0 var(--sp-3);
-    border-radius: 6px;
+    min-height: 26px;
+    padding: 0 9px;
+    border-radius: var(--r-sm);
     color: var(--text-secondary);
     font-size: var(--fs-sm);
     font-weight: 500;
@@ -68,18 +68,18 @@
   .tab:hover:not(:disabled):not(.active) { color: var(--text-primary); }
   .tab.active {
     color: var(--text-primary);
-    background: var(--surface-base);
-    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+    background: var(--surface-active);
+    box-shadow: none;
   }
   .tab:disabled { cursor: not-allowed; opacity: 0.5; }
   .count {
-    min-width: 16px;
-    padding: 0 5px;
+    min-width: 15px;
+    padding: 0 4px;
     border-radius: var(--r-full);
     background: var(--border-subtle);
     font-size: 11px;
     text-align: center;
   }
   .tab.active .count { background: var(--accent-soft); color: var(--accent-600); }
-  .tab-panel { margin-top: var(--sp-3); }
+  .tab-panel { margin-top: var(--sp-2); }
 </style>

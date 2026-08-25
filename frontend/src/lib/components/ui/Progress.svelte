@@ -36,9 +36,9 @@
   .progress { display: flex; align-items: center; gap: var(--sp-2); }
   .track {
     flex: 1;
-    height: 6px;
+    height: 4px;
     border-radius: var(--r-full);
-    background: var(--border-subtle);
+    background: var(--surface-active);
     overflow: hidden;
   }
   .fill {
