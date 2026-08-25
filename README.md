@@ -31,7 +31,7 @@ A local desktop application built with Go, Wails, and Svelte.
 ## Download
 
 [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5)
-is the current macOS Apple Silicon preview. The recommended installation
+Is the current macOS Apple Silicon preview. The recommended installation
 uses VidStow's Homebrew tap:
 
 ```sh
@@ -71,9 +71,10 @@ verification details.
   once, identify invalid and duplicate lines, then atomically admit every ready
   item under one durable expandable queue parent.
 - **FIFO queue** — configure 1–10 concurrent downloads; the default is 2.
-- **Explicit lifecycle controls** — each queue row presents only the Pause,
-  Resume, Cancel, Retry, Start again, source, Open, or removal actions authorized
-  by the application; Pause All is available for eligible queued work.
+- **Explicit lifecycle controls** — the Queue is a list plus inspector. Header
+  actions are Pause all and Clear completed; row actions are Pause and Cancel
+  (the inspector can repeat those). The frontend presents only
+  backend-authorized capabilities.
 - **Durable application state** — State v2 stores queue lifecycle, settings,
   reservations, history, and pending cleanup obligations.
 - **Persistent download history** — completed downloads remain available across
@@ -106,30 +107,35 @@ required instead of claiming success.
 <table>
   <tr>
     <td width="50%">
-      <strong>Queue</strong><br>
-      Review queue occupancy, lifecycle status, progress, and available actions.<br><br>
-      <img src="docs/assets/screenshots/queue-lifecycle.png" alt="VidStow queue showing a completed video and its available actions">
+      <strong>Home</strong><br>
+      Paste a public YouTube URL into the empty field and inspect analysis before downloading.<br><br>
+      <img src="docs/assets/screenshots/home-empty.png" alt="VidStow Home showing the empty paste field and analysis workspace">
     </td>
+    <td width="50%">
+      <strong>Queue</strong><br>
+      Review the queue as a list plus inspector. Header actions are Pause all and Clear completed.<br><br>
+      <img src="docs/assets/screenshots/queue-lifecycle.png" alt="VidStow Queue showing a list plus inspector with Pause all and Clear completed">
+    </td>
+  </tr>
+  <tr>
     <td width="50%">
       <strong>Playlist review</strong><br>
       Search a playlist, select entries, apply a range, and choose one output policy.<br><br>
       <img src="docs/assets/screenshots/playlist-review.png" alt="VidStow reviewing selected entries from the Blender Open Movies playlist">
     </td>
-  </tr>
-  <tr>
     <td width="50%">
-      <strong>Download history</strong><br>
-      Search completed downloads and open files or reveal them in the system file manager.<br><br>
+      <strong>Downloads</strong><br>
+      Search completed downloads, open files, or Show in Finder.<br><br>
       <img src="docs/assets/screenshots/downloads.png" alt="VidStow Downloads page showing search and file actions for a completed download">
     </td>
+  </tr>
+  <tr>
     <td width="50%">
       <strong>Settings</strong><br>
       Configure output behavior, queue concurrency, recovery policy, and FFmpeg.<br><br>
       <img src="docs/assets/screenshots/settings-lifecycle.png" alt="VidStow settings showing download, queue recovery, FFmpeg, and diagnostics controls">
     </td>
-  </tr>
-  <tr>
-    <td colspan="2">
+    <td width="50%">
       <strong>Recovery-required state</strong><br>
       Unsafe or unreadable application state disables ordinary queue mutation
       and preserves available recovery evidence for review.<br><br>
@@ -161,7 +167,7 @@ workflow documented here and exposed by its desktop UI. The Go module path is
 ## Prerequisites
 
 - [Go 1.25.12](https://go.dev/dl/)
-- [Node.js 22](https://nodejs.org/) with npm
+- [Node.js 22](https://nodejs.org/)
 - [FFmpeg and FFprobe](https://ffmpeg.org/download.html) on `PATH`, in
   Homebrew's default prefixes (`/opt/homebrew/bin` or `/usr/local/bin`), or a
   user-selected FFmpeg executable with matching FFprobe beside it
