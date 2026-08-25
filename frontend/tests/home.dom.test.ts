@@ -344,8 +344,14 @@ describe('Home analysis authority', () => {
     expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeDisabled();
   });
 
-  test('switching output types selects a visible compatible plan', async () => {
+  test('switching to original audio clears video-only metadata and stays FFmpeg-free', async () => {
     const user = userEvent.setup();
+    settings.update((current) => ({
+      ...current,
+      outputOptions: { ...current.outputOptions, embedMetadata: true },
+    }));
+    const StartDownload = vi.fn(async (_request: { options: Record<string, any> }) => 'audio-job');
+    (window as any).go.main.App.StartDownload = StartDownload;
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
@@ -353,7 +359,13 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Audio' }));
     expect(screen.getByText('Audio plan')).toBeInTheDocument();
     expect(screen.queryByText('Video plan')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeEnabled();
+    const add = screen.getByRole('button', { name: 'Add to Queue' });
+    expect(add).toBeEnabled();
+    await user.click(add);
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    expect(StartDownload.mock.calls[0][0].options).toMatchObject({
+      subtitleMode: '', embedMetadata: false, embedThumbnail: false, embedChapters: false,
+    });
   });
 
   test('a Settings sidecar remains additional when subtitles are enabled', async () => {
