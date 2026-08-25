@@ -3,7 +3,8 @@
   import { api } from '../lib/api.js';
   import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
   import { formatBytes, formatViewCount, shortTitle, youtubeUrlFromText } from '../lib/format.js';
-  import type { BatchAnalysisView, InfoSummary, OutputPlan, PlaylistSummary, Quality, UrlCheckResult } from '../lib/types.js';
+  import type { BatchAnalysisView, InfoSummary, OutputOptions, OutputPlan, PlaylistSummary, Quality, SubtitleLanguage, UrlCheckResult } from '../lib/types.js';
+  import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
 
   const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'downloads' | 'settings' | 'about' }>();
 
@@ -33,10 +34,12 @@
   let rangeEnd = '';
   let selectAllBox: HTMLInputElement | undefined;
   let linkedPlaylist: UrlCheckResult | null = null;
-  let queuedVideoPlanId = '';
+  let queuedVideoKey = '';
   let queuedPlaylistKey = '';
   let videoQueueBusy = false;
   let playlistQueueBusy = false;
+  let videoOptions: OutputOptions = {};
+  let playlistOptions: OutputOptions = {};
   const PLAYLIST_ADMIT_CAP = 500;
   const batchExpiryTimer = setInterval(() => batchNow = Date.now(), 1000);
 
@@ -69,11 +72,21 @@
   $: batchReadyCount = batchReview?.counts.ready ?? 0;
   $: batchExpiry = batchReview?.expiresAt ? Date.parse(batchReview.expiresAt) : Number.NaN;
   $: batchTokenValid = !!batchReview?.token && Number.isFinite(batchExpiry) && batchExpiry > batchNow;
-  $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy;
-  $: playlistSelectionKey = playlist
-    ? [playlist.id, playlistTab, playlistTab === 'audio' ? audioChoice : playlistQuality, [...selectedItems].sort((a, b) => a - b).join(',')].join('|')
+  $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy && (batchTab !== 'video' || $ffmpeg.available);
+  $: videoRequestKey = preview && selectedPlan
+    ? [preview.videoId, tab, selectedPlan.id, folder, outputOptionsIdentity(effectiveOptions(videoOptions, tab === 'video'))].join('|')
     : '';
-  $: videoJustQueued = !!selectedPlan && queuedVideoPlanId === selectedPlan.id;
+  $: playlistSelectionKey = playlist
+    ? [
+        playlist.id,
+        playlistTab,
+        playlistTab === 'audio' ? audioChoice : playlistQuality,
+        [...selectedItems].sort((a, b) => a - b).join(','),
+        folder,
+        outputOptionsIdentity(effectiveOptions(playlistOptions, playlistTab === 'video')),
+      ].join('|')
+    : '';
+  $: videoJustQueued = !!videoRequestKey && queuedVideoKey === videoRequestKey;
   $: playlistJustQueued = !!playlistSelectionKey && queuedPlaylistKey === playlistSelectionKey;
   $: if (selectAllBox && playlist) {
     selectAllBox.indeterminate = selectedItems.size > 0 && selectedItems.size < availableCount;
@@ -107,11 +120,13 @@
   function clearAnalysis() {
     preview = null;
     playlist = null;
-    queuedVideoPlanId = '';
+    queuedVideoKey = '';
     queuedPlaylistKey = '';
     selectedItems = new Set();
     selectedPlanId = '';
     search = '';
+    videoOptions = {};
+    playlistOptions = {};
   }
 
   function updateURL(event: Event) {
@@ -167,6 +182,10 @@
     if (!batchReview?.token || !batchCanStart) return;
     const quality: Quality = batchTab === 'audio' ? 'audio' : batchQuality;
     const audioBitrate = batchTab === 'audio' && batchAudioChoice !== 'original' ? Number(batchAudioChoice) : 0;
+    if (batchTab === 'video' && !$ffmpeg.available) {
+      requireFFmpeg('FFmpeg is required to create complete video files with artwork and chapters (and subtitles when selected).');
+      return;
+    }
     if (audioBitrate && !$ffmpeg.available) {
       requireFFmpeg('MP3 conversion needs FFmpeg. Choose original audio or configure FFmpeg.');
       return;
@@ -194,6 +213,7 @@
       if (requestGeneration !== analysisGeneration) return;
       url = canonicalURL;
       playlist = summary;
+      playlistOptions = seedOutputOptions([], '', true);
       selectedItems = new Set(summary.entries.filter((entry) => entry.available).map((entry) => entry.index));
       rangeStart = summary.entries[0]?.index ? String(summary.entries[0].index) : '1';
       rangeEnd = summary.entries.at(-1)?.index ? String(summary.entries.at(-1)!.index) : String(summary.entryCount);
@@ -203,10 +223,102 @@
       if (requestGeneration !== analysisGeneration) return;
       url = canonicalURL;
       preview = summary;
+      videoOptions = seedOutputOptions(summary.subtitles ?? [], summary.language);
       const recommended = summary.plans.find((plan) => plan.recommended) ?? summary.plans[0];
       selectedPlanId = recommended?.id ?? '';
       tab = recommended?.kind ?? 'video';
     }
+  }
+
+  // Subtitle embedding is an explicit opt-in. Artwork and chapters remain the
+  // fixed complete-video policy and cannot be disabled in the frontend.
+  function seedOutputOptions(languages: SubtitleLanguage[], videoLanguage = '', collectionMode = false): OutputOptions {
+    const saved = $settings.outputOptions ?? {};
+    const creators = languages.filter((language) => !language.auto);
+    const creatorCodes = new Set(creators.map((language) => language.code.toLowerCase()));
+    const automatic = languages.filter((language) => language.auto && !creatorCodes.has(language.code.toLowerCase()));
+    const matchLanguage = (choices: SubtitleLanguage[], wanted: string) => {
+      const normalized = wanted.trim().toLowerCase();
+      if (!normalized) return undefined;
+      const root = normalized.split(/[-_]/)[0];
+      return choices.find((item) => item.code.toLowerCase() === normalized)
+        ?? choices.find((item) => item.code.toLowerCase().split(/[-_]/)[0] === root);
+    };
+    const preferred = saved.subtitleLanguages?.[0] ?? '';
+    const preferredTrack = matchLanguage(creators, preferred) ?? matchLanguage(automatic, preferred);
+    const defaultTrack = creators.length
+      ? matchLanguage(creators, videoLanguage) ?? matchLanguage(creators, 'en') ?? creators[0]
+      : matchLanguage(automatic, videoLanguage) ?? matchLanguage(automatic, 'en') ?? automatic[0];
+    const selectedTrack = preferredTrack ?? defaultTrack;
+    const savedSubtitlesOn = saved.subtitleMode === 'embed' || saved.subtitleMode === 'sidecar';
+    const subtitlesOn = savedSubtitlesOn && (collectionMode || !!selectedTrack);
+    const sidecar = !!saved.subtitleSidecar || saved.subtitleMode === 'sidecar';
+    return {
+      ...saved,
+      subtitleMode: subtitlesOn ? 'embed' : '',
+      subtitleSidecar: sidecar,
+      subtitleLanguages: subtitlesOn ? (collectionMode ? (preferred ? [preferred] : undefined) : [selectedTrack!.code]) : undefined,
+      subtitleAutoCaptions: subtitlesOn,
+      subtitleFormat: sidecar ? 'srt' : '',
+      embedThumbnail: true,
+      embedChapters: true,
+    };
+  }
+
+  function outputOptionsIdentity(options: OutputOptions): string {
+    return JSON.stringify({
+      subtitleMode: options.subtitleMode ?? '',
+      subtitleSidecar: !!options.subtitleSidecar,
+      subtitleLanguages: options.subtitleLanguages?.slice(0, 1) ?? [],
+      subtitleAutoCaptions: !!options.subtitleAutoCaptions,
+      subtitleFormat: options.subtitleFormat ?? '',
+      embedMetadata: !!options.embedMetadata,
+      embedThumbnail: !!options.embedThumbnail,
+      embedChapters: !!options.embedChapters,
+    });
+  }
+
+  function effectiveOptions(options: OutputOptions, completeVideo: boolean): OutputOptions {
+    if (completeVideo) {
+      const subtitlesOn = options.subtitleMode === 'embed';
+      return {
+        ...options,
+        subtitleMode: subtitlesOn ? 'embed' : '',
+        subtitleLanguages: subtitlesOn ? options.subtitleLanguages?.slice(0, 1) : undefined,
+        subtitleAutoCaptions: subtitlesOn,
+        subtitleFormat: options.subtitleSidecar ? 'srt' : '',
+        embedThumbnail: true,
+        embedChapters: true,
+      };
+    }
+    return {
+      ...options,
+      subtitleMode: '',
+      subtitleSidecar: false,
+      subtitleLanguages: undefined,
+      subtitleAutoCaptions: false,
+      subtitleFormat: '',
+      embedThumbnail: false,
+      embedChapters: false,
+    };
+  }
+
+  function subtitleOutcome(summary: InfoSummary, options: OutputOptions): string {
+    const tracks = summary.subtitles ?? [];
+    if (!tracks.length) return 'None available';
+    if (options.subtitleMode !== 'embed') return 'Off';
+    const code = options.subtitleLanguages?.[0];
+    const selected = tracks.find((track) => track.code === code && !track.auto)
+      ?? tracks.find((track) => track.code === code);
+    if (!selected) return 'None';
+    const label = (selected.name || selected.code).replace(/\s*\(auto-generated\)$/i, '');
+    return `${label}${selected.auto ? ' (auto/transcribed)' : ''}`;
+  }
+
+  function chapterOutcome(summary: InfoSummary): string {
+    if (typeof summary.chapterCount !== 'number') return 'chapter markers when available';
+    if (summary.chapterCount > 0) return `${summary.chapterCount} chapter marker${summary.chapterCount === 1 ? '' : 's'}`;
+    return 'no chapter markers reported';
   }
 
   async function analyze() {
@@ -348,42 +460,36 @@
     const submittedPreview = preview;
     const submittedPlan = selectedPlan;
     const submittedFolder = folder;
+    if (tab === 'video' && !$ffmpeg.available) {
+      requireFFmpeg('FFmpeg is required to create a complete video file with artwork and chapters (and subtitles when selected). Install FFmpeg or set its path in Settings.');
+      return;
+    }
     if (submittedPlan.requiresFfmpeg && !$ffmpeg.available) {
       requireFFmpeg('This output needs FFmpeg for merging or conversion. Install FFmpeg, set its path in Settings, or choose an original audio option.');
       return;
     }
-    const start = async () => {
-      if (videoQueueBusy || queuedVideoPlanId === submittedPlan.id) return;
-      videoQueueBusy = true;
-      try {
-        await api.jobs.start({
-          url: submittedPreview.url,
-          videoId: submittedPreview.videoId,
-          title: submittedPreview.title,
-          channel: submittedPreview.channel,
-          planId: submittedPlan.id,
-          outputDir: submittedFolder,
-          duration: submittedPreview.duration,
-          thumbnail: submittedPreview.thumbnail,
-        });
-        queuedVideoPlanId = submittedPlan.id;
-        showBanner('success', 'Added to queue');
-      } catch (err) {
-        modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
-      } finally {
-        videoQueueBusy = false;
-      }
-    };
-    if ($settings.confirmBeforeDownload) {
-      modal.set({
-        kind: 'confirm',
-        title: 'Add this download?',
-        message: `${submittedPlan.label} · ${submittedPlan.container}${submittedPlan.approxBytes ? ` · about ${formatBytes(submittedPlan.approxBytes)}` : ''}`,
-        actions: [{ label: 'Add to Queue', primary: true, action: start }],
+    const options = effectiveOptions(videoOptions, tab === 'video');
+    const submittedKey = videoRequestKey;
+    videoQueueBusy = true;
+    try {
+      await api.jobs.start({
+        url: submittedPreview.url,
+        videoId: submittedPreview.videoId,
+        title: submittedPreview.title,
+        channel: submittedPreview.channel,
+        planId: submittedPlan.id,
+        outputDir: submittedFolder,
+        duration: submittedPreview.duration,
+        thumbnail: submittedPreview.thumbnail,
+        options,
       });
-      return;
+      queuedVideoKey = submittedKey;
+      showBanner('success', 'Added to queue');
+    } catch (err) {
+      modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
+    } finally {
+      videoQueueBusy = false;
     }
-    await start();
   }
 
   async function enqueuePlaylist() {
@@ -401,36 +507,30 @@
       requireFFmpeg('MP3 conversion needs FFmpeg. Choose original audio or configure FFmpeg.');
       return;
     }
-    const start = async () => {
-      if (playlistQueueBusy || queuedPlaylistKey === submittedKey) return;
-      playlistQueueBusy = true;
-      try {
-        await api.jobs.startPlaylist({
-          url: submittedPlaylist.url,
-          playlistId: submittedPlaylist.id,
-          quality,
-          audioBitrate,
-          selectedItems: submittedItems,
-        });
-        queuedPlaylistKey = submittedKey;
-        showBanner('success', `Added ${submittedItems.length} videos to queue`);
-      } catch (err) {
-        modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
-      } finally {
-        playlistQueueBusy = false;
-      }
-    };
-    if (submittedItems.length > 100 || $settings.confirmBeforeDownload) {
-      modal.set({
-        kind: 'confirm',
-        title: 'Add this playlist?',
-        message: `${submittedItems.length} videos will be added to the queue.`,
-        actions: [{ label: 'Add to Queue', primary: true, action: start }],
-      });
+    const options = effectiveOptions(playlistOptions, playlistTab === 'video');
+    if (playlistTab === 'video' && !$ffmpeg.available) {
+      requireFFmpeg('FFmpeg is required to create complete video files with artwork and chapters (and subtitles when selected). Install FFmpeg or set its path in Settings.');
       return;
     }
-    await start();
+    playlistQueueBusy = true;
+    try {
+      await api.jobs.startPlaylist({
+        url: submittedPlaylist.url,
+        playlistId: submittedPlaylist.id,
+        quality,
+        audioBitrate,
+        selectedItems: submittedItems,
+        options,
+      });
+      queuedPlaylistKey = submittedKey;
+      showBanner('success', `Added ${submittedItems.length} videos to queue`);
+    } catch (err) {
+      modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
+    } finally {
+      playlistQueueBusy = false;
+    }
   }
+
 </script>
 
 <section class="page home" aria-label="Home workstation">
@@ -632,6 +732,22 @@
         {/each}
       </div>
 
+      {#if playlistTab === 'video'}
+        <aside class="complete-summary" aria-label="Complete file contents">
+          <strong>Complete video files</strong>
+          <span>Subtitles: {playlistOptions.subtitleMode === 'embed' ? (playlistOptions.subtitleLanguages?.[0] ? `On · ${playlistOptions.subtitleLanguages[0]}` : 'On · each video’s own language') : 'Off'}. Artwork and chapter markers are included when provided. VidStow targets MP4 and falls back to MKV when needed.</span>
+          {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required before these videos can be added. Configure it in Settings.</span>{/if}
+        </aside>
+      {/if}
+
+      <OutputOptionsEditor
+        bind:value={playlistOptions}
+        collectionMode={true}
+        allowSubtitles={playlistTab === 'video'}
+        ffmpegAvailable={$ffmpeg.available}
+        on:goto-settings={() => dispatch('goto', 'settings')}
+      />
+
       <footer class="save-bar">
         <div class="destination">
           <span>Save to</span>
@@ -639,7 +755,7 @@
           <small title={`${playlist.title} [${playlist.id}]`}>Playlist folder · {shortTitle(playlist.title, 48)}</small>
         </div>
         <button type="button" class="app-btn" on:click={pickFolder}>Change…</button>
-        <button type="button" class="app-btn primary queue" class:queued={playlistJustQueued} on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || playlistQueueBusy || playlistJustQueued}>
+        <button type="button" class="app-btn primary queue" class:queued={playlistJustQueued} on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || playlistQueueBusy || playlistJustQueued || (playlistTab === 'video' && !$ffmpeg.available)} title={playlistTab === 'video' && !$ffmpeg.available ? 'FFmpeg is required for complete video files' : ''}>
           {#if playlistQueueBusy}
             Adding…
           {:else if playlistJustQueued}
@@ -695,6 +811,26 @@
         <div class="empty pane">No {tab} outputs were reported for this video.</div>
       {/if}
 
+      {#if tab === 'video'}
+        <aside class="complete-summary" aria-label="Complete file contents">
+          <strong>What this file will include</strong>
+          <span>Subtitles: {subtitleOutcome(preview, videoOptions)}.</span>
+          <span>Artwork: {preview.thumbnail ? 'thumbnail artwork will be embedded' : 'none reported'}.</span>
+          <span>Chapters: {chapterOutcome(preview)}.</span>
+          <span>Container: likely MP4, with MKV fallback when needed.</span>
+          {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required to create this complete file. Configure it in Settings before adding.</span>{/if}
+        </aside>
+      {/if}
+
+      <OutputOptionsEditor
+        bind:value={videoOptions}
+        languages={preview?.subtitles ?? []}
+        videoLanguage={preview.language}
+        allowSubtitles={tab === 'video'}
+        ffmpegAvailable={$ffmpeg.available}
+        on:goto-settings={() => dispatch('goto', 'settings')}
+      />
+
       <footer class="save-bar">
         <div class="destination">
           <span>Save to</span>
@@ -704,7 +840,7 @@
           {/if}
         </div>
         <button type="button" class="app-btn" on:click={pickFolder}>Change…</button>
-        <button type="button" class="app-btn primary queue" class:queued={videoJustQueued} on:click={enqueueVideo} disabled={!selectedPlan || !folder || videoQueueBusy || videoJustQueued}>
+        <button type="button" class="app-btn primary queue" class:queued={videoJustQueued} on:click={enqueueVideo} disabled={!selectedPlan || !folder || videoQueueBusy || videoJustQueued || (tab === 'video' && !$ffmpeg.available)} title={tab === 'video' && !$ffmpeg.available ? 'FFmpeg is required for a complete video file' : ''}>
           {#if videoQueueBusy}
             Adding…
           {:else if videoJustQueued}
@@ -1068,6 +1204,20 @@
     color: var(--text-muted);
     font-size: var(--fs-sm);
   }
+
+  .complete-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border-subtle);
+    background: var(--accent-soft);
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .complete-summary strong { flex-basis: 100%; color: var(--text-primary); font-size: var(--fs-xs); }
+  .complete-summary .ffmpeg-required { flex-basis: 100%; color: var(--status-warning); font-weight: 700; }
 
   .save-bar {
     display: grid;

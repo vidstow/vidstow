@@ -113,7 +113,8 @@ test('complete video policy is fixed, truthful, and shared by single and playlis
   assert.match(home, /embedThumbnail: true/);
   assert.match(home, /embedChapters: true/);
   assert.match(home, /seedOutputOptions\(summary\.subtitles \?\? \[\], summary\.language\)/);
-  assert.equal((home.match(/\n          options,/g) || []).length, 2);
+  assert.match(home, /api\.jobs\.start\(\{/);
+  assert.match(home, /api\.jobs\.startPlaylist\(\{/);
   assert.match(home, /likely MP4, with MKV fallback/);
   assert.match(home, /FFmpeg is required to create this complete file/);
   assert.doesNotMatch(home, /\$settings\.confirmBeforeDownload|title: 'Add this download\?'|title: 'Add this playlist\?'/);
