@@ -31,7 +31,7 @@ A local desktop application built with Go, Wails, and Svelte.
 ## Download
 
 [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5)
-Is the current macOS Apple Silicon preview. The recommended installation
+is the current macOS Apple Silicon preview. The recommended installation
 uses VidStow's Homebrew tap:
 
 ```sh
