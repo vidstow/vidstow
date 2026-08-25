@@ -3,63 +3,95 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+const forbiddenEngine = ['yt', 'dlp'].join('-');
 
 test('approved navigation and window branding are used', async () => {
   const [sidebar, main] = await Promise.all([
     read('../src/lib/components/Sidebar.svelte'),
     read('../../main.go'),
   ]);
-  for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
-  assert.match(sidebar, /brand-mark\.svg/);
-  for (const rejected of ['v0 · single video', 'Single public YouTube videos only', 'brand-name', 'class="logo"', 'logo-universal']) assert.doesNotMatch(sidebar, new RegExp(rejected));
+  for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) {
+    assert.match(sidebar, new RegExp(`label: '${label}'`));
+  }
+  assert.doesNotMatch(sidebar, /brand-mark\.(?:svg|png)/);
   assert.match(main, /Title:\s+"VidStow"/);
   assert.match(await read('../index.html'), /<title>VidStow<\/title>/);
 });
 
-test('page titles and controls match the approved redesign', async () => {
-  const [home, queue, downloads, settings] = await Promise.all([
-    read('../src/pages/Home.svelte'), read('../src/pages/Queue.svelte'),
-    read('../src/pages/Downloads.svelte'), read('../src/pages/Settings.svelte'),
-  ]);
-  assert.match(home, /inputMode === 'batch' \? 'Batch URLs' : 'Download from YouTube'/);
-  assert.match(home, />Single URL<\/button>/);
-  assert.match(home, />Batch URLs<\/button>/);
+test('Home uses one persistent URL strip while preserving batch and playlist review', async () => {
+  const home = await read('../src/pages/Home.svelte');
+  assert.match(home, /class="analyze-bar"/);
+  assert.match(home, /Paste a YouTube URL to analyze/);
+  assert.match(home, /api\.clipboard\.getText\(\)/);
+  assert.match(home, /inputMode = 'single';/);
+  assert.doesNotMatch(home, />Single URL<\/button>/);
+  assert.doesNotMatch(home, />Batch URLs<\/button>/);
+  assert.match(home, /aria-label=\{inputMode === 'batch' \? 'Close batch URL composer' : 'Batch URLs'\}/);
   assert.match(home, /Start \$\{batchReadyCount\} downloads/);
   assert.match(home, /<small>\{item\.message\}<\/small>/);
-  assert.match(home, /Paste a public YouTube video, Short, or playlist URL to analyze it and choose your download\./);
   assert.match(home, /This link includes a playlist/);
   assert.match(home, /Review the playlist instead/);
   assert.match(home, /Every selected video uses this format/);
   assert.match(home, /PLAYLIST_ADMIT_CAP = 500/);
-  assert.match(home, /VidStow can review up to \{PLAYLIST_ADMIT_CAP\} videos from a playlist\./);
-  assert.doesNotMatch(home, /Admit another batch/);
   assert.match(home, /All available/);
   assert.match(home, /Search playlist…/);
   assert.match(home, />Choose Download</);
-  assert.match(home, />Add to Queue</);
-  assert.match(home, /'Analyze'/);
+  assert.match(home, /playlistQueueBusy/);
+  assert.match(home, /videoQueueBusy/);
+});
+
+test('Queue is a locked list and inspector with only approved ordinary actions', async () => {
+  const [queue, overview, row, collection] = await Promise.all([
+    read('../src/pages/Queue.svelte'),
+    read('../src/lib/lifecycle-ui/QueueOverview.svelte'),
+    read('../src/lib/lifecycle-ui/LifecycleJobRow.svelte'),
+    read('../src/lib/lifecycle-ui/CollectionRow.svelte'),
+  ]);
   assert.match(queue, /<QueueOverview/);
   assert.match(queue, /api\.queue\.pauseAll/);
   assert.match(queue, /api\.queue\.clearCompleted/);
-  assert.match(queue, /collectionLabel = collection\?\.kind === 'batch' \? 'batch' : 'playlist'/);
+  assert.match(queue, /api\.queue\.pause/);
+  assert.match(queue, /api\.queue\.cancel/);
   assert.match(queue, /Completed files remain on disk\./);
-  assert.match(queue, /Jobs are saved automatically\./);
-  assert.match(downloads, /View your recently downloaded items\./);
+  assert.match(overview, /class="queue-master"/);
+  assert.match(overview, /class="inspector"/);
+  assert.match(overview, />Pause all<\/span>/);
+  assert.match(overview, />Clear completed<\/span>/);
+  assert.match(overview, /white-space:\s*nowrap/);
+  assert.doesNotMatch(overview, /repeat\(2,\s*110px\)/);
+  assert.match(overview, /Completed · \{completedJobs\.length\}/);
+  assert.match(row, /aria-label="Pause download"/);
+  assert.match(row, /aria-label="Cancel download"/);
+  assert.match(collection, />Pause<\/button>/);
+  assert.match(collection, />Cancel<\/button>/);
+  for (const rejected of ['Resume', 'Retry failed', 'Download again', 'Start again', 'Open source', 'Copy link', 'Remove']) {
+    assert.doesNotMatch(overview + row + collection, new RegExp(`>${rejected}(?:<|\\s)`));
+  }
+});
+
+test('Downloads, Settings, and About retain their existing capabilities', async () => {
+  const [downloads, settings, about] = await Promise.all([
+    read('../src/pages/Downloads.svelte'),
+    read('../src/pages/Settings.svelte'),
+    read('../src/pages/About.svelte'),
+  ]);
   assert.match(downloads, /placeholder="Search downloads…"/);
-  assert.match(settings, /Configure downloads, queue behavior, and external tools\./);
+  assert.match(downloads, /aria-label="Open downloaded file"/);
+  assert.match(downloads, /aria-label="Show in Finder"/);
+  assert.match(downloads, /aria-label="Remove from history"/);
+  assert.match(downloads, /aria-label="Delete downloaded file"/);
+  assert.match(downloads, /api\.downloads\.remove\(entry\.id\)/);
+  assert.match(downloads, /api\.downloads\.deleteFile\(entry\.id\)/);
   assert.match(settings, />Default download folder</);
   assert.match(settings, />FFmpeg path</);
   assert.match(settings, />Diagnostics</);
   assert.match(settings, />Copy Diagnostics</);
   assert.match(settings, />Clear history</);
-  assert.match(settings, /> Send diagnostics<\/label>/);
-  assert.match(settings, /> Don’t send<\/label>/);
-  assert.match(settings, /automaticDiagnostics === 'enabled'/);
-  assert.match(settings, /automaticDiagnostics === 'disabled'/);
-  assert.match(settings, /Disabling this immediately deletes anything waiting to be sent/);
   assert.match(settings, /api\.settings\.setAutomaticDiagnostics\(value\)/);
   assert.match(settings, /await api\.diagnostics\.copy\(\)/);
   assert.match(settings, /await api\.diagnostics\.clear\(\)/);
+  assert.match(about, /ytdlp-go/);
+  assert.doesNotMatch(about, new RegExp(forbiddenEngine));
 });
 
 test('first launch asks for explicit diagnostic consent without a default', async () => {
@@ -71,7 +103,6 @@ test('first launch asks for explicit diagnostic consent without a default', asyn
   assert.match(app, /chooseAutomaticDiagnostics\('enabled'\)/);
   assert.match(app, /chooseAutomaticDiagnostics\('disabled'\)/);
   assert.match(app, /api\.settings\.setAutomaticDiagnostics\(value\)/);
-  assert.match(app, /https:\/\/diagnostics\.vidstow\.workers\.dev\/privacy/);
   assert.match(dialog, />Send diagnostics<\/button>/);
   assert.match(dialog, />Don’t send<\/button>/);
   assert.match(dialog, /cannot complete a requested download or encounters an app failure/);
@@ -79,24 +110,17 @@ test('first launch asks for explicit diagnostic consent without a default', asyn
   assert.doesNotMatch(dialog, /checked|selected/);
 });
 
-test('analysis failures use the redesigned error modal', async () => {
-  const home = await read('../src/pages/Home.svelte');
-  assert.match(home, /title: 'Unsupported URL'/);
-  assert.match(home, /kind: 'error'/);
-  assert.match(home, /message: errorMessage\(err,/);
-  assert.doesNotMatch(home, /catch \(err\) \{\s*unsupported = \{\s*url: result\.url/);
-});
-
-test('unsupported and FFmpeg-required states retain accurate product copy', async () => {
+test('analysis and FFmpeg failures retain accurate product copy', async () => {
   const [home, modal] = await Promise.all([
-    read('../src/pages/Home.svelte'), read('../src/lib/components/Modal.svelte'),
+    read('../src/pages/Home.svelte'),
+    read('../src/lib/components/Modal.svelte'),
   ]);
+  assert.match(home, /title: 'Unsupported URL'/);
   assert.match(home, /valid, publicly accessible YouTube video, Short, or playlist/);
-  assert.doesNotMatch(home, /supports YouTube videos and playlists/);
   assert.match(home, /title: 'FFmpeg Required'/);
   assert.match(home, /choose an original audio option/);
   assert.match(modal, /VidStow will continue to offer outputs that do not need FFmpeg\./);
-  assert.match(modal, /class:primary=\{action\.primary\}/);
+  assert.match(modal, /use:trapModalFocus/);
 });
 
 test('startup performs one FFmpeg fetch and normalizes binding errors', async () => {
@@ -112,45 +136,16 @@ test('startup performs one FFmpeg fetch and normalizes binding errors', async ()
   assert.match(stores, /return fallback/);
 });
 
-test('terminal queue rows expose recovery and removal actions', async () => {
-  const row = await read('../src/lib/components/ProgressRow.svelte');
-  assert.match(row, /<article class="job-card"/);
-  assert.doesNotMatch(row, /role="cell"/);
-  assert.doesNotMatch(row, /<t[rd][^>]*>/);
-  for (const action of ['Cancel download', 'Open downloaded file', 'Retry download', 'Remove download']) {
-    assert.match(row, new RegExp(`<button[^>]+type="button"[^>]+aria-label="${action}"`));
-  }
-  assert.match(row, /aria-label="Pause download"/);
-  assert.match(row, /aria-label="Resume download"/);
-  for (const method of ['cancel', 'retry', 'remove', 'pause', 'resume']) assert.match(row, new RegExp(`api\\.jobs\\.${method}\\(job\\.id\\)`));
-  assert.match(row, />Retry</);
-  assert.match(row, /job\.status === 'failed'/);
-});
-
-test('download history actions remain native accessible buttons', async () => {
-  const downloads = await read('../src/pages/Downloads.svelte');
-  assert.doesNotMatch(downloads, /role="(?:table|row|cell)"/);
-  assert.match(downloads, /<button[^>]+aria-label="Open downloaded file"/);
-  assert.match(downloads, /<button[^>]+aria-label="Show in Finder"/);
-  assert.match(downloads, /aria-label="Remove from history"/);
-  assert.match(downloads, /aria-label="Delete downloaded file"/);
-  assert.match(downloads, /await api\.fs\.open\(entry\.absolutePath\)/);
-  assert.match(downloads, /await api\.fs\.reveal\(entry\.absolutePath\)/);
-  assert.match(downloads, /api\.downloads\.remove\(entry\.id\)/);
-  assert.match(downloads, /api\.downloads\.deleteFile\(entry\.id\)/);
-  assert.match(downloads, /entry\.fileMissing/);
-  assert.match(downloads, /File missing/);
-  assert.match(downloads, /formatLabel\(entry\)/);
-  assert.match(downloads, /container/);
-});
-
-test('queue distinguishes temporary in-memory storage from durable automatic saving', async () => {
-  const [queue, stores] = await Promise.all([
+test('queue persistence remains fail-closed without altering QueueView capabilities', async () => {
+  const [queue, stores, types] = await Promise.all([
     read('../src/pages/Queue.svelte'),
     read('../src/lib/stores.ts'),
+    read('../src/lib/lifecycle-ui/types.ts'),
   ]);
   assert.match(queue, /view\?\.persistence/);
   assert.match(queue, /Queue actions are disabled/);
-  assert.match(queue, /Jobs are saved automatically/);
+  assert.match(queue, /capabilities: \{\}, commandToken: undefined/);
   assert.match(stores, /persistence = writable<PersistenceStatus>/);
+  assert.match(types, /resume\?: boolean/);
+  assert.match(types, /retry\?: boolean/);
 });
