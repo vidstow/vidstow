@@ -149,7 +149,7 @@
     const quality: Quality = batchTab === 'audio' ? 'audio' : batchQuality;
     const audioBitrate = batchTab === 'audio' && batchAudioChoice !== 'original' ? Number(batchAudioChoice) : 0;
     if (batchTab === 'video' && !$ffmpeg.available) {
-      requireFFmpeg('FFmpeg is required to create complete video files with embedded subtitles, artwork, and chapters.');
+      requireFFmpeg('FFmpeg is required to create complete video files with artwork and chapters (and subtitles when selected).');
       return;
     }
     if (audioBitrate && !$ffmpeg.available) {
@@ -179,7 +179,7 @@
       if (requestGeneration !== analysisGeneration) return;
       url = canonicalURL;
       playlist = summary;
-      playlistOptions = seedOutputOptions([]);
+      playlistOptions = seedOutputOptions([], '', true);
       selectedItems = new Set(summary.entries.filter((entry) => entry.available).map((entry) => entry.index));
       rangeStart = summary.entries[0]?.index ? String(summary.entries[0].index) : '1';
       rangeEnd = summary.entries.at(-1)?.index ? String(summary.entries.at(-1)!.index) : String(summary.entryCount);
@@ -196,32 +196,35 @@
     }
   }
 
-  // Complete-file is the fixed video policy. Saved preferences may choose the
-  // language, auto-caption fallback, metadata, and an additional SRT, but may
-  // not turn embedded subtitles/artwork/chapters off.
-  function seedOutputOptions(languages: SubtitleLanguage[], videoLanguage = ''): OutputOptions {
+  // Subtitle embedding is an explicit opt-in. Artwork and chapters remain the
+  // fixed complete-video policy and cannot be disabled in the frontend.
+  function seedOutputOptions(languages: SubtitleLanguage[], videoLanguage = '', collectionMode = false): OutputOptions {
     const saved = $settings.outputOptions ?? {};
-    const availableCodes = new Set(languages.map((language) => language.code));
-    const savedLanguages = (saved.subtitleLanguages ?? []).filter((code) => availableCodes.has(code));
     const creators = languages.filter((language) => !language.auto);
-    const automatic = languages.filter((language) => language.auto);
+    const creatorCodes = new Set(creators.map((language) => language.code.toLowerCase()));
+    const automatic = languages.filter((language) => language.auto && !creatorCodes.has(language.code.toLowerCase()));
     const matchLanguage = (choices: SubtitleLanguage[], wanted: string) => {
       const normalized = wanted.trim().toLowerCase();
       if (!normalized) return undefined;
-      const root = normalized.split('-')[0];
+      const root = normalized.split(/[-_]/)[0];
       return choices.find((item) => item.code.toLowerCase() === normalized)
-        ?? choices.find((item) => item.code.toLowerCase().split('-')[0] === root);
+        ?? choices.find((item) => item.code.toLowerCase().split(/[-_]/)[0] === root);
     };
+    const preferred = saved.subtitleLanguages?.[0] ?? '';
+    const preferredTrack = matchLanguage(creators, preferred) ?? matchLanguage(automatic, preferred);
     const defaultTrack = creators.length
       ? matchLanguage(creators, videoLanguage) ?? matchLanguage(creators, 'en') ?? creators[0]
       : matchLanguage(automatic, videoLanguage) ?? matchLanguage(automatic, 'en') ?? automatic[0];
-    const sidecar = saved.subtitleSidecar ?? saved.subtitleMode === 'sidecar';
+    const selectedTrack = preferredTrack ?? defaultTrack;
+    const savedSubtitlesOn = saved.subtitleMode === 'embed' || saved.subtitleMode === 'sidecar';
+    const subtitlesOn = savedSubtitlesOn && (collectionMode || !!selectedTrack);
+    const sidecar = !!saved.subtitleSidecar || saved.subtitleMode === 'sidecar';
     return {
       ...saved,
-      subtitleMode: 'embed',
+      subtitleMode: subtitlesOn ? 'embed' : '',
       subtitleSidecar: sidecar,
-      subtitleLanguages: savedLanguages.length ? savedLanguages : defaultTrack ? [defaultTrack.code] : undefined,
-      subtitleAutoCaptions: typeof saved.subtitleAutoCaptions === 'boolean' ? saved.subtitleAutoCaptions : true,
+      subtitleLanguages: subtitlesOn ? (collectionMode ? (preferred ? [preferred] : undefined) : [selectedTrack!.code]) : undefined,
+      subtitleAutoCaptions: subtitlesOn,
       subtitleFormat: sidecar ? 'srt' : '',
       embedThumbnail: true,
       embedChapters: true,
@@ -229,13 +232,18 @@
   }
 
   function effectiveOptions(options: OutputOptions, completeVideo: boolean): OutputOptions {
-    if (completeVideo) return {
+    if (completeVideo) {
+      const subtitlesOn = options.subtitleMode === 'embed';
+      return {
       ...options,
-      subtitleMode: 'embed',
+      subtitleMode: subtitlesOn ? 'embed' : '',
+      subtitleLanguages: subtitlesOn ? options.subtitleLanguages?.slice(0, 1) : undefined,
+      subtitleAutoCaptions: subtitlesOn,
       subtitleFormat: options.subtitleSidecar ? 'srt' : '',
       embedThumbnail: true,
       embedChapters: true,
     };
+    }
     return {
       ...options,
       subtitleMode: '',
@@ -250,14 +258,14 @@
 
   function subtitleOutcome(summary: InfoSummary, options: OutputOptions): string {
     const tracks = summary.subtitles ?? [];
-    const selected = new Set(options.subtitleLanguages ?? []);
-    const creator = tracks.find((track) => !track.auto && selected.has(track.code));
-    if (creator) return `${creator.name || creator.code} creator subtitles`;
-    if (options.subtitleAutoCaptions !== false) {
-      const automatic = tracks.find((track) => !!track.auto && selected.has(track.code)) ?? tracks.find((track) => !!track.auto);
-      if (automatic) return `${automatic.name || automatic.code} auto-generated transcript`;
-    }
-    return 'no subtitles (no suitable track was reported)';
+    if (!tracks.length) return 'None available';
+    if (options.subtitleMode !== 'embed') return 'Off';
+    const code = options.subtitleLanguages?.[0];
+    const selected = tracks.find((track) => track.code === code && !track.auto)
+      ?? tracks.find((track) => track.code === code);
+    if (!selected) return 'None';
+    const label = (selected.name || selected.code).replace(/\s*\(auto-generated\)$/i, '');
+    return `${label}${selected.auto ? ' (auto/transcribed)' : ''}`;
   }
 
   function chapterOutcome(summary: InfoSummary): string {
@@ -402,7 +410,7 @@
   async function enqueueVideo() {
     if (!preview || !selectedPlan || !folder) return;
     if (tab === 'video' && !$ffmpeg.available) {
-      requireFFmpeg('FFmpeg is required to create a complete video file with embedded subtitles, artwork, and chapters. Install FFmpeg or set its path in Settings.');
+      requireFFmpeg('FFmpeg is required to create a complete video file with artwork and chapters (and subtitles when selected). Install FFmpeg or set its path in Settings.');
       return;
     }
     if (selectedPlan.requiresFfmpeg && !$ffmpeg.available) {
@@ -410,8 +418,7 @@
       return;
     }
     const options = effectiveOptions(videoOptions, tab === 'video');
-    const start = async () => {
-      try {
+    try {
         await api.jobs.start({
           url: preview!.url,
           videoId: preview!.videoId,
@@ -424,20 +431,9 @@
           options,
         });
         showBanner('success', 'Added to queue');
-      } catch (err) {
-        modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
-      }
-    };
-    if ($settings.confirmBeforeDownload) {
-      modal.set({
-        kind: 'confirm',
-        title: 'Add this download?',
-        message: `${selectedPlan.label} · ${selectedPlan.container}${selectedPlan.approxBytes ? ` · about ${formatBytes(selectedPlan.approxBytes)}` : ''}`,
-        actions: [{ label: 'Add to Queue', primary: true, action: start }],
-      });
-      return;
+    } catch (err) {
+      modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
     }
-    await start();
   }
 
   async function enqueuePlaylist() {
@@ -454,11 +450,10 @@
     }
     const options = effectiveOptions(playlistOptions, playlistTab === 'video');
     if (playlistTab === 'video' && !$ffmpeg.available) {
-      requireFFmpeg('FFmpeg is required to create complete video files with embedded subtitles, artwork, and chapters. Install FFmpeg or set its path in Settings.');
+      requireFFmpeg('FFmpeg is required to create complete video files with artwork and chapters (and subtitles when selected). Install FFmpeg or set its path in Settings.');
       return;
     }
-    const start = async () => {
-      try {
+    try {
         await api.jobs.startPlaylist({
           url: playlist!.url,
           playlistId: playlist!.id,
@@ -468,20 +463,9 @@
           options,
         });
         showBanner('success', `Added ${selectedItems.size} videos to queue`);
-      } catch (err) {
-        modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
-      }
-    };
-    if (selectedItems.size > 100 || $settings.confirmBeforeDownload) {
-      modal.set({
-        kind: 'confirm',
-        title: 'Add this playlist?',
-        message: `${selectedItems.size} videos will be added to the queue.`,
-        actions: [{ label: 'Add to Queue', primary: true, action: start }],
-      });
-      return;
+    } catch (err) {
+      modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
     }
-    await start();
   }
 </script>
 
@@ -685,7 +669,7 @@
       {#if playlistTab === 'video'}
         <aside class="complete-summary" aria-label="Complete file contents">
           <strong>Complete video files</strong>
-          <span>Each selected video will embed its preferred creator subtitle or an auto-generated transcript when available, plus artwork and chapter markers when provided. VidStow targets MP4 and falls back to MKV when needed.</span>
+          <span>Subtitles: {playlistOptions.subtitleMode === 'embed' ? (playlistOptions.subtitleLanguages?.[0] ? `On · ${playlistOptions.subtitleLanguages[0]}` : 'On · each video’s own language') : 'Off'}. Artwork and chapter markers are included when provided. VidStow targets MP4 and falls back to MKV when needed.</span>
           {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required before these videos can be added. Configure it in Settings.</span>{/if}
         </aside>
       {/if}
@@ -760,7 +744,7 @@
           <span>Subtitles: {subtitleOutcome(preview, videoOptions)}.</span>
           <span>Artwork: {preview.thumbnail ? 'thumbnail artwork will be embedded' : 'none reported'}.</span>
           <span>Chapters: {chapterOutcome(preview)}.</span>
-          <span>Container: likely MP4, with MKV fallback when the selected streams or subtitles require it.</span>
+          <span>Container: likely MP4, with MKV fallback when needed.</span>
           {#if !$ffmpeg.available}<span class="ffmpeg-required">FFmpeg is required to create this complete file. Configure it in Settings before adding.</span>{/if}
         </aside>
       {/if}
@@ -768,6 +752,7 @@
       <OutputOptionsEditor
         bind:value={videoOptions}
         languages={preview?.subtitles ?? []}
+        videoLanguage={preview.language}
         allowSubtitles={tab === 'video'}
         ffmpegAvailable={$ffmpeg.available}
         on:goto-settings={() => dispatch('goto', 'settings')}

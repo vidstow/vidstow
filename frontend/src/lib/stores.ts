@@ -14,7 +14,7 @@ export const settings = writable<Settings>({
   perVideoSubfolder: true,
   confirmBeforeDownload: false,
   outputOptions: {
-    subtitleMode: 'embed',
+    subtitleMode: '',
     subtitleSidecar: false,
     subtitleAutoCaptions: true,
     embedThumbnail: true,

@@ -44,7 +44,7 @@ describe('Home analysis authority', () => {
       downloadFolder: '/tmp/downloads',
       confirmBeforeDownload: false,
       outputOptions: {
-        subtitleMode: 'embed', subtitleSidecar: false, subtitleAutoCaptions: true,
+        subtitleMode: '', subtitleSidecar: false, subtitleAutoCaptions: true,
         embedThumbnail: true, embedChapters: true,
       },
     }));
@@ -262,18 +262,76 @@ describe('Home analysis authority', () => {
     expect(screen.getByRole('button', { name: 'Start 2 downloads' })).toBeDisabled();
   });
 
-  test('selects an auto-generated language when no creator subtitle exists', async () => {
+  test('fresh analysis stays subtitle-off and submits no language without a confirmation re-ask', async () => {
     const user = userEvent.setup();
-    const AnalyzeURL = vi.fn(async (raw: string) => ({
-      ...videoSummary(raw),
-      subtitles: [{ code: 'en', name: 'English', auto: true }, { code: 'de', name: 'German', auto: true }],
-    }));
-    (window as any).go.main.App.AnalyzeURL = AnalyzeURL;
+    settings.update((current) => ({ ...current, confirmBeforeDownload: true }));
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    const StartDownload = vi.fn(async (_request: { options: Record<string, any> }) => 'job-1');
+    (window as any).go.main.App.StartDownload = StartDownload;
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Subtitles: Off.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    expect(screen.queryByText('Add this download?')).not.toBeInTheDocument();
+    expect(StartDownload.mock.calls[0][0].options).toMatchObject({ subtitleMode: '', subtitleAutoCaptions: false, embedThumbnail: true, embedChapters: true });
+    expect(StartDownload.mock.calls[0][0].options.subtitleLanguages).toBeUndefined();
+  });
 
-    expect(await screen.findByText('Subtitles: German auto-generated transcript.')).toBeInTheDocument();
+  test('opt-in selects exactly one actual language', async () => {
+    const user = userEvent.setup();
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    const StartDownload = vi.fn(async (_request: { options: Record<string, any> }) => 'job-1');
+    (window as any).go.main.App.StartDownload = StartDownload;
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByLabelText('Include subtitles'));
+    expect(screen.getByText('Subtitles: German.')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'English' }));
+    expect(screen.getByText('Subtitles: English.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    expect(StartDownload.mock.calls[0][0].options.subtitleLanguages).toEqual(['en']);
+  });
+
+  test('no captions reports None available, cannot be enabled, and still downloads without a track', async () => {
+    const user = userEvent.setup();
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    settings.update((current) => ({
+      ...current,
+      outputOptions: { ...current.outputOptions, subtitleMode: 'embed', subtitleAutoCaptions: true },
+    }));
+    (window as any).go.main.App.AnalyzeURL = vi.fn(async (raw: string) => ({ ...videoSummary(raw), subtitles: [] }));
+    const StartDownload = vi.fn(async (_request: { options: Record<string, any> }) => 'job-no-captions');
+    (window as any).go.main.App.StartDownload = StartDownload;
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Subtitles: None available.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Include subtitles')).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    expect(StartDownload.mock.calls[0][0].options.subtitleMode).toBe('');
+    expect(StartDownload.mock.calls[0][0].options.subtitleLanguages).toBeUndefined();
+  });
+
+  test('labels and selects an auto transcript only when no creator track exists', async () => {
+    const user = userEvent.setup();
+    (window as any).go.main.App.AnalyzeURL = vi.fn(async (raw: string) => ({
+      ...videoSummary(raw),
+      subtitles: [
+        { code: 'en', name: 'English (auto-generated)', auto: true },
+        { code: 'de', name: 'German (auto-generated)', auto: true },
+      ],
+    }));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByLabelText('Include subtitles'));
+    expect(screen.getByRole('radio', { name: 'German (auto/transcribed)' })).toBeChecked();
+    expect(screen.getByText('Subtitles: German (auto/transcribed).')).toBeInTheDocument();
   });
 
   test('keeps complete-file choices visible and disables video admission honestly without FFmpeg', async () => {
@@ -281,8 +339,7 @@ describe('Home analysis authority', () => {
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-
-    expect(await screen.findByText('Subtitles: German creator subtitles.')).toBeInTheDocument();
+    expect(await screen.findByText('Subtitles: Off.')).toBeInTheDocument();
     expect(screen.getByText(/FFmpeg is required to create this complete file/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeDisabled();
   });
@@ -290,69 +347,78 @@ describe('Home analysis authority', () => {
   test('switching output types selects a visible compatible plan', async () => {
     const user = userEvent.setup();
     render(Home);
-
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByText('Video plan')).toBeInTheDocument();
-
     await user.click(screen.getByRole('button', { name: 'Audio' }));
     expect(screen.getByText('Audio plan')).toBeInTheDocument();
     expect(screen.queryByText('Video plan')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeEnabled();
   });
 
-  test('keeps embedded subtitles when an additional sidecar is selected', async () => {
+  test('a Settings sidecar remains additional when subtitles are enabled', async () => {
     const user = userEvent.setup();
+    settings.update((current) => ({
+      ...current,
+      outputOptions: { ...current.outputOptions, subtitleMode: 'embed', subtitleSidecar: true, subtitleAutoCaptions: true },
+    }));
     ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
-    const StartDownload = vi.fn(async (_request: { options: Record<string, unknown> }) => 'job-1');
+    const StartDownload = vi.fn(async (_request: { options: Record<string, any> }) => 'job-1');
     (window as any).go.main.App.StartDownload = StartDownload;
     render(Home);
-
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
-    expect(screen.getByText('Subtitles: German creator subtitles.')).toBeInTheDocument();
-    expect(screen.getByText('Chapters: 3 chapter markers.')).toBeInTheDocument();
-    expect(screen.getByText(/likely MP4, with MKV fallback/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /Subtitles & details/ }));
-    await user.click(screen.getByLabelText('Also save an .srt file'));
-    await user.click(screen.getByLabelText('Include title & channel metadata'));
+    expect(await screen.findByText('Subtitles: German.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
-
-    await waitFor(() => expect(StartDownload).toHaveBeenCalledTimes(1));
-    const request = StartDownload.mock.calls[0][0];
-    expect(request.options).toMatchObject({
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    expect(StartDownload.mock.calls[0][0].options).toMatchObject({
       subtitleMode: 'embed', subtitleSidecar: true, subtitleLanguages: ['de'],
-      subtitleAutoCaptions: true, subtitleFormat: 'srt', embedMetadata: true,
-      embedThumbnail: true, embedChapters: true,
+      subtitleAutoCaptions: true, subtitleFormat: 'srt', embedThumbnail: true, embedChapters: true,
     });
   });
 
-  test('sends the same complete-file policy for playlist video requests', async () => {
+  test('playlist admission is subtitle-off by default', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLoff';
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({ kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLoff' }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async () => ({
+      id: 'PLoff', url: playlistURL, title: 'Off playlist', channel: '', thumbnail: '', entryCount: 1, available: 1, unavailable: 0,
+      entries: [{ index: 1, videoId: 'fixture0001', url: firstURL, title: 'First video', available: true }],
+    }));
+    const StartPlaylistDownload = vi.fn(async (_request: { options: Record<string, any> }) => 'collection-off');
+    (window as any).go.main.App.StartPlaylistDownload = StartPlaylistDownload;
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText(/Subtitles: Off/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add 1 Video to Queue' }));
+    await waitFor(() => expect(StartPlaylistDownload).toHaveBeenCalledOnce());
+    expect(StartPlaylistDownload.mock.calls[0][0].options.subtitleMode).toBe('');
+    expect(StartPlaylistDownload.mock.calls[0][0].options.subtitleLanguages).toBeUndefined();
+  });
+
+  test('playlist uses one shared subtitle toggle and language policy without confirmation', async () => {
     const user = userEvent.setup();
     const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
     ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
-    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
-      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
-    }));
+    settings.update((current) => ({ ...current, confirmBeforeDownload: true }));
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({ kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture' }));
     (window as any).go.main.App.AnalyzePlaylist = vi.fn(async () => ({
-      id: 'PLfixture', url: playlistURL, title: 'Fixture playlist', channel: 'Fixture channel', thumbnail: '',
-      entryCount: 1, available: 1, unavailable: 0,
+      id: 'PLfixture', url: playlistURL, title: 'Fixture playlist', channel: '', thumbnail: '', entryCount: 1, available: 1, unavailable: 0,
       entries: [{ index: 1, videoId: 'fixture0001', url: firstURL, title: 'First video', available: true }],
     }));
-    const StartPlaylistDownload = vi.fn(async (_request: { options: Record<string, unknown> }) => 'collection-1');
+    const StartPlaylistDownload = vi.fn(async (_request: { options: Record<string, any> }) => 'collection-1');
     (window as any).go.main.App.StartPlaylistDownload = StartPlaylistDownload;
     render(Home);
-
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    await user.click(await screen.findByRole('button', { name: 'Add 1 Video to Queue' }));
-
+    await user.click(await screen.findByLabelText('Include subtitles'));
+    await user.selectOptions(screen.getByLabelText('Subtitle language policy'), 'fr');
+    expect(screen.getByText(/item still downloads without subtitles/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add 1 Video to Queue' }));
     await waitFor(() => expect(StartPlaylistDownload).toHaveBeenCalledOnce());
-    expect(StartPlaylistDownload.mock.calls[0][0].options).toMatchObject({
-      subtitleMode: 'embed', subtitleSidecar: false, subtitleAutoCaptions: true,
-      embedThumbnail: true, embedChapters: true,
-    });
+    expect(screen.queryByText('Add this playlist?')).not.toBeInTheDocument();
+    expect(StartPlaylistDownload.mock.calls[0][0].options).toMatchObject({ subtitleMode: 'embed', subtitleLanguages: ['fr'], subtitleAutoCaptions: true, embedThumbnail: true, embedChapters: true });
   });
 });

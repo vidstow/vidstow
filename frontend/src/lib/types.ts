@@ -126,8 +126,8 @@ export interface SubtitleLanguage {
 }
 
 // Per-download subtitle and embedding choices. subtitleMode remains the legacy
-// backend enum; complete video files always use "embed". subtitleSidecar is
-// independent, so an SRT can be saved without turning embedding off.
+// backend enum: an empty value is Off and "embed" is the explicit opt-in.
+// subtitleSidecar is independent of embedding.
 export interface OutputOptions {
   subtitleMode?: '' | 'sidecar' | 'embed';
   subtitleSidecar?: boolean;
