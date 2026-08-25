@@ -481,6 +481,7 @@ type Manager struct {
 
 type cachedPlans struct {
 	plans     []outputplan.Plan
+	summary   InfoSummary
 	expiresAt time.Time
 }
 
@@ -4734,6 +4735,8 @@ type InfoSummary struct {
 	UploadDate      string             `json:"uploadDate"`
 	Description     string             `json:"description"`
 	MediaType       string             `json:"mediaType,omitempty"`
+	Language        string             `json:"language"`
+	ChapterCount    int                `json:"chapterCount"`
 	Access          AccessSummary      `json:"access"`
 	Subtitles       []SubtitleLanguage `json:"subtitles,omitempty"`
 	Plans           []outputplan.Plan  `json:"plans"`
@@ -4965,7 +4968,7 @@ func (m *Manager) Analyze(ctx context.Context, rawURL string) (InfoSummary, erro
 		return InfoSummary{}, err
 	}
 	if summary.VideoID != "" && len(privatePlans) > 0 {
-		m.cachePlans(summary.VideoID, privatePlans)
+		m.cacheAnalysis(summary.VideoID, privatePlans, summary)
 	}
 	return summary, nil
 }
@@ -5055,8 +5058,20 @@ func summarizeAnalysis(raw json.RawMessage, rawURL string) (InfoSummary, []outpu
 	if mediaType := strings.ToLower(strings.TrimSpace(metadataText(info, "media_type"))); mediaType != "" {
 		summary.MediaType = mediaType
 	}
+	summary.Language = boundedText(metadataText(info, "language"), 32)
+	if chapters, ok := info["chapters"].([]any); ok {
+		summary.ChapterCount = len(chapters)
+	}
 	summary.Access = summarizeAccess(info)
 	summary.Subtitles = summarizeSubtitleLanguages(info)
+	if summary.Language == "" {
+		// YouTube's automatic caption map normally contains translated tracks
+		// as well as one "*-orig" alias. Only an unambiguous, valid alias is a
+		// safe substitute when the extractor omitted the video's language.
+		if originals := originalAutomaticSubtitleLanguages(info["automatic_captions"]); len(originals) == 1 {
+			summary.Language = originals[0]
+		}
+	}
 	plans := outputplan.Build(info, summary.DurationSeconds)
 	summary.Plans = publicPlans(plans)
 	return summary, plans, nil
@@ -5074,8 +5089,16 @@ const (
 // tracks come first so the picker can favour them; entries are sorted by code
 // and every collection is capped.
 func summarizeSubtitleLanguages(info map[string]any) []SubtitleLanguage {
-	manual := subtitleLanguageCollection(info["subtitles"], false, maxManualSubtitleLanguages)
-	automatic := subtitleLanguageCollection(info["automatic_captions"], true, maxAutomaticSubtitleLanguages)
+	manual := subtitleLanguageCollection(info["subtitles"], false, maxManualSubtitleLanguages, nil)
+	originals := originalAutomaticSubtitleLanguages(info["automatic_captions"])
+	var originalSet map[string]bool
+	if len(originals) > 0 {
+		originalSet = make(map[string]bool, len(originals))
+		for _, code := range originals {
+			originalSet[code] = true
+		}
+	}
+	automatic := subtitleLanguageCollection(info["automatic_captions"], true, maxAutomaticSubtitleLanguages, originalSet)
 	if len(manual) == 0 && len(automatic) == 0 {
 		return nil
 	}
@@ -5085,13 +5108,46 @@ func summarizeSubtitleLanguages(info map[string]any) []SubtitleLanguage {
 	return result
 }
 
-func subtitleLanguageCollection(raw any, auto bool, limit int) []SubtitleLanguage {
+func originalAutomaticSubtitleLanguages(raw any) []string {
+	collection, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	seen := make(map[string]bool)
+	for code := range collection {
+		if !strings.HasSuffix(strings.ToLower(code), "-orig") {
+			continue
+		}
+		base := code[:len(code)-len("-orig")]
+		// The base key is the only code we may expose. The alias is evidence
+		// that the otherwise translation-heavy collection originated in this
+		// language; a missing base key simply means there is no safe track to
+		// list, rather than making every translation eligible again.
+		if jobmodel.ValidSubtitleLanguage(base) {
+			seen[base] = true
+		}
+	}
+	codes := make([]string, 0, len(seen))
+	for code := range seen {
+		codes = append(codes, code)
+	}
+	sort.Strings(codes)
+	return codes
+}
+
+func subtitleLanguageCollection(raw any, auto bool, limit int, allowed map[string]bool) []SubtitleLanguage {
 	collection, ok := raw.(map[string]any)
 	if !ok || len(collection) == 0 {
 		return nil
 	}
 	codes := make([]string, 0, len(collection))
 	for code := range collection {
+		if allowed != nil && !allowed[code] {
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(code), "-orig") {
+			continue
+		}
 		if jobmodel.ValidSubtitleLanguage(code) {
 			codes = append(codes, code)
 		}
@@ -5122,6 +5178,80 @@ func boundedText(value string, limit int) string {
 		return string(runes[:limit])
 	}
 	return value
+}
+
+// ApplyDefaultSubtitleLanguage chooses one analyzed track when subtitles are
+// enabled and the user did not explicitly choose languages. Creator captions
+// always outrank automatic captions. Matching is BCP47-root aware, with exact
+// tags preferred before another tag from the same language family.
+func ApplyDefaultSubtitleLanguage(options OutputOptions, summary InfoSummary) OutputOptions {
+	if options.SubtitleMode == "" || len(options.SubtitleLanguages) != 0 {
+		return options
+	}
+	manual := make([]SubtitleLanguage, 0, len(summary.Subtitles))
+	automatic := make([]SubtitleLanguage, 0, len(summary.Subtitles))
+	for _, track := range summary.Subtitles {
+		if track.Auto {
+			automatic = append(automatic, track)
+		} else {
+			manual = append(manual, track)
+		}
+	}
+	selected := preferredSubtitleTrack(manual, summary.Language)
+	if selected == "" {
+		selected = preferredSubtitleTrack(manual, "en")
+	}
+	if selected == "" && len(manual) > 0 {
+		selected = manual[0].Code
+	}
+	if selected == "" && options.SubtitleAutoCaptions {
+		selected = preferredSubtitleTrack(automatic, summary.Language)
+		if selected == "" {
+			selected = preferredSubtitleTrack(automatic, "en")
+		}
+		if selected == "" && len(automatic) > 0 {
+			selected = automatic[0].Code
+		}
+	}
+	if selected != "" {
+		options.SubtitleLanguages = []string{selected}
+	}
+	return options
+}
+
+func preferredSubtitleTrack(tracks []SubtitleLanguage, language string) string {
+	language = strings.TrimSpace(language)
+	if language == "" {
+		return ""
+	}
+	for _, track := range tracks {
+		if strings.EqualFold(track.Code, language) {
+			return track.Code
+		}
+	}
+	root := bcp47Root(language)
+	if root == "" {
+		return ""
+	}
+	for _, track := range tracks {
+		if bcp47Root(track.Code) == root {
+			return track.Code
+		}
+	}
+	return ""
+}
+
+func bcp47Root(language string) string {
+	language = strings.TrimSpace(strings.ToLower(language))
+	if index := strings.IndexAny(language, "-_"); index >= 0 {
+		language = language[:index]
+	}
+	for _, r := range language {
+		if r < 'a' || r > 'z' {
+			return ""
+		}
+	}
+	return language
 }
 
 func metadataInteger(value any) int64 {
@@ -5171,6 +5301,10 @@ func metadataText(info map[string]any, key string) string {
 }
 
 func (m *Manager) cachePlans(videoID string, plans []outputplan.Plan) {
+	m.cacheAnalysis(videoID, plans, InfoSummary{})
+}
+
+func (m *Manager) cacheAnalysis(videoID string, plans []outputplan.Plan, summary InfoSummary) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.closing || m.closed {
@@ -5182,7 +5316,28 @@ func (m *Manager) cachePlans(videoID string, plans []outputplan.Plan) {
 			break
 		}
 	}
-	m.planCache[videoID] = cachedPlans{plans: plans, expiresAt: time.Now().Add(30 * time.Minute)}
+	summary.Subtitles = append([]SubtitleLanguage(nil), summary.Subtitles...)
+	m.planCache[videoID] = cachedPlans{plans: plans, summary: summary, expiresAt: time.Now().Add(30 * time.Minute)}
+}
+
+// DefaultSubtitleOptions applies the analyzed default-selection heuristic from
+// the trusted single-video cache. An absent/expired analysis leaves the caller's
+// options unchanged; ResolvePlan remains the admission authority for the plan.
+func (m *Manager) DefaultSubtitleOptions(videoID string, options OutputOptions) OutputOptions {
+	if len(options.SubtitleLanguages) != 0 || options.SubtitleMode == "" {
+		return options
+	}
+	m.mu.Lock()
+	cached, ok := m.planCache[videoID]
+	if ok && time.Now().After(cached.expiresAt) {
+		delete(m.planCache, videoID)
+		ok = false
+	}
+	m.mu.Unlock()
+	if !ok {
+		return options
+	}
+	return ApplyDefaultSubtitleLanguage(options, cached.summary)
 }
 
 // ResolvePlan resolves a UI-visible plan ID to the private engine selector

@@ -241,6 +241,19 @@ func TestSummarizeAnalysisCopiesEngineMediaType(t *testing.T) {
 	}
 }
 
+func TestSummarizeAnalysisAddsLanguageAndChapterCount(t *testing.T) {
+	summary, _, err := summarizeAnalysis(json.RawMessage(`{
+		"id":"abc123","title":"Demo","language":"pt-BR",
+		"chapters":[{"title":"One"},{"title":"Two"}]
+	}`), "https://www.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Language != "pt-BR" || summary.ChapterCount != 2 {
+		t.Fatalf("summary language/chapters = %q/%d; want pt-BR/2", summary.Language, summary.ChapterCount)
+	}
+}
+
 func TestSummarizeAccessUsesNeutralFallback(t *testing.T) {
 	for _, metadata := range []map[string]any{
 		nil,
@@ -283,6 +296,93 @@ func TestSummarizeAnalysisCollectsSubtitleLanguages(t *testing.T) {
 		if summary.Subtitles[index] != expected {
 			t.Fatalf("subtitles[%d] = %#v; want %#v", index, summary.Subtitles[index], expected)
 		}
+	}
+}
+
+func TestSummarizeAnalysisFiltersTranslatedAutomaticCaptions(t *testing.T) {
+	raw := json.RawMessage(`{
+		"id":"abc123","title":"Demo",
+		"automatic_captions":{
+			"de":[{"name":"German translation"}],
+			"en":[{"name":"English (auto-generated)"}],
+			"en-orig":[{"name":"English (Original)"}],
+			"fr":[{"name":"French translation"}]
+		}
+	}`)
+	summary, _, err := summarizeAnalysis(raw, "https://www.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []SubtitleLanguage{{Code: "en", Name: "English (auto-generated)", Auto: true}}
+	if len(summary.Subtitles) != 1 || summary.Subtitles[0] != want[0] {
+		t.Fatalf("subtitles = %#v; want %#v", summary.Subtitles, want)
+	}
+	if summary.Language != "en" {
+		t.Fatalf("language fallback = %q; want en", summary.Language)
+	}
+}
+
+func TestSummarizeAnalysisDoesNotGuessAmbiguousAutomaticLanguage(t *testing.T) {
+	raw := json.RawMessage(`{"automatic_captions":{"en":[],"en-orig":[],"es":[],"es-orig":[]}}`)
+	summary, _, err := summarizeAnalysis(raw, "https://www.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Language != "" {
+		t.Fatalf("ambiguous language fallback = %q; want empty", summary.Language)
+	}
+}
+
+func TestApplyDefaultSubtitleLanguage(t *testing.T) {
+	manual := func(codes ...string) []SubtitleLanguage {
+		tracks := make([]SubtitleLanguage, len(codes))
+		for index, code := range codes {
+			tracks[index] = SubtitleLanguage{Code: code}
+		}
+		return tracks
+	}
+	auto := func(codes ...string) []SubtitleLanguage {
+		tracks := make([]SubtitleLanguage, len(codes))
+		for index, code := range codes {
+			tracks[index] = SubtitleLanguage{Code: code, Auto: true}
+		}
+		return tracks
+	}
+	base := OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleAutoCaptions: true}
+	tests := []struct {
+		name     string
+		options  OutputOptions
+		language string
+		tracks   []SubtitleLanguage
+		want     []string
+	}{
+		{name: "video language creator root", options: base, language: "pt-BR", tracks: manual("en", "pt-PT"), want: []string{"pt-PT"}},
+		{name: "creator English", options: base, language: "de", tracks: manual("fr", "en-US"), want: []string{"en-US"}},
+		{name: "first creator", options: base, language: "de", tracks: manual("fr", "it"), want: []string{"fr"}},
+		{name: "manual preferred over matching auto", options: base, language: "es", tracks: append(manual("en"), auto("es")...), want: []string{"en"}},
+		{name: "no captions", options: base, language: "en", want: nil},
+		{name: "auto video language", options: base, language: "es-MX", tracks: auto("en", "es"), want: []string{"es"}},
+		{name: "auto English", options: base, language: "de", tracks: auto("fr", "en"), want: []string{"en"}},
+		{name: "first auto", options: base, language: "de", tracks: auto("fr", "it"), want: []string{"fr"}},
+		{name: "auto disabled", options: OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed}, language: "en", tracks: auto("en"), want: nil},
+		{name: "explicit untouched", options: OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleAutoCaptions: true, SubtitleLanguages: []string{"de"}}, language: "en", tracks: manual("en"), want: []string{"de"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := ApplyDefaultSubtitleLanguage(test.options, InfoSummary{Language: test.language, Subtitles: test.tracks})
+			if strings.Join(got.SubtitleLanguages, ",") != strings.Join(test.want, ",") {
+				t.Fatalf("languages = %v; want %v", got.SubtitleLanguages, test.want)
+			}
+			if len(got.SubtitleLanguages) > 0 && len(test.tracks) > 0 {
+				selectedAuto := false
+				for _, track := range test.tracks {
+					selectedAuto = selectedAuto || (track.Auto && track.Code == got.SubtitleLanguages[0])
+				}
+				if selectedAuto && !subtitleEngineOptions(got).WriteAutomatic {
+					t.Fatal("selected automatic track did not enable WriteAutomatic")
+				}
+			}
+		})
 	}
 }
 
@@ -330,6 +430,30 @@ func TestSummarizeAnalysisBoundsSubtitleCollections(t *testing.T) {
 	}
 	if manualCount != maxManualSubtitleLanguages || automaticCount != maxAutomaticSubtitleLanguages {
 		t.Fatalf("manual = %d, automatic = %d; want %d and %d", manualCount, automaticCount, maxManualSubtitleLanguages, maxAutomaticSubtitleLanguages)
+	}
+}
+
+func TestDefaultSubtitleOptionsUsesTrustedAnalysisCache(t *testing.T) {
+	manager := New(nil, nil)
+	manager.cacheAnalysis("abc123", []outputplan.Plan{{ID: "video"}}, InfoSummary{
+		Language: "es-MX",
+		Subtitles: []SubtitleLanguage{
+			{Code: "en"},
+			{Code: "es", Auto: true},
+		},
+	})
+	options := manager.DefaultSubtitleOptions("abc123", OutputOptions{
+		SubtitleMode:         jobmodel.SubtitleModeEmbed,
+		SubtitleAutoCaptions: true,
+	})
+	// A creator track remains preferred even when an automatic track matches
+	// the video language.
+	if len(options.SubtitleLanguages) != 1 || options.SubtitleLanguages[0] != "en" {
+		t.Fatalf("cached default = %v; want creator English", options.SubtitleLanguages)
+	}
+	explicit := OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleLanguages: []string{"de"}}
+	if got := manager.DefaultSubtitleOptions("abc123", explicit); len(got.SubtitleLanguages) != 1 || got.SubtitleLanguages[0] != "de" {
+		t.Fatalf("explicit cached selection changed: %v", got.SubtitleLanguages)
 	}
 }
 
