@@ -298,6 +298,7 @@
       subtitleLanguages: undefined,
       subtitleAutoCaptions: false,
       subtitleFormat: '',
+      embedMetadata: false,
       embedThumbnail: false,
       embedChapters: false,
     };

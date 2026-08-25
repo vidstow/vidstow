@@ -174,6 +174,7 @@ func TestCompleteFileFallbackRequiresCompatiblePostprocessFailure(t *testing.T) 
 	}{
 		{name: "container postprocessor", err: &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: errors.New("incompatible")}, want: true},
 		{name: "container postprocessor cannot drop subtitles", err: &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: errors.New("incompatible")}, subtitleDegradation: true, want: false},
+		{name: "missing FFmpeg tool", err: &engine.Error{Category: engine.ErrorUnsupported, Op: "run postprocessors", Err: errors.New("tool unavailable")}, want: false},
 		{name: "subtitle embed", err: &engine.Error{Category: engine.ErrorUnsupported, Op: "embed subtitles", Err: errors.New("unsupported")}, subtitleDegradation: true, want: true},
 		{name: "thumbnail can choose MKV", err: &engine.Error{Category: engine.ErrorInternal, Op: "embed thumbnail", Err: errors.New("unsupported")}, want: true},
 		{name: "thumbnail cannot drop subtitles", err: &engine.Error{Category: engine.ErrorInternal, Op: "embed thumbnail", Err: errors.New("unsupported")}, subtitleDegradation: true, want: false},
