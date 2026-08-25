@@ -24,7 +24,6 @@ func TestOutputOptionsValidateRejectsOutOfContractShapes(t *testing.T) {
 		{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"en", ""}},
 		{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"en.*"}},
 		{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"all,-en"}},
-		{SubtitleSidecar: true, SubtitleFormat: "srt"},
 		{SubtitleMode: SubtitleModeEmbed, SubtitleSidecar: true, SubtitleFormat: "vtt"},
 		{SubtitleLanguages: make([]string, maxSubtitleLanguages+1)},
 	}
@@ -43,8 +42,9 @@ func TestOutputOptionsRequiresFFmpeg(t *testing.T) {
 		{OutputOptions{}, false},
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar}, false},
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar, SubtitleFormat: "srt"}, true},
-		{OutputOptions{SubtitleSidecar: true, SubtitleFormat: "srt"}, true},
+		{OutputOptions{SubtitleSidecar: true, SubtitleFormat: "srt"}, false},
 		{OutputOptions{SubtitleMode: SubtitleModeEmbed}, true},
+		{OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleSidecar: true, SubtitleFormat: "srt"}, true},
 		{OutputOptions{EmbedMetadata: true}, true},
 		{OutputOptions{EmbedThumbnail: true}, true},
 		{OutputOptions{EmbedChapters: true}, true},
@@ -88,6 +88,7 @@ func TestOutputOptionsNote(t *testing.T) {
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar, SubtitleLanguages: []string{"en"}}, "subtitles (en)"},
 		{OutputOptions{SubtitleMode: SubtitleModeEmbed}, "embedded subtitles"},
 		{OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleSidecar: true, SubtitleLanguages: []string{"en"}}, "embedded subtitles (en) · SRT sidecar (en)"},
+		{OutputOptions{SubtitleSidecar: true, SubtitleFormat: "srt", SubtitleLanguages: []string{"en"}}, ""},
 		{OutputOptions{EmbedMetadata: true, EmbedThumbnail: true, EmbedChapters: true}, "embedded metadata, thumbnail, chapters"},
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar, SubtitleLanguages: []string{"en"}, EmbedMetadata: true}, "subtitles (en) · embedded metadata"},
 	}
@@ -101,8 +102,7 @@ func TestOutputOptionsNote(t *testing.T) {
 func TestDefaultOutputOptionsAndCompleteVideoNormalization(t *testing.T) {
 	defaults := DefaultOutputOptions()
 	wantDefaults := OutputOptions{
-		SubtitleMode: SubtitleModeEmbed, SubtitleAutoCaptions: true,
-		EmbedThumbnail: true, EmbedChapters: true,
+		SubtitleAutoCaptions: true, EmbedThumbnail: true, EmbedChapters: true,
 	}
 	if !defaults.Equal(wantDefaults) || defaults.SubtitleSidecar {
 		t.Fatalf("DefaultOutputOptions() = %#v; want %#v", defaults, wantDefaults)
@@ -114,17 +114,26 @@ func TestDefaultOutputOptionsAndCompleteVideoNormalization(t *testing.T) {
 	}
 	got := legacy.ForCompleteVideo()
 	if got.SubtitleMode != SubtitleModeEmbed || !got.SubtitleSidecar || got.SubtitleFormat != "srt" ||
-		!got.EmbedThumbnail || !got.EmbedChapters || got.SubtitleAutoCaptions || len(got.SubtitleLanguages) != 1 || got.SubtitleLanguages[0] != "de" {
+		!got.EmbedThumbnail || !got.EmbedChapters || !got.SubtitleAutoCaptions || len(got.SubtitleLanguages) != 1 || got.SubtitleLanguages[0] != "de" {
 		t.Fatalf("legacy.ForCompleteVideo() = %#v", got)
 	}
 	if legacy.SubtitleMode != SubtitleModeSidecar || legacy.SubtitleFormat != "vtt" {
 		t.Fatalf("normalization mutated legacy options: %#v", legacy)
 	}
 
-	explicit := OutputOptions{SubtitleSidecar: true, SubtitleFormat: "vtt", SubtitleLanguages: []string{"fr"}, SubtitleAutoCaptions: true}
+	explicit := OutputOptions{SubtitleSidecar: true, SubtitleFormat: "vtt", SubtitleLanguages: []string{"fr", "de"}}
 	got = explicit.ForCompleteVideo()
-	if got.SubtitleMode != SubtitleModeEmbed || !got.SubtitleSidecar || got.SubtitleFormat != "srt" || !got.SubtitleAutoCaptions || got.SubtitleLanguages[0] != "fr" {
-		t.Fatalf("explicit.ForCompleteVideo() = %#v", got)
+	if got.SubtitleMode != "" || !got.SubtitleSidecar || got.SubtitleFormat != "" || got.SubtitleAutoCaptions || len(got.SubtitleLanguages) != 1 || got.SubtitleLanguages[0] != "fr" {
+		t.Fatalf("explicit off.ForCompleteVideo() = %#v", got)
+	}
+	if err := explicit.Validate(); err != nil {
+		t.Fatalf("dormant sidecar Validate() = %v", err)
+	}
+
+	embedded := OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"es", "en"}}
+	got = embedded.ForCompleteVideo()
+	if !got.SubtitleAutoCaptions || len(got.SubtitleLanguages) != 1 || got.SubtitleLanguages[0] != "es" {
+		t.Fatalf("embedded.ForCompleteVideo() = %#v", got)
 	}
 
 	got = (OutputOptions{}).ForCompleteVideo()
