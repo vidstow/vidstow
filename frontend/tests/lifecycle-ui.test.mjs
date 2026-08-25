@@ -54,14 +54,12 @@ test('lifecycle view model keeps lifecycle, phase, and occupancy independent', a
 });
 
 test('badge occupancy indicator follows manager occupancy and supports publication phases', async () => {
-  const [badge, row, types] = await Promise.all([
+  const [badge, types] = await Promise.all([
     read('../src/lib/lifecycle-ui/LifecycleBadge.svelte'),
-    read('../src/lib/lifecycle-ui/LifecycleJobRow.svelte'),
     read('../src/lib/lifecycle-ui/types.ts'),
   ]);
   assert.match(badge, /occupiesSlot:\s*boolean/);
   assert.match(badge, /showsOccupiedIndicator = \$derived\(occupiesSlot\)/);
-  assert.match(row, /occupiesSlot=\{job\.occupiesSlot\}/);
   assert.doesNotMatch(badge, /lifecycle === ['"]active['"]|phase === ['"]finalizing['"]/);
   for (const phase of ['ready-to-publish', 'publishing']) {
     assert.match(types, new RegExp(`['"]${phase}['"]`));
@@ -70,26 +68,31 @@ test('badge occupancy indicator follows manager occupancy and supports publicati
   assert.match(types, /Publishing/);
 });
 
-test('queue summary and row expose truthful slot occupancy and semantic actions', async () => {
-  const [summary, row, overview] = await Promise.all([
-    read('../src/lib/lifecycle-ui/QueueSummary.svelte'),
+test('locked queue list exposes only capability-backed pause and cancel controls', async () => {
+  const [row, overview, collection, types] = await Promise.all([
     read('../src/lib/lifecycle-ui/LifecycleJobRow.svelte'),
     read('../src/lib/lifecycle-ui/QueueOverview.svelte'),
+    read('../src/lib/lifecycle-ui/CollectionRow.svelte'),
+    read('../src/lib/lifecycle-ui/types.ts'),
   ]);
-  assert.match(summary, /active slots/);
-  assert.match(summary, /waiting/);
-  assert.match(summary, /paused/);
-  assert.match(await read('../src/lib/lifecycle-ui/types.ts'), /occupiesSlot:\s*boolean/);
+  assert.match(types, /occupiesSlot:\s*boolean/);
   assert.match(row, /createEventDispatcher<LifecycleJobRowEvents>/);
-  for (const action of ['pause', 'cancel', 'resume', 'retry', 'download-again', 'review', 'remove']) {
-    assert.match(row, new RegExp(`['"]?${action}['"]?`));
+  assert.match(row, /action: 'pause' \| 'cancel'/);
+  assert.match(row, /aria-label="Pause download"/);
+  assert.match(row, /aria-label="Cancel download"/);
+  assert.match(overview, />Pause all<\/span>/);
+  assert.match(overview, />Clear completed<\/span>/);
+  assert.match(overview, /class="inspector"/);
+  assert.match(collection, />Pause<\/button>/);
+  assert.match(collection, />Cancel<\/button>/);
+  for (const label of ['Resume', 'Retry', 'Download again', 'Review', 'Remove']) {
+    assert.doesNotMatch(row + overview + collection, new RegExp(`>${label}(?:<|\\s)`));
   }
-  assert.match(await read('../src/lib/lifecycle-ui/types.ts'), /Pause requested\. Jobs will settle individually; finalizing work may still complete\./);
   assert.doesNotMatch(row, /from ['"].*api/);
   assert.doesNotMatch(overview, /from ['"].*(api|stores)/);
 });
 
-test('transitional and terminal row copy stays distinct', async () => {
+test('transitional and terminal row copy stays distinct without synthetic actions', async () => {
   const types = await read('../src/lib/lifecycle-ui/types.ts');
   const row = await read('../src/lib/lifecycle-ui/LifecycleJobRow.svelte');
   for (const copy of [
@@ -102,9 +105,9 @@ test('transitional and terminal row copy stays distinct', async () => {
   ]) {
     assert.match(types + row, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
-  assert.match(row, />Retry<\/button>/);
-  assert.match(row, />Download again<\/button>/);
-  assert.match(row, />Review<\/button>/);
+  assert.match(row, /job\.failure\?\.heading/);
+  assert.match(row, /showsProgress/);
+  assert.doesNotMatch(row, />Resume<\/button>|>Retry<\/button>|>Review<\/button>|>Remove<\/button>/);
 });
 
 test('durable outcomes cannot be masked by retained engine phases', async () => {
