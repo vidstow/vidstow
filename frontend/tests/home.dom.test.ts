@@ -12,7 +12,7 @@ const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 function videoSummary(raw: string) {
   return {
     title: 'Fixture video', channel: 'Fixture channel', duration: '1:00', thumbnail: '', videoId: 'fixture0001', url: raw,
-    durationSeconds: 60, viewCount: 1, uploadDate: '', description: '', access: { code: 'public', label: 'Public' },
+    durationSeconds: 60, viewCount: 1, uploadDate: '', description: '', language: 'de', chapterCount: 3, access: { code: 'public', label: 'Public' },
     subtitles: [
       { code: 'en', name: 'English' },
       { code: 'de', name: 'German' },
@@ -39,7 +39,16 @@ function installBindings() {
 describe('Home analysis authority', () => {
   beforeEach(() => {
     pendingUrl.set('');
-    settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', confirmBeforeDownload: false }));
+    settings.update((current) => ({
+      ...current,
+      downloadFolder: '/tmp/downloads',
+      confirmBeforeDownload: false,
+      outputOptions: {
+        subtitleMode: 'embed', subtitleSidecar: false, subtitleAutoCaptions: true,
+        embedThumbnail: true, embedChapters: true,
+      },
+    }));
+    ffmpeg.set({ available: false, path: '', version: '', ffprobePath: '', message: 'Not found' });
     installBindings();
   });
 
@@ -179,6 +188,7 @@ describe('Home analysis authority', () => {
 
   test('reviews mixed batch lines on Home and starts every ready item', async () => {
     const user = userEvent.setup();
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
     const { AnalyzeBatchURLs, StartBatchDownload } = installBindings();
     AnalyzeBatchURLs.mockResolvedValue({
       token: 'batch-token', expiresAt: '2099-08-22T12:00:00Z',
@@ -211,6 +221,7 @@ describe('Home analysis authority', () => {
 
   test('invalidates a batch review when the user edits the lines', async () => {
     const user = userEvent.setup();
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
     const { AnalyzeBatchURLs } = installBindings();
     AnalyzeBatchURLs.mockResolvedValue({
       token: 'batch-token', expiresAt: '2099-08-22T12:00:00Z', counts: { pasted: 2, ready: 2, duplicate: 0, invalid: 0, analysisFailed: 0 },
@@ -251,6 +262,31 @@ describe('Home analysis authority', () => {
     expect(screen.getByRole('button', { name: 'Start 2 downloads' })).toBeDisabled();
   });
 
+  test('selects an auto-generated language when no creator subtitle exists', async () => {
+    const user = userEvent.setup();
+    const AnalyzeURL = vi.fn(async (raw: string) => ({
+      ...videoSummary(raw),
+      subtitles: [{ code: 'en', name: 'English', auto: true }, { code: 'de', name: 'German', auto: true }],
+    }));
+    (window as any).go.main.App.AnalyzeURL = AnalyzeURL;
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    expect(await screen.findByText('Subtitles: German auto-generated transcript.')).toBeInTheDocument();
+  });
+
+  test('keeps complete-file choices visible and disables video admission honestly without FFmpeg', async () => {
+    const user = userEvent.setup();
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    expect(await screen.findByText('Subtitles: German creator subtitles.')).toBeInTheDocument();
+    expect(screen.getByText(/FFmpeg is required to create this complete file/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeDisabled();
+  });
+
   test('switching output types selects a visible compatible plan', async () => {
     const user = userEvent.setup();
     render(Home);
@@ -265,7 +301,7 @@ describe('Home analysis authority', () => {
     expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeEnabled();
   });
 
-  test('passes subtitle and detail choices to StartDownload', async () => {
+  test('keeps embedded subtitles when an additional sidecar is selected', async () => {
     const user = userEvent.setup();
     ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
     const StartDownload = vi.fn(async (_request: { options: Record<string, unknown> }) => 'job-1');
@@ -275,18 +311,48 @@ describe('Home analysis authority', () => {
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(screen.getByText('Subtitles: German creator subtitles.')).toBeInTheDocument();
+    expect(screen.getByText('Chapters: 3 chapter markers.')).toBeInTheDocument();
+    expect(screen.getByText(/likely MP4, with MKV fallback/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Subtitles & details/ }));
-    await user.click(screen.getByRole('button', { name: 'Subtitle file' }));
-    await user.click(screen.getByLabelText('English'));
-    await user.click(screen.getByLabelText('Title & channel details'));
+    await user.click(screen.getByLabelText('Also save an .srt file'));
+    await user.click(screen.getByLabelText('Include title & channel metadata'));
     await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
 
     await waitFor(() => expect(StartDownload).toHaveBeenCalledTimes(1));
     const request = StartDownload.mock.calls[0][0];
-    expect(request.options.subtitleMode).toBe('sidecar');
-    expect(request.options.subtitleLanguages).toEqual(['en']);
-    expect(request.options.subtitleFormat).toBe('srt');
-    expect(request.options.embedMetadata).toBe(true);
+    expect(request.options).toMatchObject({
+      subtitleMode: 'embed', subtitleSidecar: true, subtitleLanguages: ['de'],
+      subtitleAutoCaptions: true, subtitleFormat: 'srt', embedMetadata: true,
+      embedThumbnail: true, embedChapters: true,
+    });
+  });
+
+  test('sends the same complete-file policy for playlist video requests', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
+    }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async () => ({
+      id: 'PLfixture', url: playlistURL, title: 'Fixture playlist', channel: 'Fixture channel', thumbnail: '',
+      entryCount: 1, available: 1, unavailable: 0,
+      entries: [{ index: 1, videoId: 'fixture0001', url: firstURL, title: 'First video', available: true }],
+    }));
+    const StartPlaylistDownload = vi.fn(async (_request: { options: Record<string, unknown> }) => 'collection-1');
+    (window as any).go.main.App.StartPlaylistDownload = StartPlaylistDownload;
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByRole('button', { name: 'Add 1 Video to Queue' }));
+
+    await waitFor(() => expect(StartPlaylistDownload).toHaveBeenCalledOnce());
+    expect(StartPlaylistDownload.mock.calls[0][0].options).toMatchObject({
+      subtitleMode: 'embed', subtitleSidecar: false, subtitleAutoCaptions: true,
+      embedThumbnail: true, embedChapters: true,
+    });
   });
 });

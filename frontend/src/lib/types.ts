@@ -123,10 +123,12 @@ export interface SubtitleLanguage {
   auto?: boolean;
 }
 
-// Per-download subtitle and embedding choices. Mirrors jobmodel.OutputOptions;
-// the zero value means VidStow's plain media-only output.
+// Per-download subtitle and embedding choices. subtitleMode remains the legacy
+// backend enum; complete video files always use "embed". subtitleSidecar is
+// independent, so an SRT can be saved without turning embedding off.
 export interface OutputOptions {
   subtitleMode?: '' | 'sidecar' | 'embed';
+  subtitleSidecar?: boolean;
   subtitleLanguages?: string[];
   subtitleAutoCaptions?: boolean;
   subtitleFormat?: '' | 'srt' | 'vtt';
@@ -178,6 +180,8 @@ export interface InfoSummary {
   uploadDate: string;
   description: string;
   mediaType?: string;
+  language: string;
+  chapterCount: number;
   access: AccessSummary;
   subtitles?: SubtitleLanguage[];
   plans: OutputPlan[];
