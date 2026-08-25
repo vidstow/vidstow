@@ -269,7 +269,9 @@ func TestSummarizeAnalysisUsesAudioFormatLanguageForCreatorSubtitleDefault(t *te
 	if summary.Language != "es-MX" {
 		t.Fatalf("summary language = %q; want es-MX", summary.Language)
 	}
-	options := ApplyDefaultSubtitleLanguage(jobmodel.DefaultOutputOptions(), summary)
+	defaults := jobmodel.DefaultOutputOptions()
+	defaults.SubtitleMode = jobmodel.SubtitleModeEmbed
+	options := ApplyDefaultSubtitleLanguage(defaults, summary)
 	if len(options.SubtitleLanguages) != 1 || options.SubtitleLanguages[0] != "es" {
 		t.Fatalf("default subtitles = %v; want creator Spanish", options.SubtitleLanguages)
 	}
@@ -397,6 +399,7 @@ func TestApplyDefaultSubtitleLanguage(t *testing.T) {
 		{name: "creator English", options: base, language: "de", tracks: manual("fr", "en-US"), want: []string{"en-US"}},
 		{name: "first creator", options: base, language: "de", tracks: manual("fr", "it"), want: []string{"fr"}},
 		{name: "manual preferred over matching auto", options: base, language: "es", tracks: append(manual("en"), auto("es")...), want: []string{"en"}},
+		{name: "subtitle off remains off", options: jobmodel.DefaultOutputOptions(), language: "es", tracks: manual("es"), want: nil},
 		{name: "no captions", options: base, language: "en", want: nil},
 		{name: "auto video language", options: base, language: "es-MX", tracks: auto("en", "es"), want: []string{"es"}},
 		{name: "auto English", options: base, language: "de", tracks: auto("fr", "en"), want: []string{"en"}},
@@ -604,6 +607,17 @@ func TestSubmitPropagatesOutputOptionsToEngineRequest(t *testing.T) {
 				t.Fatal("download runner did not receive a request")
 			}
 		})
+	}
+}
+
+func TestSubtitleEngineOptionsIgnoresDormantSubtitlePreferences(t *testing.T) {
+	options := jobmodel.DefaultOutputOptions()
+	options.SubtitleSidecar = true
+	options.SubtitleFormat = "srt"
+	options.SubtitleLanguages = []string{"en"}
+	got := subtitleEngineOptions(options)
+	if got.WriteManual || got.WriteAutomatic || got.Embed || got.KeepFiles || got.ConvertFormat != "" || len(got.Languages) != 0 {
+		t.Fatalf("subtitleEngineOptions(dormant) = %#v; want no subtitle flags", got)
 	}
 }
 
