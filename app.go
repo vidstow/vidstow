@@ -21,6 +21,7 @@ import (
 	"github.com/tejasa97/vidstow/internal/ffmpegdetect"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/jobs"
+	"github.com/tejasa97/vidstow/internal/outputplan"
 	"github.com/tejasa97/vidstow/internal/recovery"
 	"github.com/tejasa97/vidstow/internal/reservationfs"
 	"github.com/tejasa97/vidstow/internal/store"
@@ -657,12 +658,19 @@ func (a *App) StartDownload(req jobs.Request) (string, error) {
 	if resolveErr != nil {
 		return "", resolveErr
 	}
+	if plan.Kind == outputplan.KindVideo {
+		req.Options = req.Options.ForCompleteVideo()
+	}
+	if req.Options.RequiresFFmpeg() && !a.ffmpegStatus().Available {
+		a.recordDiagnosticProblem(operationID, localdiagnostics.Problem{Stage: "postprocessing", Category: "ffmpeg_missing", Outcome: "terminal", RetryBucket: "none"})
+		if plan.Kind == outputplan.KindVideo {
+			return "", errors.New("complete video files need FFmpeg; install or configure FFmpeg before downloading")
+		}
+		return "", errors.New("subtitles and embedded details need FFmpeg; install FFmpeg or turn those options off")
+	}
 	if plan.RequiresFFmpeg && !a.ffmpegStatus().Available {
 		a.recordDiagnosticProblem(operationID, localdiagnostics.Problem{Stage: "postprocessing", Category: "ffmpeg_missing", Outcome: "terminal", RetryBucket: "none"})
 		return "", errors.New("this output needs FFmpeg; install FFmpeg or choose an original audio format")
-	}
-	if req.Options.RequiresFFmpeg() && !a.ffmpegStatus().Available {
-		return "", errors.New("subtitles and embedded details need FFmpeg; install FFmpeg or turn those options off")
 	}
 	req.OutputDir, err = canonicalOutputRequestPath(req.OutputDir)
 	if err != nil {

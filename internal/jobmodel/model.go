@@ -93,7 +93,11 @@ const maxSubtitleLanguages = 16
 // historical output: media only, no sidecars, no container metadata.
 type OutputOptions struct {
 	// SubtitleMode is "" (off), SubtitleModeSidecar, or SubtitleModeEmbed.
+	// The sidecar value remains valid for jobs persisted by older releases.
 	SubtitleMode string `json:"subtitleMode,omitempty"`
+	// SubtitleSidecar independently requests an SRT file, allowing complete
+	// video files to contain embedded subtitles and ship a sidecar together.
+	SubtitleSidecar bool `json:"subtitleSidecar,omitempty"`
 	// SubtitleLanguages selects track languages. Empty defers to the engine's
 	// default: manual English, then English, then the first language offered.
 	SubtitleLanguages []string `json:"subtitleLanguages,omitempty"`
@@ -113,6 +117,34 @@ type OutputOptions struct {
 	EmbedChapters bool `json:"embedChapters,omitempty"`
 }
 
+// DefaultOutputOptions returns the defaults for newly created state and
+// download choices. Persisted jobs retain their exact legacy values.
+func DefaultOutputOptions() OutputOptions {
+	return OutputOptions{
+		SubtitleMode:         SubtitleModeEmbed,
+		SubtitleAutoCaptions: true,
+		EmbedThumbnail:       true,
+		EmbedChapters:        true,
+	}
+}
+
+// ForCompleteVideo normalizes video output to a complete media file. A legacy
+// sidecar-only choice becomes embedded subtitles plus an SRT sidecar, while
+// language and automatic-caption choices are preserved.
+func (o OutputOptions) ForCompleteVideo() OutputOptions {
+	out := o.Clone()
+	if out.SubtitleMode == SubtitleModeSidecar {
+		out.SubtitleSidecar = true
+	}
+	out.SubtitleMode = SubtitleModeEmbed
+	out.EmbedThumbnail = true
+	out.EmbedChapters = true
+	if out.SubtitleSidecar {
+		out.SubtitleFormat = "srt"
+	}
+	return out
+}
+
 // IsZero reports whether every option is at its historical default.
 func (o OutputOptions) IsZero() bool {
 	return o.Equal(OutputOptions{})
@@ -124,12 +156,13 @@ func (o OutputOptions) IsZero() bool {
 func (o OutputOptions) RequiresFFmpeg() bool {
 	return o.SubtitleMode == SubtitleModeEmbed ||
 		o.EmbedMetadata || o.EmbedThumbnail || o.EmbedChapters ||
-		(o.SubtitleMode == SubtitleModeSidecar && o.SubtitleFormat != "")
+		((o.SubtitleMode == SubtitleModeSidecar || o.SubtitleSidecar) && o.SubtitleFormat != "")
 }
 
 // Equal compares two option sets, including language order.
 func (o OutputOptions) Equal(other OutputOptions) bool {
 	if o.SubtitleMode != other.SubtitleMode ||
+		o.SubtitleSidecar != other.SubtitleSidecar ||
 		o.SubtitleAutoCaptions != other.SubtitleAutoCaptions ||
 		o.SubtitleFormat != other.SubtitleFormat ||
 		o.EmbedMetadata != other.EmbedMetadata ||
@@ -203,6 +236,9 @@ func (o OutputOptions) Note() string {
 		parts = append(parts, "subtitles"+o.noteLanguages())
 	case SubtitleModeEmbed:
 		parts = append(parts, "embedded subtitles"+o.noteLanguages())
+	}
+	if o.SubtitleSidecar && o.SubtitleMode != SubtitleModeSidecar {
+		parts = append(parts, "SRT sidecar"+o.noteLanguages())
 	}
 	var embeds []string
 	if o.EmbedMetadata {

@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/tejasa97/vidstow/internal/jobmodel"
 )
 
 func TestStoreOpenCreatesFile(t *testing.T) {
@@ -19,6 +21,13 @@ func TestStoreOpenCreatesFile(t *testing.T) {
 	}
 	if !s.Durable() {
 		t.Fatal("opened disk-backed store must report durable")
+	}
+}
+
+func TestNewLegacyStateUsesDefaultOutputOptions(t *testing.T) {
+	got := defaultState().Settings.OutputOptions
+	if !got.Equal(jobmodel.DefaultOutputOptions()) {
+		t.Fatalf("legacy default output options = %#v; want %#v", got, jobmodel.DefaultOutputOptions())
 	}
 }
 
