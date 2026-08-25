@@ -8,6 +8,11 @@
   let folder = '';
   let ffmpegPath = '';
   let saving = false;
+  const commonSubtitleLanguages = [
+    ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'],
+    ['it', 'Italian'], ['pt', 'Portuguese'], ['ja', 'Japanese'], ['ko', 'Korean'],
+    ['zh', 'Chinese'], ['ar', 'Arabic'], ['hi', 'Hindi'], ['ru', 'Russian'],
+  ];
 
   onMount(() => {
     folder = $settings.downloadFolder || '';
@@ -16,6 +21,7 @@
   $: displayedFFmpegPath = ffmpegPath || $ffmpeg.path || '';
   $: concurrency = $settings.downloadConcurrency;
   $: ffmpegVersion = ($ffmpeg.version || '').replace(/^ffmpeg version /i, '').split(/\s+/)[0] || '';
+  $: defaultSubtitlesOn = $settings.outputOptions.subtitleMode === 'embed' || $settings.outputOptions.subtitleMode === 'sidecar';
 
   async function update(next: Settings, message = 'Settings updated') {
     saving = true;
@@ -73,7 +79,25 @@
   }
 
   async function updateOutputOptions(patch: Partial<OutputOptions>) {
-    await update({ ...$settings, outputOptions: { ...$settings.outputOptions, ...patch } }, 'Output defaults updated');
+    await update({
+      ...$settings,
+      outputOptions: { ...$settings.outputOptions, ...patch, embedThumbnail: true, embedChapters: true },
+    }, 'Output defaults updated');
+  }
+
+  async function setDefaultSubtitles(on: boolean) {
+    const sidecar = !!$settings.outputOptions.subtitleSidecar || $settings.outputOptions.subtitleMode === 'sidecar';
+    await updateOutputOptions({
+      subtitleMode: on ? 'embed' : '',
+      subtitleSidecar: sidecar,
+      subtitleLanguages: $settings.outputOptions.subtitleLanguages?.slice(0, 1),
+      subtitleAutoCaptions: on,
+      subtitleFormat: sidecar ? 'srt' : '',
+    });
+  }
+
+  async function setPreferredSubtitleLanguage(code: string) {
+    await updateOutputOptions({ subtitleLanguages: code ? [code] : undefined });
   }
 
   async function setAutomaticDiagnostics(value: 'enabled' | 'disabled') {
@@ -117,35 +141,45 @@
       <input type="checkbox" checked={$settings.perVideoSubfolder} on:change={(e) => update({ ...$settings, perVideoSubfolder: e.currentTarget.checked })} />
     </label>
 
-    <label class="setting">
-      <span class="copy">
-        <strong>Confirm before starting downloads</strong>
-        <small>Shows the selected output before adding it to the queue.</small>
-      </span>
-      <input type="checkbox" checked={$settings.confirmBeforeDownload} on:change={(e) => update({ ...$settings, confirmBeforeDownload: e.currentTarget.checked })} />
-    </label>
-
     <div class="setting">
       <span class="copy">
         <strong>Complete video files</strong>
-        <small>Subtitles are embedded by default. Thumbnail artwork and chapter markers are also included automatically when available.</small>
+        <small>Thumbnail artwork and chapter markers are included automatically when YouTube provides them.</small>
       </span>
     </div>
+
+    <div class="setting">
+      <span class="copy">
+        <strong>Include subtitles on new adds</strong>
+        <small>Off on a fresh install. You can override this while reviewing a video or playlist.</small>
+      </span>
+      <span class="actions choices" role="radiogroup" aria-label="Include subtitles on new adds">
+        <label><input type="radio" name="default-subtitles" checked={!defaultSubtitlesOn} on:change={() => setDefaultSubtitles(false)} /> Off</label>
+        <label><input type="radio" name="default-subtitles" checked={defaultSubtitlesOn} on:change={() => setDefaultSubtitles(true)} /> On</label>
+      </span>
+    </div>
+
+    {#if defaultSubtitlesOn}
+      <label class="setting">
+        <span class="copy">
+          <strong>Preferred subtitle language</strong>
+          <small>Used when that language is available.</small>
+        </span>
+        <select value={$settings.outputOptions.subtitleLanguages?.[0] ?? ''} on:change={(e) => setPreferredSubtitleLanguage(e.currentTarget.value)}>
+          <option value="">Each video’s own language</option>
+          {#each commonSubtitleLanguages as language}
+            <option value={language[0]}>{language[1]} ({language[0]})</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
 
     <label class="setting">
       <span class="copy">
         <strong>Also save an .srt file</strong>
-        <small>Saves an additional subtitle file without removing embedded subtitles.</small>
+        <small>When subtitles are On, saves an .srt in addition to the embedded soft track.</small>
       </span>
-      <input type="checkbox" checked={$settings.outputOptions.subtitleSidecar ?? $settings.outputOptions.subtitleMode === 'sidecar'} on:change={(e) => updateOutputOptions({ subtitleMode: 'embed', subtitleSidecar: e.currentTarget.checked, subtitleFormat: e.currentTarget.checked ? 'srt' : '' })} />
-    </label>
-
-    <label class="setting">
-      <span class="copy">
-        <strong>Include auto-generated captions</strong>
-        <small>Uses auto-generated tracks when a language has no real subtitles.</small>
-      </span>
-      <input type="checkbox" checked={$settings.outputOptions.subtitleAutoCaptions !== false} on:change={(e) => updateOutputOptions({ subtitleAutoCaptions: e.currentTarget.checked })} />
+      <input type="checkbox" checked={!!$settings.outputOptions.subtitleSidecar || $settings.outputOptions.subtitleMode === 'sidecar'} on:change={(e) => updateOutputOptions({ subtitleMode: $settings.outputOptions.subtitleMode === 'sidecar' ? 'embed' : $settings.outputOptions.subtitleMode, subtitleSidecar: e.currentTarget.checked, subtitleFormat: e.currentTarget.checked ? 'srt' : '' })} />
     </label>
 
     <label class="setting">
@@ -175,7 +209,7 @@
           {#if $ffmpeg.available && ffmpegVersion}
             Version {ffmpegVersion} · ready for complete video files and MP3 conversion
           {:else}
-            Required for complete video files, including embedded subtitles, artwork, and chapters.
+            Required for complete video files, including artwork and chapters (and subtitles when selected).
           {/if}
         </span>
       </div>
