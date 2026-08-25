@@ -266,6 +266,9 @@ func (a *App) StartBatchDownload(req BatchStartRequest) (BatchStartResult, error
 	if len(analysis.items) < urlcheck.MinBatchLines {
 		return BatchStartResult{}, fmt.Errorf("at least %d ready videos are required to start a batch", urlcheck.MinBatchLines)
 	}
+	if req.Quality != jobs.QualityAudioOnly && !a.ffmpegStatus().Available {
+		return BatchStartResult{}, errors.New("complete video files need FFmpeg; install or configure FFmpeg before starting this batch")
+	}
 
 	settings := a.store.Settings()
 	if strings.TrimSpace(settings.DownloadFolder) == "" {
@@ -306,11 +309,16 @@ func (a *App) StartBatchDownload(req BatchStartRequest) (BatchStartResult, error
 		if defaultRoot == nil {
 			defaultRoot = root
 		}
+		options := jobs.OutputOptions{}
+		if plan.Kind == outputplan.KindVideo {
+			options = settings.OutputOptions.ForCompleteVideo()
+		}
 		children[index] = admission.CollectionChildRequest{
 			Request: admission.Request{Queue: jobs.Request{
 				URL: item.canonicalURL, VideoID: item.videoID, Title: item.summary.Title,
 				Channel: item.summary.Channel, Quality: req.Quality, PlanID: plan.ID,
 				OutputDir: outputDir, Duration: item.summary.Duration, Thumbnail: item.summary.Thumbnail,
+				Options: options,
 			}, Metadata: value.NewInfo(value.NewObject(
 				value.Field{Key: "title", Value: value.String(item.summary.Title)},
 				value.Field{Key: "id", Value: value.String(item.videoID)},

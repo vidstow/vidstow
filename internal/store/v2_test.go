@@ -1323,6 +1323,13 @@ func mustJSON(t *testing.T, value any) []byte {
 	return data
 }
 
+func TestNewV2StateUsesDefaultOutputOptions(t *testing.T) {
+	got := defaultStateV2().Settings.OutputOptions
+	if !got.Equal(jobmodel.DefaultOutputOptions()) {
+		t.Fatalf("v2 default output options = %#v; want %#v", got, jobmodel.DefaultOutputOptions())
+	}
+}
+
 func TestV2SettingsOutputOptionsRoundTrip(t *testing.T) {
 	s, status, err := OpenV2(filepath.Join(t.TempDir(), "state.json"))
 	if err != nil || !status.Healthy() || s == nil {
@@ -1333,6 +1340,7 @@ func TestV2SettingsOutputOptionsRoundTrip(t *testing.T) {
 		DownloadConcurrency: 2,
 		OutputOptions: jobmodel.OutputOptions{
 			SubtitleMode:      jobmodel.SubtitleModeSidecar,
+			SubtitleSidecar:   true,
 			SubtitleFormat:    "srt",
 			SubtitleLanguages: []string{"en", "de"},
 			EmbedMetadata:     true,

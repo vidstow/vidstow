@@ -726,6 +726,7 @@ func defaultStateV2() jobmodel.State {
 			WindowHeight:        760,
 			DownloadConcurrency: 2,
 			PerVideoSubfolder:   true,
+			OutputOptions:       jobmodel.DefaultOutputOptions(),
 		},
 		Jobs:        []jobmodel.DurableJob{},
 		Collections: []jobmodel.DurableCollection{},
