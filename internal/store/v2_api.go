@@ -216,6 +216,7 @@ func historyEntryFromV2(entry jobmodel.HistoryEntry) HistoryEntry {
 		SizeBytes:     entry.SizeBytes,
 		CompletedAt:   entry.CompletedAt,
 		DurationLabel: entry.DurationLabel,
+		DeliveryNote:  entry.DeliveryNote,
 	}
 }
 
@@ -234,6 +235,7 @@ func historyEntryToV2(entry HistoryEntry) jobmodel.HistoryEntry {
 		SizeBytes:     entry.SizeBytes,
 		CompletedAt:   entry.CompletedAt,
 		DurationLabel: entry.DurationLabel,
+		DeliveryNote:  entry.DeliveryNote,
 	}
 }
 

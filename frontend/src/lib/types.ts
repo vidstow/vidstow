@@ -76,6 +76,7 @@ export interface JobSnapshot {
   message: string;
   errorReason?: string;
   optionsNote?: string;
+  deliveryNote?: string;
 }
 
 export interface HistoryEntry {
@@ -92,6 +93,7 @@ export interface HistoryEntry {
   sizeBytes: number;
   completedAt: string;
   durationLabel: string;
+  deliveryNote?: string;
   thumbnail: string;
   fileMissing?: boolean;
 }

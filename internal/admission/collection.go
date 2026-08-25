@@ -184,10 +184,7 @@ func (c *Coordinator) AdmitCollection(ctx context.Context, root *reservationfs.R
 		if child.Queue.Channel != "" {
 			metadata.Set("channel", value.String(child.Queue.Channel))
 		}
-		artifacts, renderErr := engine.RenderOutputArtifacts(engine.OutputPreviewRequest{
-			Template: jobs.OutputTemplateForPlan(plan), Metadata: metadata,
-			Extension: strings.ToLower(strings.TrimPrefix(plan.Container, ".")),
-		})
+		plan, artifacts, renderErr := preparePlanArtifacts(plan, child.Queue.Options, metadata)
 		if renderErr != nil || len(artifacts) == 0 {
 			if renderErr == nil {
 				renderErr = errors.New("engine returned no output artifacts")

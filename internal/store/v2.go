@@ -1125,7 +1125,7 @@ func reservationKey(root jobmodel.OutputRootRef, basename string) string {
 	return root.Identity + "\x00" + root.CanonicalPath + "\x00" + basename
 }
 func validHistory(h jobmodel.HistoryEntry) bool {
-	return validID(h.ID) && validText(h.VideoID, maxIDBytes, false) && validText(h.Title, maxText, false) && validText(h.Channel, maxText, false) && validText(h.Quality, maxShortText, false) && validText(h.Container, maxShortText, false) && validText(h.VideoCodec, maxShortText, false) && validText(h.AudioCodec, maxShortText, false) && (h.Filename == "" || validBasename(h.Filename)) && validText(h.AbsolutePath, maxPathBytes, false) && (h.AbsolutePath == "" || filepath.IsAbs(h.AbsolutePath) && filepath.Clean(h.AbsolutePath) == h.AbsolutePath) && validTimestampText(h.CompletedAt, false) && validText(h.DurationLabel, maxShortText, false) && h.SizeBytes >= 0
+	return validID(h.ID) && validText(h.VideoID, maxIDBytes, false) && validText(h.Title, maxText, false) && validText(h.Channel, maxText, false) && validText(h.Quality, maxShortText, false) && validText(h.Container, maxShortText, false) && validText(h.VideoCodec, maxShortText, false) && validText(h.AudioCodec, maxShortText, false) && (h.Filename == "" || validBasename(h.Filename)) && validText(h.AbsolutePath, maxPathBytes, false) && (h.AbsolutePath == "" || filepath.IsAbs(h.AbsolutePath) && filepath.Clean(h.AbsolutePath) == h.AbsolutePath) && validTimestampText(h.CompletedAt, false) && validText(h.DurationLabel, maxShortText, false) && validText(h.DeliveryNote, maxText, false) && h.SizeBytes >= 0
 }
 
 func validSettings(s jobmodel.Settings) bool {

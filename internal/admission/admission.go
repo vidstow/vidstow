@@ -173,12 +173,7 @@ func (c *Coordinator) Admit(ctx context.Context, root *reservationfs.Root, reque
 	if request.Queue.Channel != "" {
 		metadata.Set("channel", value.String(request.Queue.Channel))
 	}
-	extension := strings.ToLower(strings.TrimPrefix(plan.Container, "."))
-	artifacts, err := engine.RenderOutputArtifacts(engine.OutputPreviewRequest{
-		Template:  jobs.OutputTemplateForPlan(plan),
-		Metadata:  metadata,
-		Extension: extension,
-	})
+	plan, artifacts, err := preparePlanArtifacts(plan, request.Queue.Options, metadata)
 	if err != nil {
 		return Result{}, fmt.Errorf("admission: render output artifacts: %w", err)
 	}
