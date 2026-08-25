@@ -52,7 +52,11 @@ func completeFileFixtureRunner(t *testing.T, failEmbeds int, calls *[]engine.Req
 			}
 		}
 		if len(*calls) <= failEmbeds && (request.Subtitles.Embed || request.Thumbnails.Embed || request.EmbedChapters != nil) {
-			return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: "postprocess", Err: errors.New("fixture mux failure")}
+			op := "run postprocessors"
+			if len(*calls) == 2 && request.Subtitles.Embed {
+				op = "embed subtitles"
+			}
+			return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: op, Err: errors.New("fixture mux failure")}
 		}
 		target := request.Postprocessors[len(request.Postprocessors)-1].Remux.Format
 		media := filepath.Join(request.OutputDir, strings.ReplaceAll(request.OutputTemplate, "%(ext)s", target))
@@ -148,7 +152,7 @@ func TestRunCompleteFileSubtitleOffDoesNotAttemptSRTDegradation(t *testing.T) {
 		if handler != nil {
 			_ = handler(ctx, engine.Event{Kind: engine.EventPostprocessStarting})
 		}
-		return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: "postprocess", Err: errors.New("fixture mux failure")}
+		return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: errors.New("fixture mux failure")}
 	}
 	_, _, err := runCompleteFile(
 		context.Background(),
@@ -157,6 +161,79 @@ func TestRunCompleteFileSubtitleOffDoesNotAttemptSRTDegradation(t *testing.T) {
 	)
 	if err == nil || calls != 2 {
 		t.Fatalf("subtitle-off failure err=%v calls=%d; want MP4 then MKV only", err, calls)
+	}
+}
+
+func TestCompleteFileFallbackRequiresCompatiblePostprocessFailure(t *testing.T) {
+	pathFailure := &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: &os.PathError{Op: "write", Path: "output", Err: os.ErrPermission}}
+	cases := []struct {
+		name                string
+		err                 error
+		subtitleDegradation bool
+		want                bool
+	}{
+		{name: "container postprocessor", err: &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: errors.New("incompatible")}, want: true},
+		{name: "container postprocessor cannot drop subtitles", err: &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: errors.New("incompatible")}, subtitleDegradation: true, want: false},
+		{name: "subtitle embed", err: &engine.Error{Category: engine.ErrorUnsupported, Op: "embed subtitles", Err: errors.New("unsupported")}, subtitleDegradation: true, want: true},
+		{name: "thumbnail can choose MKV", err: &engine.Error{Category: engine.ErrorInternal, Op: "embed thumbnail", Err: errors.New("unsupported")}, want: true},
+		{name: "thumbnail cannot drop subtitles", err: &engine.Error{Category: engine.ErrorInternal, Op: "embed thumbnail", Err: errors.New("unsupported")}, subtitleDegradation: true, want: false},
+		{name: "untyped", err: errors.New("handler failed"), want: false},
+		{name: "unrelated operation", err: &engine.Error{Category: engine.ErrorInternal, Op: "emit postprocess event", Err: errors.New("handler failed")}, want: false},
+		{name: "wrapped unrelated operation", err: &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: &engine.Error{Category: engine.ErrorInternal, Op: "emit postprocess event", Err: errors.New("handler failed")}}, want: false},
+		{name: "filesystem", err: pathFailure, want: false},
+		{name: "network", err: &engine.Error{Category: engine.ErrorNetwork, Op: "run postprocessors", Err: errors.New("offline")}, want: false},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := completeFileFallbackEligible(context.Background(), test.err, true, test.subtitleDegradation); got != test.want {
+				t.Fatalf("eligible = %v; want %v for %v", got, test.want, test.err)
+			}
+		})
+	}
+}
+
+func TestRunCompleteFileDoesNotDegradeSubtitlesForThumbnailFailure(t *testing.T) {
+	root := t.TempDir()
+	calls := 0
+	runner := func(ctx context.Context, request engine.Request, handler engine.EventHandler) (engine.Result, error) {
+		calls++
+		if handler != nil {
+			_ = handler(ctx, engine.Event{Kind: engine.EventPostprocessStarting})
+		}
+		op := "run postprocessors"
+		if calls == 2 {
+			op = "embed thumbnail"
+		}
+		return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: op, Err: errors.New("fixture failure")}
+	}
+	_, _, err := runCompleteFile(
+		context.Background(),
+		engine.Request{OutputDir: root, Subtitles: engine.SubtitleOptions{Embed: true}, Thumbnails: engine.ThumbnailOptions{Write: true, Embed: true}},
+		completeFileTestReservation(root), runner, nil, engine.NewPublicationArbiter(),
+	)
+	if err == nil || calls != 2 {
+		t.Fatalf("err=%v calls=%d; want MP4 and MKV attempts without subtitle degradation", err, calls)
+	}
+}
+
+func TestRunCompleteFileDoesNotRetryFilesystemPostprocessFailure(t *testing.T) {
+	root := t.TempDir()
+	calls := 0
+	pathFailure := &os.PathError{Op: "write", Path: "output", Err: os.ErrPermission}
+	runner := func(ctx context.Context, request engine.Request, handler engine.EventHandler) (engine.Result, error) {
+		calls++
+		if handler != nil {
+			_ = handler(ctx, engine.Event{Kind: engine.EventPostprocessStarting})
+		}
+		return engine.Result{}, &engine.Error{Category: engine.ErrorInternal, Op: "run postprocessors", Err: pathFailure}
+	}
+	_, _, err := runCompleteFile(
+		context.Background(),
+		engine.Request{OutputDir: root, Subtitles: engine.SubtitleOptions{Embed: true}},
+		completeFileTestReservation(root), runner, nil, engine.NewPublicationArbiter(),
+	)
+	if !errors.Is(err, pathFailure) || calls != 1 {
+		t.Fatalf("err=%v calls=%d; want the original filesystem error after one attempt", err, calls)
 	}
 }
 
