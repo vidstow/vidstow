@@ -5107,7 +5107,7 @@ func summarizeAnalysis(raw json.RawMessage, rawURL string) (InfoSummary, []outpu
 	if mediaType := strings.ToLower(strings.TrimSpace(metadataText(info, "media_type"))); mediaType != "" {
 		summary.MediaType = mediaType
 	}
-	summary.Language = boundedText(metadataText(info, "language"), 32)
+	summary.Language = summarizeVideoLanguage(info)
 	if chapters, ok := info["chapters"].([]any); ok {
 		summary.ChapterCount = len(chapters)
 	}
@@ -5227,6 +5227,31 @@ func boundedText(value string, limit int) string {
 		return string(runes[:limit])
 	}
 	return value
+}
+
+// summarizeVideoLanguage prefers explicit media metadata, then the language on
+// an audio-bearing format. YouTube's caption normalizer carries the detected
+// spoken language onto its audio formats even when the top-level field is
+// absent, which lets creator subtitles follow the video's actual language.
+func summarizeVideoLanguage(info map[string]any) string {
+	if language := boundedText(metadataText(info, "language"), 16); jobmodel.ValidSubtitleLanguage(language) {
+		return language
+	}
+	formats, _ := info["formats"].([]any)
+	for _, raw := range formats {
+		format, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		codec := strings.ToLower(strings.TrimSpace(metadataText(format, "acodec")))
+		if codec == "" || codec == "none" {
+			continue
+		}
+		if language := boundedText(metadataText(format, "language"), 16); jobmodel.ValidSubtitleLanguage(language) {
+			return language
+		}
+	}
+	return ""
 }
 
 // ApplyDefaultSubtitleLanguage chooses one analyzed track when subtitles are
