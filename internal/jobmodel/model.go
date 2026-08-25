@@ -432,6 +432,7 @@ type HistoryEntry struct {
 	SizeBytes     int64  `json:"sizeBytes"`
 	CompletedAt   string `json:"completedAt"`
 	DurationLabel string `json:"durationLabel"`
+	DeliveryNote  string `json:"deliveryNote,omitempty"`
 }
 
 // CloneState returns a complete, independent copy for transactional mutation.

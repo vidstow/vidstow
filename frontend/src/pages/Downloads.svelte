@@ -16,7 +16,7 @@
   $: source = view === 'recent' && showRange ? $history.slice(0, RECENT_LIMIT) : $history;
   $: needle = query.trim().toLowerCase();
   $: filtered = source.filter((entry) =>
-    [entry.title, entry.channel, entry.filename, entry.quality, entry.container || '']
+    [entry.title, entry.channel, entry.filename, entry.quality, entry.container || '', entry.deliveryNote || '']
       .some((value) => value.toLowerCase().includes(needle)),
   );
   $: if (selected && !filtered.some((entry) => entry.id === selected?.id)) selected = null;
@@ -201,6 +201,9 @@
                   {#if entry.fileMissing}
                     <p class="missing-note">This file is no longer on disk. You can still remove the history entry.</p>
                   {/if}
+                  {#if entry.deliveryNote}
+                    <p class="delivery-note">{entry.deliveryNote}</p>
+                  {/if}
                   <p class="path-full" title={entry.absolutePath}>
                     {#if codecSummary(entry)}{codecSummary(entry)} · {/if}{entry.absolutePath}
                   </p>
@@ -370,6 +373,7 @@
     border-top: 1px solid var(--border-subtle);
   }
   .missing-note { margin: 0; color: var(--status-warning); font-size: var(--fs-sm); }
+  .delivery-note { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm); font-weight: 650; }
   .path-full {
     margin: 0;
     min-width: 0;

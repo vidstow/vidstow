@@ -227,6 +227,8 @@ type JobSnapshot struct {
 	// OptionsNote is a backend-authored summary of non-default output
 	// options (subtitles, embedded metadata) shown in queue row metadata.
 	OptionsNote string `json:"optionsNote,omitempty"`
+	// DeliveryNote records the actual completed container/fallback outcome.
+	DeliveryNote string `json:"deliveryNote,omitempty"`
 }
 
 // QueueJobCapabilities is deliberately backend-authored. The frontend must
@@ -929,6 +931,7 @@ func historyFromSnapshot(snap JobSnapshot) jobmodel.HistoryEntry {
 		SizeBytes:     snap.Bytes,
 		CompletedAt:   completed,
 		DurationLabel: snap.DurationLabel,
+		DeliveryNote:  snap.DeliveryNote,
 	}
 }
 
@@ -3612,7 +3615,13 @@ func (m *Manager) Retry(id string) error {
 		sessionID := state.durable.SessionID
 		retryMode := jobmodel.RetryModeResumeValidated
 		escalatedRestart := false
-		if sessionID == "" || state.durable.OutputRoot.CanonicalPath == "" {
+		if usesCompleteFileStaging(state) {
+			// Complete-file attempts are transactionally discarded rather than
+			// resumable. A retry always receives a fresh attempt identity and
+			// cannot inherit any failed FFmpeg workspace.
+			sessionID = newSessionID()
+			retryMode = jobmodel.RetryModeRestartNewSession
+		} else if sessionID == "" || state.durable.OutputRoot.CanonicalPath == "" {
 			sessionID = newSessionID()
 			retryMode = jobmodel.RetryModeRestartNewSession
 		} else {
@@ -4189,17 +4198,21 @@ func (m *Manager) run(state *jobState, worker *worker) {
 			req.Thumbnails = engine.ThumbnailOptions{Write: true, Embed: true}
 		}
 	}
+	completeFile := usesCompleteFileStaging(state)
 	if state.fromStateV2 {
 		req.OutputDir = state.durable.OutputRoot.CanonicalPath
 		req.Overwrite = false
-		req.Filesystem.Resume = engine.ResumeOptions{
-			SessionID:          worker.SessionID,
-			PublicationArbiter: worker.Arbiter,
-			CommitTargets:      resumeCommitTargets(state.durable.Reservation),
+		if !completeFile {
+			req.Filesystem.Resume = engine.ResumeOptions{
+				SessionID:          worker.SessionID,
+				PublicationArbiter: worker.Arbiter,
+				CommitTargets:      resumeCommitTargets(state.durable.Reservation),
+			}
 		}
 	}
 	ctx := worker.Ctx
 	runner := m.runDownload
+	reservation := state.durable.Reservation
 	m.mu.Unlock()
 
 	processingHeld := false
@@ -4228,7 +4241,14 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		return nil
 	}
 
-	result, err := runner(ctx, req, handler)
+	var result engine.Result
+	var delivery completeFileDelivery
+	var err error
+	if completeFile {
+		result, delivery, err = runCompleteFile(ctx, req, reservation, runner, handler)
+	} else {
+		result, err = runner(ctx, req, handler)
+	}
 	diagnostic := terminalDownloadDiagnostic(err, sawDownload, sawPostprocess, time.Since(started))
 	if processingHeld {
 		<-m.processing
@@ -4291,11 +4311,33 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		terminal.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 		if result.Filename != "" {
 			terminal.Filename = filepath.Base(result.Filename)
+			if extension := strings.TrimPrefix(strings.ToUpper(filepath.Ext(result.Filename)), "."); extension != "" {
+				terminal.Container = extension
+			}
 			if abs, absErr := filepath.Abs(result.Filename); absErr == nil {
 				terminal.AbsolutePath = abs
 			}
 			if terminal.Bytes == 0 {
 				terminal.Bytes = result.Bytes
+			}
+		}
+		if delivery.Container != "" {
+			terminal.Container = delivery.Container
+			terminal.Bytes = result.Bytes
+			terminal.Total = result.Bytes
+			terminal.Message = "Completed · saved as " + delivery.Container
+			if delivery.SubtitleSidecar {
+				terminal.Message += " + SRT"
+			}
+			switch {
+			case delivery.DegradedToSidecar:
+				terminal.DeliveryNote = "Saved as MKV with an SRT subtitle sidecar after embedding fallback."
+			case delivery.UsedMKVFallback && delivery.SubtitleSidecar:
+				terminal.DeliveryNote = "Saved as MKV after MP4 compatibility fallback, with an additional SRT file."
+			case delivery.UsedMKVFallback:
+				terminal.DeliveryNote = "Saved as MKV after MP4 compatibility fallback."
+			case delivery.SubtitleSidecar:
+				terminal.DeliveryNote = "Saved as MP4 with an additional SRT file."
 			}
 		}
 		if terminal.Bytes == 0 {

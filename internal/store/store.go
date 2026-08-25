@@ -48,6 +48,7 @@ type HistoryEntry struct {
 	SizeBytes     int64  `json:"sizeBytes"`
 	CompletedAt   string `json:"completedAt"`
 	DurationLabel string `json:"durationLabel"`
+	DeliveryNote  string `json:"deliveryNote,omitempty"`
 	Thumbnail     string `json:"thumbnail,omitempty"`
 	// FileMissing is computed at read time and never persisted.
 	FileMissing bool `json:"fileMissing,omitempty"`
