@@ -189,7 +189,18 @@ func completeFileTypedFailureCompatible(err error, subtitleDegradation bool, dep
 			return true, false
 		}
 		operation := strings.ToLower(strings.TrimSpace(engineErr.Op))
-		compatible := operation == "embed subtitles" || (!subtitleDegradation && (operation == "run postprocessors" || operation == "embed metadata" || operation == "embed thumbnail"))
+		compatible := false
+		switch operation {
+		case "embed subtitles":
+			compatible = true
+		case "run postprocessors":
+			// The pinned engine reports FFmpeg/tool absence as Unsupported at
+			// this operation. Only an actual media-processing failure (Internal)
+			// is evidence that another container may help.
+			compatible = !subtitleDegradation && engineErr.Category == engine.ErrorInternal
+		case "embed metadata", "embed thumbnail":
+			compatible = !subtitleDegradation && engineErr.Category != engine.ErrorInvalidInput
+		}
 		if !compatible {
 			return true, false
 		}
