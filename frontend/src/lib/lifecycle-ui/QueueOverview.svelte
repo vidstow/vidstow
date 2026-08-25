@@ -135,7 +135,7 @@
   .queue-shell { display: grid; width: 100%; height: 100%; min-height: 0; grid-template-columns: minmax(430px, 2fr) minmax(230px, 1fr); overflow: hidden; background: var(--surface-bg); }
   .queue-master { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--border-default); }
   .queue-header { display: flex; height: 32px; padding: 0 10px 0 14px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-default); background: var(--surface-sunken); }
-  h1 { margin: 0; font-size: var(--fs-sm); font-weight: 650; }
+  h1 { margin: 0; font-size: var(--fs-lg); font-weight: 650; line-height: 1; letter-spacing: -0.015em; }
   .header-actions { display: grid; width: max-content; grid-template-columns: 1fr 1fr; }
   .tool-button { display: flex; height: 26px; padding: 0 10px; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--border-default); background: var(--surface-sunken); color: var(--text-secondary); font-size: var(--fs-sm); white-space: nowrap; }
   .tool-button:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }

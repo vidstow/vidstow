@@ -252,7 +252,7 @@
     border-bottom: 1px solid var(--border-default);
     background: var(--surface-sunken);
   }
-  .page-header h1 { font-size: var(--fs-lg); line-height: 1; }
+  .page-header h1 { font-size: var(--fs-lg); font-weight: 650; line-height: 1; letter-spacing: -0.015em; }
   .page-header p { margin: 0; color: var(--text-muted); }
 
   .toolbar { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2); }

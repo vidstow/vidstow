@@ -25,11 +25,7 @@
   ];
 
   let build: BuildInfo = {
-    version: 'Loading…',
-    engineVersion: 'Loading…',
-    os: '',
-    architecture: '',
-    goVersion: '',
+    version: 'Loading…', engineVersion: 'Loading…', os: '', architecture: '', goVersion: '',
   };
 
   onMount(async () => {
@@ -42,7 +38,8 @@
   }
 
   async function copyDiagnostics() {
-    try { await api.diagnostics.copy(); showBanner('info', 'Diagnostics copied'); }
+    try { await api.diagnostics.copy(); showBanner('info', 'Diagnostics copied');
+    }
     catch (err) { showError(err, 'Could not copy diagnostics'); }
   }
 </script>
@@ -135,7 +132,7 @@
     border-bottom: 1px solid var(--border-default);
     background: var(--surface-sunken);
   }
-  .page-header h1 { font-size: var(--fs-lg); line-height: 1; }
+  .page-header h1 { font-size: var(--fs-lg); font-weight: 650; line-height: 1; letter-spacing: -0.015em; }
   .page-header p { margin: 0; color: var(--text-muted); }
   .group {
     overflow: hidden;

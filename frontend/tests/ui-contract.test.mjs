@@ -185,3 +185,14 @@ test('queue persistence remains fail-closed without altering QueueView capabilit
   assert.match(types, /resume\?: boolean/);
   assert.match(types, /retry\?: boolean/);
 });
+
+test('Queue and Downloads page titles share the workstation --fs-lg token', async () => {
+  const [overview, downloads, styles] = await Promise.all([
+    read('../src/lib/lifecycle-ui/QueueOverview.svelte'),
+    read('../src/pages/Downloads.svelte'),
+    read('../src/styles/global.css'),
+  ]);
+  assert.match(overview, /h1 \{[^}]*font-size: var\(--fs-lg\)/);
+  assert.match(downloads, /\.page-header h1 \{[^}]*font-size: var\(--fs-lg\)/);
+  assert.match(styles, /\.page-header h1 \{[^}]*font-size: var\(--fs-lg\)/);
+});
