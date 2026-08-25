@@ -23,7 +23,9 @@ type completeFileDelivery struct {
 	Container         string
 	UsedMKVFallback   bool
 	SubtitleSidecar   bool
+	DegradedEmbedding bool
 	DegradedToSidecar bool
+	Publication       *engine.PublicationReservation
 }
 
 func usesCompleteFileStaging(state *jobState) bool {
@@ -41,6 +43,7 @@ func runCompleteFile(
 	reservation jobmodel.ReservationSet,
 	runner downloadRunner,
 	handler engine.EventHandler,
+	arbiter *engine.PublicationArbiter,
 ) (engine.Result, completeFileDelivery, error) {
 	workspace, err := os.MkdirTemp(base.OutputDir, ".vidstow-complete-")
 	if err != nil {
@@ -79,11 +82,11 @@ func runCompleteFile(
 
 	result, attemptRoot, sawPostprocess, err := attempt("mp4", true)
 	if err == nil {
-		published, sidecar, publishErr := publishCompleteFile(result, attemptRoot, reservation)
+		published, sidecar, publication, publishErr := publishCompleteFile(ctx, arbiter, result, attemptRoot, reservation)
 		if publishErr != nil {
 			return engine.Result{}, completeFileDelivery{}, publishErr
 		}
-		return published, completeFileDelivery{Container: "MP4", SubtitleSidecar: sidecar}, nil
+		return published, completeFileDelivery{Container: "MP4", SubtitleSidecar: sidecar, Publication: publication}, nil
 	}
 	_ = os.RemoveAll(attemptRoot)
 	if !completeFileFallbackEligible(ctx, err, sawPostprocess) {
@@ -92,11 +95,11 @@ func runCompleteFile(
 
 	result, attemptRoot, sawPostprocess, err = attempt("mkv", true)
 	if err == nil {
-		published, sidecar, publishErr := publishCompleteFile(result, attemptRoot, reservation)
+		published, sidecar, publication, publishErr := publishCompleteFile(ctx, arbiter, result, attemptRoot, reservation)
 		if publishErr != nil {
 			return engine.Result{}, completeFileDelivery{}, publishErr
 		}
-		return published, completeFileDelivery{Container: "MKV", UsedMKVFallback: true, SubtitleSidecar: sidecar}, nil
+		return published, completeFileDelivery{Container: "MKV", UsedMKVFallback: true, SubtitleSidecar: sidecar, Publication: publication}, nil
 	}
 	_ = os.RemoveAll(attemptRoot)
 	if !completeFileFallbackEligible(ctx, err, sawPostprocess) {
@@ -111,12 +114,13 @@ func runCompleteFile(
 		_ = os.RemoveAll(attemptRoot)
 		return engine.Result{}, completeFileDelivery{}, err
 	}
-	published, sidecar, publishErr := publishCompleteFile(result, attemptRoot, reservation)
+	published, sidecar, publication, publishErr := publishCompleteFile(ctx, arbiter, result, attemptRoot, reservation)
 	if publishErr != nil {
 		return engine.Result{}, completeFileDelivery{}, publishErr
 	}
 	return published, completeFileDelivery{
-		Container: "MKV", UsedMKVFallback: true, SubtitleSidecar: sidecar, DegradedToSidecar: sidecar,
+		Container: "MKV", UsedMKVFallback: true, SubtitleSidecar: sidecar,
+		DegradedEmbedding: true, DegradedToSidecar: sidecar, Publication: publication,
 	}, nil
 }
 
@@ -172,10 +176,17 @@ func completeFileFallbackEligible(ctx context.Context, err error, sawPostprocess
 	}
 }
 
-func publishCompleteFile(result engine.Result, attemptRoot string, reservation jobmodel.ReservationSet) (engine.Result, bool, error) {
+func publishCompleteFile(ctx context.Context, arbiter *engine.PublicationArbiter, result engine.Result, attemptRoot string, reservation jobmodel.ReservationSet) (engine.Result, bool, *engine.PublicationReservation, error) {
+	if arbiter == nil {
+		return engine.Result{}, false, nil, errors.New("complete-file publication arbiter is unavailable")
+	}
 	mediaSource, err := completeStagedRegularFile(attemptRoot, result.Filename)
 	if err != nil {
-		return engine.Result{}, false, err
+		return engine.Result{}, false, nil, err
+	}
+	mediaInfo, err := os.Stat(mediaSource)
+	if err != nil {
+		return engine.Result{}, false, nil, fmt.Errorf("inspect staged complete file: %w", err)
 	}
 	container := strings.TrimPrefix(strings.ToLower(filepath.Ext(mediaSource)), ".")
 	var mediaReservation jobmodel.ReservedArtifact
@@ -184,16 +195,16 @@ func publishCompleteFile(result engine.Result, attemptRoot string, reservation j
 		var ok bool
 		mediaReservation, ok = completeReservedArtifact(reservation, string(engine.ArtifactKindPrimary), "primary")
 		if !ok {
-			return engine.Result{}, false, errors.New("complete-file MP4 reservation is unavailable")
+			return engine.Result{}, false, nil, errors.New("complete-file MP4 reservation is unavailable")
 		}
 	case "mkv":
 		var ok bool
 		mediaReservation, ok = completeReservedArtifact(reservation, completeFallbackArtifactKind, completeMKVIdentity)
 		if !ok {
-			return engine.Result{}, false, errors.New("complete-file MKV reservation is unavailable")
+			return engine.Result{}, false, nil, errors.New("complete-file MKV reservation is unavailable")
 		}
 	default:
-		return engine.Result{}, false, fmt.Errorf("complete-file produced unsupported container %q", container)
+		return engine.Result{}, false, nil, fmt.Errorf("complete-file produced unsupported container %q", container)
 	}
 
 	subtitleSources := make([]string, 0)
@@ -204,7 +215,7 @@ func publishCompleteFile(result engine.Result, attemptRoot string, reservation j
 		}
 		path, pathErr := completeStagedRegularFile(attemptRoot, artifact.Path)
 		if pathErr != nil {
-			return engine.Result{}, false, pathErr
+			return engine.Result{}, false, nil, pathErr
 		}
 		if !seenSources[path] {
 			seenSources[path] = true
@@ -214,66 +225,102 @@ func publishCompleteFile(result engine.Result, attemptRoot string, reservation j
 	sort.Strings(subtitleSources)
 	subtitleReservations := completeReservedArtifacts(reservation, completeSubtitleArtifactKind)
 	if len(subtitleSources) > len(subtitleReservations) {
-		return engine.Result{}, false, errors.New("complete-file produced more subtitle files than were reserved")
+		return engine.Result{}, false, nil, errors.New("complete-file produced more subtitle files than were reserved")
 	}
 
-	type publication struct{ source, destination string }
-	publications := make([]publication, 0, len(subtitleSources)+1)
+	type publicationItem struct{ source, destination string }
+	items := make([]publicationItem, 0, len(subtitleSources)+1)
 	available := append([]jobmodel.ReservedArtifact(nil), subtitleReservations...)
 	for _, source := range subtitleSources {
 		index := matchingSubtitleReservation(source, available)
 		if index < 0 {
-			return engine.Result{}, false, errors.New("complete-file has no matching subtitle reservation")
+			return engine.Result{}, false, nil, errors.New("complete-file has no matching subtitle reservation")
 		}
-		publications = append(publications, publication{
+		items = append(items, publicationItem{
 			source: source, destination: filepath.Join(reservation.Directory.CanonicalPath, available[index].Basename),
 		})
 		available = append(available[:index], available[index+1:]...)
 	}
 	mediaDestination := filepath.Join(reservation.Directory.CanonicalPath, mediaReservation.Basename)
-	publications = append(publications, publication{source: mediaSource, destination: mediaDestination})
+	items = append(items, publicationItem{source: mediaSource, destination: mediaDestination})
 
-	for _, item := range publications {
+	publication, err := arbiter.BeginPublication(ctx)
+	if err != nil {
+		return engine.Result{}, false, nil, fmt.Errorf("begin complete-file publication: %w", err)
+	}
+	terminalized := false
+	defer func() {
+		if !terminalized {
+			publication.MarkIndeterminate()
+		}
+	}()
+	abort := func(cause error) (engine.Result, bool, *engine.PublicationReservation, error) {
+		publication.AbortBeforeReplace()
+		terminalized = true
+		return engine.Result{}, false, nil, cause
+	}
+	if err := validateCompletePublicationRoot(reservation.Directory); err != nil {
+		return abort(err)
+	}
+	for _, item := range items {
 		if _, statErr := os.Lstat(item.destination); statErr == nil {
-			return engine.Result{}, false, fmt.Errorf("reserved output appeared before publication: %s", filepath.Base(item.destination))
+			return abort(fmt.Errorf("reserved output appeared before publication: %s", filepath.Base(item.destination)))
 		} else if !errors.Is(statErr, os.ErrNotExist) {
-			return engine.Result{}, false, fmt.Errorf("check reserved output: %w", statErr)
+			return abort(fmt.Errorf("check reserved output: %w", statErr))
 		}
 	}
 
-	linked := make([]string, 0, len(publications))
-	rollback := func(cause error) error {
+	linked := make([]string, 0, len(items))
+	rollback := func(cause error) (error, bool) {
 		var cleanupErr error
 		for index := len(linked) - 1; index >= 0; index-- {
 			if removeErr := os.Remove(linked[index]); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 				cleanupErr = errors.Join(cleanupErr, removeErr)
 			}
 		}
-		return errors.Join(cause, cleanupErr)
+		return errors.Join(cause, cleanupErr), cleanupErr == nil
 	}
-	for _, item := range publications {
+	for _, item := range items {
 		// The workspace is below the output root, so a hard link is a
 		// same-volume, no-overwrite publication primitive. Media is linked last.
 		if linkErr := os.Link(item.source, item.destination); linkErr != nil {
-			return engine.Result{}, false, rollback(fmt.Errorf("publish complete file: %w", linkErr))
+			publicationErr, clean := rollback(fmt.Errorf("publish complete file: %w", linkErr))
+			if clean {
+				publication.AbortBeforeReplace()
+			} else {
+				publication.MarkIndeterminate()
+			}
+			terminalized = true
+			return engine.Result{}, false, nil, publicationErr
 		}
 		linked = append(linked, item.destination)
 	}
 
-	publishedArtifacts := make([]engine.Artifact, 0, len(publications))
-	for index, item := range publications {
+	publishedArtifacts := make([]engine.Artifact, 0, len(items))
+	for index, item := range items {
 		kind := completeSubtitleArtifactKind
-		if index == len(publications)-1 {
+		if index == len(items)-1 {
 			kind = "media"
 		}
 		publishedArtifacts = append(publishedArtifacts, engine.Artifact{Path: item.destination, Kind: kind})
 	}
 	result.Filename = mediaDestination
 	result.Artifacts = publishedArtifacts
-	if info, statErr := os.Stat(mediaDestination); statErr == nil {
-		result.Bytes = info.Size()
+	result.Bytes = mediaInfo.Size()
+	publication.MarkDestinationReplaced()
+	terminalized = true
+	return result, len(subtitleSources) > 0, publication, nil
+}
+
+func validateCompletePublicationRoot(root jobmodel.OutputRootRef) error {
+	validated, err := engine.ValidateOutputRoot(root.CanonicalPath)
+	if err != nil {
+		return fmt.Errorf("validate complete-file output root: %w", err)
 	}
-	return result, len(subtitleSources) > 0, nil
+	if validated.CanonicalPath != root.CanonicalPath || root.EngineIdentity != "" && validated.Identity != root.EngineIdentity {
+		return errors.New("complete-file output root identity changed before publication")
+	}
+	return nil
 }
 
 func completeStagedRegularFile(root, candidate string) (string, error) {

@@ -201,7 +201,8 @@
   // not turn embedded subtitles/artwork/chapters off.
   function seedOutputOptions(languages: SubtitleLanguage[], videoLanguage = ''): OutputOptions {
     const saved = $settings.outputOptions ?? {};
-    const savedLanguages = saved.subtitleLanguages?.filter(Boolean) ?? [];
+    const availableCodes = new Set(languages.map((language) => language.code));
+    const savedLanguages = (saved.subtitleLanguages ?? []).filter((code) => availableCodes.has(code));
     const creators = languages.filter((language) => !language.auto);
     const automatic = languages.filter((language) => language.auto);
     const matchLanguage = (choices: SubtitleLanguage[], wanted: string) => {
