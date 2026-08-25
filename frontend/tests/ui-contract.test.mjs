@@ -63,29 +63,37 @@ test('page titles and controls match the approved redesign', async () => {
 });
 
 test('complete video policy is fixed, truthful, and shared by single and playlist admission', async () => {
-  const [home, editor, settings, types, downloads] = await Promise.all([
+  const [home, editor, settings, types, downloads, stores] = await Promise.all([
     read('../src/pages/Home.svelte'),
     read('../src/lib/components/OutputOptionsEditor.svelte'),
     read('../src/pages/Settings.svelte'),
     read('../src/lib/types.ts'),
     read('../src/pages/Downloads.svelte'),
+    read('../src/lib/stores.ts'),
   ]);
   assert.match(types, /subtitleSidecar\?: boolean/);
   assert.match(types, /language: string/);
   assert.match(types, /chapterCount: number/);
-  assert.match(home, /subtitleMode: 'embed'/);
+  assert.match(stores, /subtitleMode: ''/);
+  assert.match(home, /subtitleMode: subtitlesOn \? 'embed' : ''/);
+  assert.match(home, /subtitleLanguages: subtitlesOn \? options\.subtitleLanguages\?\.slice\(0, 1\) : undefined/);
+  assert.match(home, /subtitleAutoCaptions: subtitlesOn/);
   assert.match(home, /embedThumbnail: true/);
   assert.match(home, /embedChapters: true/);
   assert.match(home, /seedOutputOptions\(summary\.subtitles \?\? \[\], summary\.language\)/);
   assert.equal((home.match(/\n          options,/g) || []).length, 2);
   assert.match(home, /likely MP4, with MKV fallback/);
   assert.match(home, /FFmpeg is required to create this complete file/);
-  assert.doesNotMatch(home, /withoutFFmpegChoices|seeded\.embedThumbnail = false/);
-  assert.match(editor, /Also save an \.srt file/);
-  assert.match(editor, /subtitles remain embedded in the video/);
-  assert.doesNotMatch(editor, />Off<|>Subtitle file<|>Embed in video</);
-  assert.doesNotMatch(settings, /Default subtitle mode|Embed thumbnail artwork|Embed chapter markers/);
-  assert.match(settings, /Thumbnail artwork and chapter markers are also included automatically when available/);
+  assert.doesNotMatch(home, /\$settings\.confirmBeforeDownload|title: 'Add this download\?'|title: 'Add this playlist\?'/);
+  assert.match(editor, /Subtitles \{subtitlesOn \? 'On' : 'Off'\}/);
+  assert.match(editor, /None available/);
+  assert.match(editor, /type="radio" name="subtitle-language"/);
+  assert.match(editor, /\(auto\/transcribed\)/);
+  assert.doesNotMatch(editor, /class="disclosure"|type="checkbox" checked=\{selectedLanguages/);
+  assert.match(settings, /Include subtitles on new adds/);
+  assert.match(settings, /Each video’s own language/);
+  assert.match(settings, /Also save an \.srt file/);
+  assert.doesNotMatch(settings, /Confirm before starting downloads|Include auto-generated captions|Embed thumbnail artwork|Embed chapter markers/);
   assert.match(downloads, /actualContainer\(entry\)/);
   assert.match(downloads, /filename\.match\(\/\\\.\(\[a-z0-9\]\+\)\$\/i\)/);
 });
