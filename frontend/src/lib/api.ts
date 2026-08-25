@@ -37,6 +37,7 @@ declare global {
       OpenDirectoryDialog: (opts: any) => Promise<string>;
       OpenFileDialog: (opts: any) => Promise<string>;
       ClipboardSetText: (text: string) => Promise<void>;
+      ClipboardGetText: () => Promise<string>;
       BrowserOpenURL: (url: string) => void;
       WindowSetTitle?: (title: string) => void;
       LogError: (msg: string) => void;
@@ -101,6 +102,9 @@ export const api = {
   },
   folder: {
     pick: () => call<string>('PickDownloadFolder'),
+  },
+  clipboard: {
+    getText: () => window.runtime.ClipboardGetText(),
   },
   validation: {
     url: (raw: string) => call<UrlCheckResult>('ValidateURL', raw),
