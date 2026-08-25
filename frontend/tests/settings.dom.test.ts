@@ -28,6 +28,7 @@ describe('Settings subtitle defaults', () => {
 
   test('fresh Settings is Off and artwork and chapters are automatic, not toggles', () => {
     render(SettingsPage);
+    expect(screen.getByRole('heading', { name: 'Video files' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Off' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'On' })).not.toBeChecked();
     expect(screen.getByText(/Thumbnail artwork and chapter markers are included automatically/)).toBeInTheDocument();

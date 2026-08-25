@@ -64,6 +64,7 @@ describe('Home analysis authority', () => {
     await user.type(input, firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(input).toHaveValue(firstURL);
 
     await user.clear(input);
     await user.type(input, 'https://www.youtube.com/watch?v=fixture0002');
@@ -264,6 +265,7 @@ describe('Home analysis authority', () => {
     expect(screen.getByText('3 ready · 1 duplicate · 1 invalid')).toBeInTheDocument();
     expect(screen.queryByLabelText('Batch review counts')).not.toBeInTheDocument();
     expect(document.querySelector('.batch-thumbnail img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/fixture0001/hqdefault.jpg');
+    expect(document.querySelector('.batch-complete-note')).toHaveTextContent('Subtitles: Off (Settings default) · SRT: Off · Title & channel details: Off · Artwork and chapters: automatic');
     const start = screen.getByRole('button', { name: 'Start 3 downloads' });
     expect(start).toBeEnabled();
     await user.click(start);
@@ -338,9 +340,14 @@ describe('Home analysis authority', () => {
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    await user.click(await screen.findByLabelText('Include subtitles'));
+    const subtitlePolicy = await screen.findByLabelText('Subtitle policy');
+    expect(subtitlePolicy.parentElement).toHaveClass('policy');
+    expect(document.querySelectorAll('.subtitle-control')).toHaveLength(1);
+    await user.click(screen.getByLabelText('Include subtitles'));
     expect(screen.getByText('Subtitles: German.')).toBeInTheDocument();
-    await user.click(screen.getByRole('radio', { name: 'English' }));
+    const languageSelect = screen.getByLabelText('Subtitle language') as HTMLSelectElement;
+    expect([...languageSelect.options].map((option) => option.text)).toEqual(['English', 'German']);
+    await user.selectOptions(languageSelect, 'en');
     expect(screen.getByText('Subtitles: English.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
     await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
@@ -361,6 +368,7 @@ describe('Home analysis authority', () => {
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByText('Subtitles: None available.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Do not include subtitles')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByLabelText('Include subtitles')).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Add to Queue' }));
     await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
@@ -381,7 +389,7 @@ describe('Home analysis authority', () => {
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     await user.click(await screen.findByLabelText('Include subtitles'));
-    expect(screen.getByRole('radio', { name: 'German (auto/transcribed)' })).toBeChecked();
+    expect(screen.getByLabelText('Subtitle language')).toHaveValue('de');
     expect(screen.getByText('Subtitles: German (auto/transcribed).')).toBeInTheDocument();
   });
 
@@ -488,7 +496,10 @@ describe('Home analysis authority', () => {
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    await user.click(await screen.findByLabelText('Include subtitles'));
+    const subtitlePolicy = await screen.findByLabelText('Subtitle policy');
+    expect(subtitlePolicy.parentElement).toHaveClass('policy');
+    expect(document.querySelectorAll('.subtitle-control')).toHaveLength(1);
+    await user.click(screen.getByLabelText('Include subtitles'));
     await user.selectOptions(screen.getByLabelText('Subtitle language policy'), 'fr');
     expect(screen.getByText(/item still downloads without subtitles/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add 1 Video to Queue' }));

@@ -141,19 +141,32 @@
       <input type="checkbox" checked={$settings.perVideoSubfolder} on:change={(e) => update({ ...$settings, perVideoSubfolder: e.currentTarget.checked })} />
     </label>
 
+    <QueueSettingsCard
+      model={{ concurrency, minimum: 1, maximum: 10, defaultValue: 2, disabled: saving }}
+      onConcurrencyChange={changeConcurrency}
+    />
+    {#if concurrency > 4}
+      <p class="warning">More than 4 simultaneous downloads may reduce stability or trigger rate limits.</p>
+    {/if}
+  </section>
+
+  <section class="group" aria-labelledby="video-files-title">
+    <h2 id="video-files-title">Video files</h2>
+
     <div class="setting">
       <span class="copy">
         <strong>Complete video files</strong>
         <small>Thumbnail artwork and chapter markers are included automatically when YouTube provides them.</small>
       </span>
+      <span class="fixed-value">Always on</span>
     </div>
 
     <div class="setting">
       <span class="copy">
         <strong>Include subtitles on new adds</strong>
-        <small>Off on a fresh install. You can override this while reviewing a video or playlist.</small>
+        <small>Off on a fresh install. Each analyzed video or playlist can override this default.</small>
       </span>
-      <span class="actions choices" role="radiogroup" aria-label="Include subtitles on new adds">
+      <span class="mode-choices" role="radiogroup" aria-label="Include subtitles on new adds">
         <label><input type="radio" name="default-subtitles" checked={!defaultSubtitlesOn} on:change={() => setDefaultSubtitles(false)} /> Off</label>
         <label><input type="radio" name="default-subtitles" checked={defaultSubtitlesOn} on:change={() => setDefaultSubtitles(true)} /> On</label>
       </span>
@@ -163,9 +176,9 @@
       <label class="setting">
         <span class="copy">
           <strong>Preferred subtitle language</strong>
-          <small>Used when that language is available.</small>
+          <small>Creator subtitles are preferred; auto captions are used only when needed.</small>
         </span>
-        <select value={$settings.outputOptions.subtitleLanguages?.[0] ?? ''} on:change={(e) => setPreferredSubtitleLanguage(e.currentTarget.value)}>
+        <select class="language-select" aria-label="Preferred subtitle language" value={$settings.outputOptions.subtitleLanguages?.[0] ?? ''} on:change={(e) => setPreferredSubtitleLanguage(e.currentTarget.value)}>
           <option value="">Each video’s own language</option>
           {#each commonSubtitleLanguages as language}
             <option value={language[0]}>{language[1]} ({language[0]})</option>
@@ -189,14 +202,6 @@
       </span>
       <input type="checkbox" checked={!!$settings.outputOptions.embedMetadata} on:change={(e) => updateOutputOptions({ embedMetadata: e.currentTarget.checked })} />
     </label>
-
-    <QueueSettingsCard
-      model={{ concurrency, minimum: 1, maximum: 10, defaultValue: 2, disabled: saving }}
-      onConcurrencyChange={changeConcurrency}
-    />
-    {#if concurrency > 4}
-      <p class="warning">More than 4 simultaneous downloads may reduce stability or trigger rate limits.</p>
-    {/if}
   </section>
 
   <section class="group" aria-labelledby="ffmpeg-title">
@@ -327,8 +332,29 @@
   label.setting { cursor: pointer; }
   label.setting input { margin-left: var(--sp-2); flex-shrink: 0; }
   .choices { min-width: 146px; align-items: flex-start; flex-direction: column; gap: 5px; }
-  .choices label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); cursor: pointer; }
-  .choices input { margin: 0; }
+  .choices label,
+  .mode-choices label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); cursor: pointer; }
+  .choices input,
+  .mode-choices input { margin: 0; }
+  .mode-choices {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 9px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-sm);
+    background: var(--surface-sunken);
+  }
+  .fixed-value { color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; }
+  .language-select {
+    width: 220px;
+    height: 32px;
+    flex: 0 0 220px;
+    padding: 0 28px 0 9px;
+    border-radius: var(--r-sm);
+    background-color: var(--surface-sunken);
+    font-size: var(--fs-xs);
+  }
   .privacy-link {
     margin-top: 4px;
     padding: 0;

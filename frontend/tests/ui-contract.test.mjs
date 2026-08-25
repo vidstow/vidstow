@@ -38,6 +38,12 @@ test('Home uses one persistent URL strip while preserving batch and playlist rev
   assert.match(home, />Choose Download</);
   assert.match(home, /playlistQueueBusy/);
   assert.match(home, /videoQueueBusy/);
+  assert.match(home, /outputOptionsIdentity\(effectiveOptions\(videoOptions/);
+  assert.match(home, /outputOptionsIdentity\(effectiveOptions\(playlistOptions/);
+  assert.match(home, /class="batch-complete-note"/);
+  assert.match(home, /SRT:/);
+  assert.match(home, /Title &amp; channel details:/);
+  assert.match(home, /Artwork and chapters: automatic/);
 });
 
 test('Queue is a locked list and inspector with only approved ordinary actions', async () => {
@@ -118,11 +124,14 @@ test('complete video policy is fixed, truthful, and shared by single and playlis
   assert.match(home, /likely MP4, with MKV fallback/);
   assert.match(home, /FFmpeg is required to create this complete file/);
   assert.doesNotMatch(home, /\$settings\.confirmBeforeDownload|title: 'Add this download\?'|title: 'Add this playlist\?'/);
-  assert.match(editor, /Subtitles \{subtitlesOn \? 'On' : 'Off'\}/);
+  assert.match(editor, /class="subtitle-control"/);
+  assert.match(editor, /grid-column: 1 \/ -1/);
+  assert.match(editor, /aria-label="Subtitle inclusion"/);
+  assert.match(editor, /No subtitle track/);
   assert.match(editor, /None available/);
-  assert.match(editor, /type="radio" name="subtitle-language"/);
+  assert.match(editor, /aria-label="Subtitle language"/);
   assert.match(editor, /\(auto\/transcribed\)/);
-  assert.doesNotMatch(editor, /class="disclosure"|type="checkbox" checked=\{selectedLanguages/);
+  assert.doesNotMatch(editor, /class="disclosure"|name="subtitle-language" type="checkbox"/);
   assert.match(settings, /Include subtitles on new adds/);
   assert.match(settings, /Each video’s own language/);
   assert.match(settings, /Also save an \.srt file/);

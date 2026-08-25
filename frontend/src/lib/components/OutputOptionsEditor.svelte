@@ -1,17 +1,14 @@
 <script lang="ts">
-  import { createEventDispatcher } from 'svelte';
   import type { OutputOptions, SubtitleLanguage } from '../types.js';
 
   export let value: OutputOptions = {};
-  // Playlists use one policy for every selected video rather than per-item tracks.
+  // Playlists apply one shared policy while each child is analyzed server-side.
   export let languages: SubtitleLanguage[] = [];
   export let allowSubtitles = true;
-  export let ffmpegAvailable = true;
   export let collectionMode = false;
   export let videoLanguage = '';
 
-  const dispatch = createEventDispatcher<{ 'goto-settings': void }>();
-  const commonLanguages = [
+  const commonLanguages: Array<[string, string]> = [
     ['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German'],
     ['it', 'Italian'], ['pt', 'Portuguese'], ['ja', 'Japanese'], ['ko', 'Korean'],
     ['zh', 'Chinese'], ['ar', 'Arabic'], ['hi', 'Hindi'], ['ru', 'Russian'],
@@ -24,6 +21,18 @@
   $: noLanguagesReported = !collectionMode && selectableLanguages.length === 0;
   $: subtitlesOn = value.subtitleMode === 'embed' && (collectionMode || !noLanguagesReported);
   $: selectedLanguage = value.subtitleLanguages?.[0] ?? '';
+  $: selectedTrack = selectableLanguages.find((language) => language.code === selectedLanguage);
+  $: subtitleSummary = noLanguagesReported
+    ? 'None available'
+    : subtitlesOn
+      ? collectionMode
+        ? selectedLanguage
+          ? commonLanguageLabel(selectedLanguage)
+          : 'Each video’s own language'
+        : selectedTrack
+          ? languageLabel(selectedTrack)
+          : 'One soft track'
+      : 'No subtitle track';
 
   function uniqueLanguages(items: SubtitleLanguage[]): SubtitleLanguage[] {
     const seen = new Set<string>();
@@ -74,8 +83,9 @@
     value = { ...value, subtitleLanguages: code ? [code] : undefined, subtitleAutoCaptions: true };
   }
 
-  function setMetadata(checked: boolean) {
-    value = { ...value, embedMetadata: checked };
+  function commonLanguageLabel(code: string): string {
+    const match = commonLanguages.find(([value]) => value === code);
+    return match ? `${match[1]} (${match[0]})` : code;
   }
 
   function languageLabel(language: SubtitleLanguage): string {
@@ -85,75 +95,91 @@
 </script>
 
 {#if allowSubtitles}
-<section class="output-options" aria-label="Subtitles and details">
-    <div class="group subtitles">
-      <div class="heading">
-        <div>
-          <h3>Subtitles {subtitlesOn ? 'On' : 'Off'}</h3>
-          {#if noLanguagesReported}<p>None available</p>{/if}
-        </div>
-        <label class="switch">
-          <input type="checkbox" aria-label="Include subtitles" checked={subtitlesOn} disabled={noLanguagesReported} on:change={(event) => setSubtitles(event.currentTarget.checked)} />
-          <span>{subtitlesOn ? 'On' : 'Off'}</span>
-        </label>
-      </div>
-
-      {#if subtitlesOn}
-        {#if collectionMode}
-          <label class="language-select">
-            Subtitle language policy
-            <select value={selectedLanguage} on:change={(event) => selectLanguage(event.currentTarget.value)}>
-              <option value="">Each video’s own language</option>
-              {#each commonLanguages as language}
-                <option value={language[0]}>{language[1]} ({language[0]})</option>
-              {/each}
-            </select>
-          </label>
-          {#if selectedLanguage}
-            <p class="hint">If that language is unavailable, the item still downloads without subtitles.</p>
-          {:else}
-            <p class="hint">Each item prefers a creator track in its own language, then English, then its first creator track. Auto captions are used only when no creator track exists.</p>
-          {/if}
-        {:else}
-          <div class="languages" role="radiogroup" aria-label="Subtitle language">
-            {#each selectableLanguages as language (`${language.code}:${language.auto ? 'auto' : 'creator'}`)}
-              <label class="lang">
-                <input type="radio" name="subtitle-language" checked={selectedLanguage === language.code} on:change={() => selectLanguage(language.code)} />
-                {languageLabel(language)}
-              </label>
-            {/each}
-          </div>
-        {/if}
-      {/if}
+  <section class="subtitle-control" aria-label="Subtitle policy">
+    <div class="control-copy">
+      <strong>Subtitles</strong>
+      <span class:unavailable={noLanguagesReported}>{subtitleSummary}</span>
     </div>
 
-    <div class="group details">
-      <h3>Included automatically</h3>
-      <p class="note">Thumbnail artwork and chapter markers are included when YouTube provides them.</p>
-      <label class="check">
-        <input type="checkbox" checked={!!value.embedMetadata} on:change={(event) => setMetadata(event.currentTarget.checked)} />
-        Include title &amp; channel metadata
-      </label>
-      {#if !ffmpegAvailable}
-        <p class="ffmpeg-note">FFmpeg is required to create this video file. <button type="button" class="link" on:click={() => dispatch('goto-settings')}>Open Settings</button></p>
-      {/if}
+    <div class="mode" role="group" aria-label="Subtitle inclusion">
+      <button type="button" class:active={!subtitlesOn} aria-pressed={!subtitlesOn} aria-label="Do not include subtitles" on:click={() => setSubtitles(false)}>Off</button>
+      <button type="button" class:active={subtitlesOn} aria-pressed={subtitlesOn} aria-label="Include subtitles" disabled={noLanguagesReported} on:click={() => setSubtitles(true)}>On</button>
     </div>
-</section>
+
+    {#if subtitlesOn}
+      {#if collectionMode}
+        <select aria-label="Subtitle language policy" value={selectedLanguage} on:change={(event) => selectLanguage(event.currentTarget.value)}>
+          <option value="">Each video’s own language</option>
+          {#each commonLanguages as language}
+            <option value={language[0]}>{language[1]} ({language[0]})</option>
+          {/each}
+        </select>
+      {:else}
+        <select aria-label="Subtitle language" value={selectedLanguage} on:change={(event) => selectLanguage(event.currentTarget.value)}>
+          {#each selectableLanguages as language (`${language.code}:${language.auto ? 'auto' : 'creator'}`)}
+            <option value={language.code}>{languageLabel(language)}</option>
+          {/each}
+        </select>
+      {/if}
+    {/if}
+
+    {#if collectionMode && subtitlesOn && selectedLanguage}
+      <small>If unavailable, that item still downloads without subtitles.</small>
+    {:else if subtitlesOn && value.subtitleSidecar}
+      <small>Embedded track + additional .srt</small>
+    {/if}
+  </section>
 {/if}
 
 <style>
-  .output-options { display: flex; flex-wrap: wrap; gap: 12px 28px; padding: 12px 16px; border-top: 1px solid var(--border-subtle); background: var(--surface-subtle); flex-shrink: 0; }
-  .group { min-width: 240px; max-width: 520px; display: flex; flex: 1; flex-direction: column; gap: 8px; }
-  .heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  .heading div { display: flex; align-items: baseline; gap: 8px; }
-  .group h3 { margin: 0; color: var(--text-primary); font-size: var(--fs-xs); font-weight: 700; }
-  .heading p { margin: 0; color: var(--text-muted); font-size: 11px; }
-  .switch, .check, .lang { display: flex; align-items: center; gap: 7px; color: var(--text-primary); font-size: var(--fs-xs); font-weight: 550; }
-  .switch { cursor: pointer; }
-  .language-select { display: flex; flex-direction: column; gap: 5px; color: var(--text-secondary); font-size: 11px; font-weight: 650; }
-  .language-select select { max-width: 280px; }
-  .languages { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 5px 12px; max-height: 148px; overflow: auto; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: var(--r-md); background: var(--surface-base); }
-  .note, .hint, .ffmpeg-note { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
-  .ffmpeg-note { color: var(--status-warning); font-weight: 600; }
-  .link { padding: 0; border: 0; background: none; color: var(--accent-600); font-size: 11px; font-weight: 650; text-decoration: underline; }
+  .subtitle-control {
+    grid-column: 1 / -1;
+    display: grid;
+    min-width: 250px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5px 8px;
+    padding-top: 7px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .control-copy { min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+  .control-copy strong { color: var(--text-secondary); font-size: 11px; font-weight: 600; }
+  .control-copy span { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+  .control-copy span.unavailable { color: var(--text-muted); }
+
+  .mode {
+    display: inline-flex;
+    padding: 1px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--r-sm);
+    background: var(--surface-bg);
+  }
+  .mode button {
+    min-width: 36px;
+    min-height: 21px;
+    padding: 0 7px;
+    border-radius: 3px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .mode button:hover:not(:disabled) { color: var(--text-primary); }
+  .mode button.active { background: var(--surface-active); color: var(--text-primary); }
+  .mode button:disabled { cursor: not-allowed; opacity: 0.35; }
+
+  select {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 27px;
+    min-width: 0;
+    padding: 0 26px 0 8px;
+    border-radius: var(--r-sm);
+    background-color: var(--surface-bg);
+    font-size: 10px;
+  }
+  small { grid-column: 1 / -1; color: var(--text-muted); font-size: 9px; line-height: 1.3; }
+
+  @media (max-width: 860px) {
+    .subtitle-control { min-width: 0; }
+  }
 </style>
