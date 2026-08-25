@@ -254,6 +254,27 @@ func TestSummarizeAnalysisAddsLanguageAndChapterCount(t *testing.T) {
 	}
 }
 
+func TestSummarizeAnalysisUsesAudioFormatLanguageForCreatorSubtitleDefault(t *testing.T) {
+	summary, _, err := summarizeAnalysis(json.RawMessage(`{
+		"id":"abc123","title":"Demo",
+		"formats":[
+			{"format_id":"video","vcodec":"avc1","acodec":"none","height":1080},
+			{"format_id":"audio","vcodec":"none","acodec":"mp4a","language":"es-MX"}
+		],
+		"subtitles":{"en":[{}],"es":[{}]}
+	}`), "https://www.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Language != "es-MX" {
+		t.Fatalf("summary language = %q; want es-MX", summary.Language)
+	}
+	options := ApplyDefaultSubtitleLanguage(jobmodel.DefaultOutputOptions(), summary)
+	if len(options.SubtitleLanguages) != 1 || options.SubtitleLanguages[0] != "es" {
+		t.Fatalf("default subtitles = %v; want creator Spanish", options.SubtitleLanguages)
+	}
+}
+
 func TestSummarizeAccessUsesNeutralFallback(t *testing.T) {
 	for _, metadata := range []map[string]any{
 		nil,
