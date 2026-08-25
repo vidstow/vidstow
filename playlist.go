@@ -67,7 +67,14 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 	if err := req.Options.Validate(); err != nil {
 		return "", fmt.Errorf("invalid output options: %w", err)
 	}
-	if req.Options.RequiresFFmpeg() && !a.ffmpegStatus().Available {
+	options := req.Options
+	if req.Quality != jobs.QualityAudioOnly {
+		options = options.ForCompleteVideo()
+	}
+	if options.RequiresFFmpeg() && !a.ffmpegStatus().Available {
+		if req.Quality != jobs.QualityAudioOnly {
+			return "", errors.New("complete video files need FFmpeg; install or configure FFmpeg before starting this playlist")
+		}
 		return "", errors.New("subtitles and embedded details need FFmpeg; install FFmpeg or turn those options off")
 	}
 	if req.Quality == jobs.QualityAudioOnly && req.AudioBitrate != 0 && !a.ffmpegStatus().Available {
@@ -112,7 +119,7 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 				URL: child.entry.URL, VideoID: child.entry.VideoID, Title: child.summary.Title,
 				Channel: child.summary.Channel, Quality: req.Quality, PlanID: child.plan.ID,
 				OutputDir: outputDir, Duration: child.summary.Duration, Thumbnail: child.summary.Thumbnail,
-				Options: req.Options,
+				Options: options,
 			}, Metadata: value.NewInfo(value.NewObject(
 				value.Field{Key: "title", Value: value.String(child.summary.Title)},
 				value.Field{Key: "id", Value: value.String(child.entry.VideoID)},

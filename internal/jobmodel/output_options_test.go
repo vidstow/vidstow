@@ -6,7 +6,7 @@ func TestOutputOptionsValidateAcceptsContractShapes(t *testing.T) {
 	valid := []OutputOptions{
 		{},
 		{SubtitleMode: SubtitleModeSidecar, SubtitleFormat: "srt", SubtitleLanguages: []string{"en"}},
-		{SubtitleMode: SubtitleModeEmbed, SubtitleAutoCaptions: true, SubtitleLanguages: []string{"en", "pt-BR"}},
+		{SubtitleMode: SubtitleModeEmbed, SubtitleSidecar: true, SubtitleFormat: "srt", SubtitleAutoCaptions: true, SubtitleLanguages: []string{"en", "pt-BR"}},
 		{SubtitleMode: SubtitleModeSidecar, SubtitleFormat: "vtt"},
 		{EmbedMetadata: true, EmbedChapters: true, EmbedThumbnail: true},
 	}
@@ -41,6 +41,7 @@ func TestOutputOptionsRequiresFFmpeg(t *testing.T) {
 		{OutputOptions{}, false},
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar}, false},
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar, SubtitleFormat: "srt"}, true},
+		{OutputOptions{SubtitleSidecar: true, SubtitleFormat: "srt"}, true},
 		{OutputOptions{SubtitleMode: SubtitleModeEmbed}, true},
 		{OutputOptions{EmbedMetadata: true}, true},
 		{OutputOptions{EmbedThumbnail: true}, true},
@@ -54,7 +55,7 @@ func TestOutputOptionsRequiresFFmpeg(t *testing.T) {
 }
 
 func TestOutputOptionsEqualAndClone(t *testing.T) {
-	base := OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"en", "de"}}
+	base := OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleSidecar: true, SubtitleLanguages: []string{"en", "de"}}
 	if !base.Equal(base.Clone()) {
 		t.Fatal("clone must compare equal")
 	}
@@ -65,6 +66,11 @@ func TestOutputOptionsEqualAndClone(t *testing.T) {
 	drifted.SubtitleLanguages = []string{"de", "en"}
 	if base.Equal(drifted) {
 		t.Fatal("language order must participate in equality")
+	}
+	drifted = base
+	drifted.SubtitleSidecar = false
+	if base.Equal(drifted) {
+		t.Fatal("sidecar choice must participate in equality")
 	}
 	if !(OutputOptions{}).IsZero() {
 		t.Fatal("zero value must report zero")
@@ -79,6 +85,7 @@ func TestOutputOptionsNote(t *testing.T) {
 		{OutputOptions{}, ""},
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar, SubtitleLanguages: []string{"en"}}, "subtitles (en)"},
 		{OutputOptions{SubtitleMode: SubtitleModeEmbed}, "embedded subtitles"},
+		{OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleSidecar: true, SubtitleLanguages: []string{"en"}}, "embedded subtitles (en) · SRT sidecar (en)"},
 		{OutputOptions{EmbedMetadata: true, EmbedThumbnail: true, EmbedChapters: true}, "embedded metadata, thumbnail, chapters"},
 		{OutputOptions{SubtitleMode: SubtitleModeSidecar, SubtitleLanguages: []string{"en"}, EmbedMetadata: true}, "subtitles (en) · embedded metadata"},
 	}
@@ -86,5 +93,35 @@ func TestOutputOptionsNote(t *testing.T) {
 		if got := tc.options.Note(); got != tc.want {
 			t.Fatalf("Note(%#v) = %q; want %q", tc.options, got, tc.want)
 		}
+	}
+}
+
+func TestDefaultOutputOptionsAndCompleteVideoNormalization(t *testing.T) {
+	defaults := DefaultOutputOptions()
+	wantDefaults := OutputOptions{
+		SubtitleMode: SubtitleModeEmbed, SubtitleAutoCaptions: true,
+		EmbedThumbnail: true, EmbedChapters: true,
+	}
+	if !defaults.Equal(wantDefaults) || defaults.SubtitleSidecar {
+		t.Fatalf("DefaultOutputOptions() = %#v; want %#v", defaults, wantDefaults)
+	}
+
+	legacy := OutputOptions{
+		SubtitleMode: SubtitleModeSidecar, SubtitleFormat: "vtt",
+		SubtitleLanguages: []string{"de"}, SubtitleAutoCaptions: false,
+	}
+	got := legacy.ForCompleteVideo()
+	if got.SubtitleMode != SubtitleModeEmbed || !got.SubtitleSidecar || got.SubtitleFormat != "srt" ||
+		!got.EmbedThumbnail || !got.EmbedChapters || got.SubtitleAutoCaptions || len(got.SubtitleLanguages) != 1 || got.SubtitleLanguages[0] != "de" {
+		t.Fatalf("legacy.ForCompleteVideo() = %#v", got)
+	}
+	if legacy.SubtitleMode != SubtitleModeSidecar || legacy.SubtitleFormat != "vtt" {
+		t.Fatalf("normalization mutated legacy options: %#v", legacy)
+	}
+
+	explicit := OutputOptions{SubtitleSidecar: true, SubtitleFormat: "vtt", SubtitleLanguages: []string{"fr"}, SubtitleAutoCaptions: true}
+	got = explicit.ForCompleteVideo()
+	if got.SubtitleMode != SubtitleModeEmbed || !got.SubtitleSidecar || got.SubtitleFormat != "srt" || !got.SubtitleAutoCaptions || got.SubtitleLanguages[0] != "fr" {
+		t.Fatalf("explicit.ForCompleteVideo() = %#v", got)
 	}
 }
