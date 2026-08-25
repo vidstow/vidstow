@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
@@ -59,18 +59,17 @@ describe('backend-authored capabilities', () => {
       events: { 'pause-all': onPauseAll, 'clear-completed': onClearCompleted },
     });
 
-    const pauseAll = screen.getByRole('button', { name: 'Pause All' });
-    const clearCompleted = screen.getByRole('button', { name: 'Clear Completed' });
+    const pauseAll = screen.getByRole('button', { name: 'Pause all' });
+    const clearCompleted = screen.getByRole('button', { name: 'Clear completed' });
     expect(pauseAll).toBeDisabled();
     expect(clearCompleted).toBeDisabled();
-
     await user.click(pauseAll);
     await user.click(clearCompleted);
     expect(onPauseAll).not.toHaveBeenCalled();
     expect(onClearCompleted).not.toHaveBeenCalled();
   });
 
-  test('playlist collections expand children and emit only backend-authorized parent actions', async () => {
+  test('playlist collections expand children and emit only authorized Pause', async () => {
     const onCollectionAction = vi.fn();
     const user = userEvent.setup();
     render(QueueOverview, {
@@ -79,7 +78,7 @@ describe('backend-authored capabilities', () => {
           jobs: [{
             id: 'child-1', collectionId: 'collection-1', collectionIndex: 1,
             title: 'Child video', lifecycle: 'pending', desired: 'running', occupiesSlot: false,
-            capabilities: { pause: true }, commandToken: 'child-token',
+            capabilities: { pause: true, cancel: true }, commandToken: 'child-token',
           }],
           collections: [{
             id: 'collection-1', kind: 'playlist', title: 'Fixture playlist', metadata: 'Creator', policy: 'video:1080p',
@@ -93,12 +92,14 @@ describe('backend-authored capabilities', () => {
     });
 
     expect(screen.getByText('Fixture playlist')).toBeInTheDocument();
-    expect(screen.getByText('Child video')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(screen.getByRole('button', { name: 'Child video' })).toBeInTheDocument();
+    const collection = screen.getByRole('region', { name: 'Fixture playlist' });
+    await user.click(within(collection).getByRole('button', { name: 'Pause' }));
     expect(onCollectionAction).toHaveBeenCalledWith({ collectionId: 'collection-1', commandToken: 'collection-token', action: 'pause' });
+    expect(screen.queryByRole('button', { name: /Resume|Retry|Remove/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Collapse Fixture playlist' }));
-    expect(screen.queryByText('Child video')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Child video' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Expand Fixture playlist' })).toHaveAttribute('aria-expanded', 'false');
   });
 
@@ -127,13 +128,14 @@ describe('backend-authored capabilities', () => {
       },
     });
 
-    const entries = Array.from(container.querySelectorAll('.job-list > :is(article, section)'));
-    expect(entries).toHaveLength(2);
-    expect(entries[0]).toHaveAttribute('aria-label', 'Active standalone video');
-    expect(entries[1]).toHaveTextContent('Completed collection');
+    const list = container.querySelector('.queue-list');
+    expect(list).not.toBeNull();
+    const text = list?.textContent ?? '';
+    expect(text.indexOf('Active standalone video')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf('Completed collection')).toBeGreaterThan(text.indexOf('Active standalone video'));
   });
 
-  test('batch collection parents omit synthetic thumbnails', () => {
+  test('batch collection parents stay compact and omit synthetic thumbnails', () => {
     const { container } = render(QueueOverview, {
       props: {
         model: queueModel({
@@ -149,29 +151,31 @@ describe('backend-authored capabilities', () => {
     });
 
     expect(screen.getByText('Batch download · 2 videos')).toBeInTheDocument();
-    expect(screen.getByText('video:720p')).toBeInTheDocument();
+    expect(screen.getByText(/video:720p · 2 items/)).toBeInTheDocument();
     expect(container.querySelector('.parent-row > .thumbnail')).not.toBeInTheDocument();
   });
 
-  test('playlist collection actions fail closed without a valid token', async () => {
+  test('collection controls fail closed without a valid token', async () => {
     const onCollectionAction = vi.fn();
     const user = userEvent.setup();
     render(QueueOverview, {
       props: {
         model: queueModel({
-          jobs: [],
           collections: [{
             id: 'collection-1', kind: 'playlist', title: 'Fixture playlist', policy: 'audio:original', childJobIds: [],
             total: 0, completed: 0, failed: 0, canceled: 0, active: 0, pending: 0, paused: 0,
-            progress: 0, progressLabel: '0 of 0 complete', capabilities: { remove: true }, commandToken: '',
+            progress: 0, progressLabel: '0 of 0 complete', capabilities: { pause: true, cancel: true }, commandToken: '',
           }],
         }),
         onCollectionAction,
       },
     });
-    const remove = screen.getByRole('button', { name: 'Remove' });
-    expect(remove).toBeDisabled();
-    await user.click(remove);
+    const pause = screen.getByRole('button', { name: 'Pause' });
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(pause).toBeDisabled();
+    expect(cancel).toBeDisabled();
+    await user.click(pause);
+    await user.click(cancel);
     expect(onCollectionAction).not.toHaveBeenCalled();
   });
 
@@ -179,34 +183,28 @@ describe('backend-authored capabilities', () => {
     const onPauseAll = vi.fn();
     const onClearCompleted = vi.fn();
     const user = userEvent.setup();
-
     render(QueueOverview, {
       props: { model: queueModel({ canPauseAll: true, canClearCompleted: true }) },
       events: { 'pause-all': onPauseAll, 'clear-completed': onClearCompleted },
     });
 
-    await user.click(screen.getByRole('button', { name: 'Pause All' }));
-    await user.click(screen.getByRole('button', { name: 'Clear Completed' }));
+    await user.click(screen.getByRole('button', { name: 'Pause all' }));
+    await user.click(screen.getByRole('button', { name: 'Clear completed' }));
     expect(onPauseAll).toHaveBeenCalledOnce();
     expect(onClearCompleted).toHaveBeenCalledOnce();
   });
 
-  test('disabled row capabilities do not emit actions', async () => {
+  test('row Pause and Cancel fail closed without positive capabilities', async () => {
     const onPause = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
     const onCancel = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
-    const job: LifecycleJobViewModel = {
-      id: 'job-1',
-      title: 'Example video',
-      lifecycle: 'active',
-      phase: 'downloading',
-      occupiesSlot: true,
-      capabilities: { pause: false, cancel: false },
-      commandToken: 'job-token-7',
-    };
     const user = userEvent.setup();
-
     render(LifecycleJobRow, {
-      props: { job },
+      props: {
+        job: {
+          id: 'job-1', title: 'Example video', lifecycle: 'active', phase: 'downloading', occupiesSlot: true,
+          capabilities: { pause: false, cancel: false }, commandToken: 'job-token-7',
+        },
+      },
       events: { pause: onPause, cancel: onCancel },
     });
 
@@ -218,107 +216,92 @@ describe('backend-authored capabilities', () => {
     await user.click(cancel);
     expect(onPause).not.toHaveBeenCalled();
     expect(onCancel).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Downloading, occupies an active slot')).toBeInTheDocument();
   });
 
-  test('row actions require an opaque token and echo it without deriving authority', async () => {
-    const onResume = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
+  test('row actions echo the opaque token without deriving authority', async () => {
+    const onPause = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
     const user = userEvent.setup();
     render(LifecycleJobRow, {
       props: {
         job: {
-          id: 'paused-1', title: 'Paused video', lifecycle: 'paused', occupiesSlot: false,
-          capabilities: { resume: true }, commandToken: 'backend-command-token',
+          id: 'active-1', title: 'Active video', lifecycle: 'active', phase: 'downloading', occupiesSlot: true,
+          capabilities: { pause: true, cancel: true }, commandToken: 'backend-command-token',
         },
       },
-      events: { resume: onResume },
+      events: { pause: onPause },
     });
-    await user.click(screen.getByRole('button', { name: 'Resume download' }));
-    expect(onResume.mock.calls[0][0].detail).toEqual({ jobId: 'paused-1', commandToken: 'backend-command-token' });
+    await user.click(screen.getByRole('button', { name: 'Pause download' }));
+    expect(onPause.mock.calls[0][0].detail).toEqual({ jobId: 'active-1', commandToken: 'backend-command-token' });
   });
 
-  test('failed rows render backend-authored recovery copy and capability-backed start again', async () => {
-    const onStartAgain = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
-    const user = userEvent.setup();
+  test('non-active rows show truthful state and never synthesize recovery buttons', () => {
     render(LifecycleJobRow, {
       props: {
         job: {
-          id: 'disk-1', title: 'Interrupted video', lifecycle: 'failed', occupiesSlot: false,
+          id: 'disk-1', title: 'Interrupted video', lifecycle: 'failed', progress: 0.7, occupiesSlot: false,
           failure: {
             category: 'disk_full', messageKey: 'queue.failure.disk_full', heading: 'Not enough disk space',
             message: 'VidStow could not finish writing this download.',
-            recommendedAction: 'Free space or change the default folder, then start this item again.',
-            retryable: false, partialOutput: true,
+            recommendedAction: 'Free space, then try again.', retryable: false, partialOutput: true,
           },
-          capabilities: { startAgain: true, remove: true }, commandToken: 'disk-command-token',
-        },
-      },
-      events: { 'start-again': onStartAgain },
-    });
-    expect(screen.getByRole('alert')).toHaveTextContent('Not enough disk space');
-    expect(screen.getByRole('alert')).toHaveTextContent('Free space or change the default folder');
-    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Start again' }));
-    expect(onStartAgain.mock.calls[0][0].detail).toEqual({ jobId: 'disk-1', commandToken: 'disk-command-token' });
-  });
-
-  test('action-required rows expose independently authorized Review and queue-only Remove', async () => {
-    const onReview = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
-    const onRemove = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
-    const user = userEvent.setup();
-    render(LifecycleJobRow, {
-      props: {
-        job: {
-          id: 'action-1', title: 'Saved video', lifecycle: 'action-required', occupiesSlot: false,
-          capabilities: { review: true, remove: true }, commandToken: 'action-command-token',
-        },
-      },
-      events: { review: onReview, remove: onRemove },
-    });
-    await user.click(screen.getByRole('button', { name: 'Review' }));
-    await user.click(screen.getByRole('button', { name: 'Remove download' }));
-    expect(onReview.mock.calls[0][0].detail).toEqual({ jobId: 'action-1', commandToken: 'action-command-token' });
-    expect(onRemove.mock.calls[0][0].detail).toEqual({ jobId: 'action-1', commandToken: 'action-command-token' });
-  });
-
-  test('cleanup-phase terminal rows can expose backend-authorized Review without Remove', async () => {
-    const onReview = vi.fn<(event: CustomEvent<LifecycleJobEventDetail>) => void>();
-    const user = userEvent.setup();
-    render(LifecycleJobRow, {
-      props: {
-        job: {
-          id: 'cleanup-1', title: 'Preserved cleanup', lifecycle: 'canceled', phase: 'cleaning-up', occupiesSlot: false,
-          capabilities: { review: true, remove: false }, commandToken: 'cleanup-command-token',
-        },
-      },
-      events: { review: onReview },
-    });
-    await user.click(screen.getByRole('button', { name: 'Review' }));
-    expect(onReview.mock.calls[0][0].detail).toEqual({ jobId: 'cleanup-1', commandToken: 'cleanup-command-token' });
-    expect(screen.queryByRole('button', { name: 'Remove download' })).not.toBeInTheDocument();
-  });
-
-  test('cleanup-phase terminal rows expose Remove after backend cleanup settles', () => {
-    render(LifecycleJobRow, {
-      props: {
-        job: {
-          id: 'cleanup-settled', title: 'Settled cleanup', lifecycle: 'canceled', phase: 'cleaning-up', occupiesSlot: false,
-          capabilities: { review: false, remove: true }, commandToken: 'cleanup-settled-token',
+          capabilities: { resume: true, retry: true, startAgain: true, review: true, remove: true },
+          commandToken: 'disk-command-token',
         },
       },
     });
-    expect(screen.getByRole('button', { name: 'Remove download' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Canceled')).toBeInTheDocument();
-    expect(screen.getByText('Canceled. Resumable data was removed.')).toBeInTheDocument();
+    expect(screen.getByText('Not enough disk space')).toBeInTheDocument();
+    for (const name of ['Resume', 'Retry', 'Start again', 'Review', 'Remove download']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
-  test('persistence-revoked queue data can render but cannot authorize controls', () => {
+  test('completed rows collapse into the queue-only completed strip', () => {
     render(QueueOverview, {
-      props: { model: queueModel({ commandToken: undefined, canPauseAll: false, canClearCompleted: false, jobs: [{ id: 'active-1', title: 'Active', lifecycle: 'active', occupiesSlot: true, capabilities: {}, commandToken: undefined }] }) },
+      props: {
+        model: queueModel({
+          jobs: [{ id: 'done-1', title: 'Finished video', lifecycle: 'completed', progress: 1, occupiesSlot: false, capabilities: { open: true }, commandToken: 'done-token' }],
+          canClearCompleted: true,
+        }),
+      },
     });
-    expect(screen.getByRole('button', { name: 'Pause All' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Clear Completed' })).toBeDisabled();
+    expect(screen.getByText('Completed · 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finished video' })).not.toBeInTheDocument();
+  });
+
+  test('selecting a row updates the inspector and keeps only Pause and Cancel', async () => {
+    const user = userEvent.setup();
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [
+            { id: 'first', title: 'First video', lifecycle: 'active', phase: 'downloading', progress: 0.2, occupiesSlot: true, capabilities: { pause: true, cancel: true }, commandToken: 'first-token' },
+            { id: 'second', title: 'Second video', metadata: 'MP4 · 1080p', lifecycle: 'active', phase: 'downloading', progress: 0.4, speedLabel: '2 MB/s', etaLabel: '00:20', occupiesSlot: true, capabilities: { pause: true, cancel: true }, commandToken: 'second-token' },
+          ],
+        }),
+      },
+    });
+    const inspector = screen.getByRole('complementary', { name: 'Queue item details' });
+    expect(within(inspector).getByRole('heading', { name: 'First video' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Second video' }));
+    expect(within(inspector).getByRole('heading', { name: 'Second video' })).toBeInTheDocument();
+    expect(within(inspector).getByText('2 MB/s')).toBeInTheDocument();
+    expect(within(inspector).getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+    expect(within(inspector).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(within(inspector).queryByRole('button', { name: /Resume|Retry|Remove/ })).not.toBeInTheDocument();
+  });
+
+  test('persistence-revoked queue data renders but cannot authorize controls', () => {
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          commandToken: undefined, canPauseAll: false, canClearCompleted: false,
+          jobs: [{ id: 'active-1', title: 'Active', lifecycle: 'active', occupiesSlot: true, capabilities: {}, commandToken: undefined }],
+        }),
+      },
+    });
+    expect(screen.getByRole('button', { name: 'Pause all' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Clear completed' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Pause download' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel download' })).toBeDisabled();
   });
