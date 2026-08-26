@@ -22,6 +22,8 @@ does not exist yet.
 
 ### Fixed
 
+- Active and queued downloads stay above completed work when collections and
+  standalone videos are mixed in the queue.
 - Action-required downloads can be dismissed from the queue without retrying
   or deleting their preserved temporary data. Rows with pending cleanup remain
   visible until that cleanup settles.

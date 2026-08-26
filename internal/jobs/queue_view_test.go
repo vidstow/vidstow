@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/tejasa97/vidstow/internal/jobmodel"
@@ -79,6 +80,28 @@ func TestQueueViewLifecycleCapabilitiesAndAggregates(t *testing.T) {
 	}
 	if !view.Capabilities.PauseAll || !view.Capabilities.ClearCompleted {
 		t.Fatal("queue-wide capabilities not backend authored")
+	}
+}
+
+func TestQueueViewOrdersActiveWorkFirstAndCompletedWorkLast(t *testing.T) {
+	m := New(nil, nil)
+	defer m.Close()
+	m.mu.Lock()
+	m.all = map[string]*jobState{
+		"completed": {snap: JobSnapshot{ID: "completed", Status: StatusComplete, Lifecycle: jobmodel.LifecycleCompleted}},
+		"pending":   {snap: JobSnapshot{ID: "pending", Status: StatusPending, Lifecycle: jobmodel.LifecyclePending, CreatedAt: "2026-01-02T00:00:00Z"}},
+		"active":    {snap: JobSnapshot{ID: "active", Status: StatusActive, Lifecycle: jobmodel.LifecycleActive, CreatedAt: "2026-01-01T00:00:00Z"}},
+	}
+	m.active = map[string]*worker{"active": {}}
+	m.order = []string{"pending"}
+	view := m.queueViewLocked()
+	m.mu.Unlock()
+
+	if len(view.Rows) != 3 {
+		t.Fatalf("queue row count = %d; want 3", len(view.Rows))
+	}
+	if got, want := []string{view.Rows[0].ID, view.Rows[1].ID, view.Rows[2].ID}, []string{"active", "pending", "completed"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("queue row order = %v; want %v", got, want)
 	}
 }
 
