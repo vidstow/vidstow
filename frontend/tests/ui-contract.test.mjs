@@ -10,6 +10,7 @@ test('approved navigation and window branding are used', async () => {
     read('../../main.go'),
   ]);
   for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
+  assert.doesNotMatch(sidebar, /Following/);
   assert.match(sidebar, /brand-mark\.svg/);
   for (const rejected of ['v0 · single video', 'Single public YouTube videos only', 'brand-name', 'class="logo"', 'logo-universal']) assert.doesNotMatch(sidebar, new RegExp(rejected));
   assert.match(main, /Title:\s+"VidStow"/);
@@ -39,6 +40,9 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, />Add to Queue</);
   assert.match(home, /'Analyze'/);
   assert.match(queue, /<QueueOverview/);
+  assert.match(queue, /label: 'Following'/);
+  assert.match(queue, /title="No playlists followed"/);
+  assert.doesNotMatch(queue, /localStorage|sessionStorage|api\.follow/);
   assert.match(queue, /api\.queue\.pauseAll/);
   assert.match(queue, /api\.queue\.clearCompleted/);
   assert.match(queue, /collectionLabel = collection\?\.kind === 'batch' \? 'batch' : 'playlist'/);

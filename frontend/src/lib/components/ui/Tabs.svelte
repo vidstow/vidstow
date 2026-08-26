@@ -16,7 +16,7 @@
     options: TabOption[];
     value: string;
     onChange?: (value: string) => void;
-    children: Snippet;
+    children?: Snippet;
     ariaLabel?: string;
   }
 
@@ -42,7 +42,9 @@
   {/each}
 </div>
 
-<div class="tab-panel">{@render children()}</div>
+{#if children}
+  <div class="tab-panel">{@render children()}</div>
+{/if}
 
 <style>
   .tabs {
