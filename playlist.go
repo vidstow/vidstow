@@ -114,7 +114,7 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 
 	admissionChildren := make([]admission.CollectionChildRequest, len(children))
 	for index, child := range children {
-		childOptions := jobs.ApplyDefaultSubtitleLanguage(options, child.summary)
+		childOptions := collectionChildOutputOptions(options, child.summary)
 		admissionChildren[index] = admission.CollectionChildRequest{
 			Request: admission.Request{Queue: jobs.Request{
 				URL: child.entry.URL, VideoID: child.entry.VideoID, Title: child.summary.Title,
@@ -265,6 +265,10 @@ func choosePlaylistPlan(plans []outputplan.Plan, quality jobs.Quality, bitrate i
 	}
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].Height > candidates[j].Height })
 	return candidates[0], nil
+}
+
+func collectionChildOutputOptions(options jobs.OutputOptions, summary jobs.InfoSummary) jobs.OutputOptions {
+	return jobs.ClampSubtitlesToAnalyzedTracks(options, summary)
 }
 
 func playlistSubfolder(title, playlistID string) string {

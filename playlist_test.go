@@ -114,6 +114,34 @@ func TestChoosePlaylistPlanUsesPerChildAvailabilityAndCaps(t *testing.T) {
 	}
 }
 
+func TestCollectionChildOutputOptionsMissingTrackAdmitsOff(t *testing.T) {
+	got := collectionChildOutputOptions(jobs.OutputOptions{
+		SubtitleMode:         "embed",
+		SubtitleAutoCaptions: true,
+		SubtitleLanguages:    []string{"fr"},
+	}, jobs.InfoSummary{
+		Language:  "es",
+		Subtitles: []jobs.SubtitleLanguage{{Code: "es"}, {Code: "en"}},
+	})
+	if got.SubtitleMode != "" || len(got.SubtitleLanguages) != 0 {
+		t.Fatalf("missing fr admitted %#v; want subtitle-off", got)
+	}
+}
+
+func TestCollectionChildOutputOptionsAutoTranslatedEnglishOnSpanishVideoAdmitsOff(t *testing.T) {
+	got := collectionChildOutputOptions(jobs.OutputOptions{
+		SubtitleMode:         "embed",
+		SubtitleAutoCaptions: true,
+		SubtitleLanguages:    []string{"en"},
+	}, jobs.InfoSummary{
+		Language:  "es",
+		Subtitles: []jobs.SubtitleLanguage{{Code: "en", Auto: true}},
+	})
+	if got.SubtitleMode != "" || len(got.SubtitleLanguages) != 0 {
+		t.Fatalf("auto-translate en on es video admitted %#v; want subtitle-off", got)
+	}
+}
+
 func TestPlaylistSubfolderBoundsUntrustedIdentity(t *testing.T) {
 	for _, title := range []string{strings.Repeat("title", 50), strings.Repeat("界", 200), `bad:/\\*title`} {
 		folder := playlistSubfolder(title, strings.Repeat("x", 500))

@@ -313,7 +313,7 @@ func (a *App) StartBatchDownload(req BatchStartRequest) (BatchStartResult, error
 		if plan.Kind == outputplan.KindVideo {
 			options = settings.OutputOptions.ForCompleteVideo()
 		}
-		options = jobs.ApplyDefaultSubtitleLanguage(options, item.summary)
+		options = collectionChildOutputOptions(options, item.summary)
 		children[index] = admission.CollectionChildRequest{
 			Request: admission.Request{Queue: jobs.Request{
 				URL: item.canonicalURL, VideoID: item.videoID, Title: item.summary.Title,

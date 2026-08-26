@@ -426,6 +426,111 @@ func TestApplyDefaultSubtitleLanguage(t *testing.T) {
 	}
 }
 
+func TestClampSubtitlesToAnalyzedTracksMissingTrackAdmitsOff(t *testing.T) {
+	got := ClampSubtitlesToAnalyzedTracks(OutputOptions{
+		SubtitleMode:         jobmodel.SubtitleModeEmbed,
+		SubtitleAutoCaptions: true,
+		SubtitleLanguages:    []string{"fr"},
+		EmbedThumbnail:       true,
+		EmbedChapters:        true,
+	}, InfoSummary{
+		Language:  "es",
+		Subtitles: []SubtitleLanguage{{Code: "es"}, {Code: "en"}},
+	})
+	if got.SubtitleMode != "" || len(got.SubtitleLanguages) != 0 {
+		t.Fatalf("missing fr admitted %#v; want subtitle-off", got)
+	}
+	if engine := subtitleEngineOptions(got); engine.WriteManual || engine.WriteAutomatic || engine.Embed || len(engine.Languages) != 0 {
+		t.Fatalf("engine would still mux %#v", engine)
+	}
+	if !got.EmbedThumbnail || !got.EmbedChapters {
+		t.Fatalf("turning subs off dropped artwork/chapters: %#v", got)
+	}
+}
+
+func TestClampSubtitlesToAnalyzedTracksAutoTranslatedEnglishOnSpanishVideoAdmitsOff(t *testing.T) {
+	got := ClampSubtitlesToAnalyzedTracks(OutputOptions{
+		SubtitleMode:         jobmodel.SubtitleModeEmbed,
+		SubtitleAutoCaptions: true,
+		SubtitleLanguages:    []string{"en"},
+	}, InfoSummary{
+		Language:  "es",
+		Subtitles: []SubtitleLanguage{{Code: "en", Auto: true}, {Code: "es", Auto: true}},
+	})
+	if got.SubtitleMode != "" || len(got.SubtitleLanguages) != 0 {
+		t.Fatalf("auto-translate en on es video admitted %#v; want subtitle-off", got)
+	}
+	if engine := subtitleEngineOptions(got); engine.WriteManual || engine.WriteAutomatic || engine.Embed || len(engine.Languages) != 0 {
+		t.Fatalf("engine would still mux %#v", engine)
+	}
+}
+
+func TestClampSubtitlesToAnalyzedTracksMuxesCreatorOrSameLanguageAuto(t *testing.T) {
+	embed := OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleAutoCaptions: true}
+	tests := []struct {
+		name     string
+		options  OutputOptions
+		language string
+		tracks   []SubtitleLanguage
+		wantMode string
+		wantLang string
+	}{
+		{
+			name: "creator English on Spanish video with explicit pick",
+			options: OutputOptions{
+				SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleAutoCaptions: true, SubtitleLanguages: []string{"en"},
+			},
+			language: "es",
+			tracks:   []SubtitleLanguage{{Code: "en"}, {Code: "es"}},
+			wantMode: jobmodel.SubtitleModeEmbed, wantLang: "en",
+		},
+		{
+			name:     "same-language auto Spanish",
+			options:  OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleAutoCaptions: true, SubtitleLanguages: []string{"es"}},
+			language: "es",
+			tracks:   []SubtitleLanguage{{Code: "es", Auto: true}},
+			wantMode: jobmodel.SubtitleModeEmbed, wantLang: "es",
+		},
+		{
+			name:     "each video language uses creator Spanish",
+			options:  embed,
+			language: "es-MX",
+			tracks:   []SubtitleLanguage{{Code: "en"}, {Code: "es"}},
+			wantMode: jobmodel.SubtitleModeEmbed, wantLang: "es",
+		},
+		{
+			name:     "captionless admits off",
+			options:  embed,
+			language: "es",
+			wantMode: "",
+		},
+		{
+			name:     "already off stays off",
+			options:  jobmodel.DefaultOutputOptions(),
+			language: "es",
+			tracks:   []SubtitleLanguage{{Code: "es"}},
+			wantMode: "",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := ClampSubtitlesToAnalyzedTracks(test.options, InfoSummary{Language: test.language, Subtitles: test.tracks})
+			if got.SubtitleMode != test.wantMode {
+				t.Fatalf("mode = %q; want %q", got.SubtitleMode, test.wantMode)
+			}
+			if test.wantLang == "" {
+				if len(got.SubtitleLanguages) != 0 {
+					t.Fatalf("languages = %v; want none", got.SubtitleLanguages)
+				}
+				return
+			}
+			if len(got.SubtitleLanguages) != 1 || got.SubtitleLanguages[0] != test.wantLang {
+				t.Fatalf("languages = %v; want [%s]", got.SubtitleLanguages, test.wantLang)
+			}
+		})
+	}
+}
+
 func TestSummarizeAnalysisOmitsSubtitlesWhenNoneReported(t *testing.T) {
 	for _, raw := range []json.RawMessage{
 		json.RawMessage(`{"id":"abc123","title":"Demo"}`),

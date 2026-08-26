@@ -5309,15 +5309,7 @@ func ApplyDefaultSubtitleLanguage(options OutputOptions, summary InfoSummary) Ou
 	if options.SubtitleMode == "" || len(options.SubtitleLanguages) != 0 {
 		return options
 	}
-	manual := make([]SubtitleLanguage, 0, len(summary.Subtitles))
-	automatic := make([]SubtitleLanguage, 0, len(summary.Subtitles))
-	for _, track := range summary.Subtitles {
-		if track.Auto {
-			automatic = append(automatic, track)
-		} else {
-			manual = append(manual, track)
-		}
-	}
+	manual, automatic := partitionSubtitleTracks(summary.Subtitles)
 	selected := preferredSubtitleTrack(manual, summary.Language)
 	if selected == "" {
 		selected = preferredSubtitleTrack(manual, "en")
@@ -5338,6 +5330,56 @@ func ApplyDefaultSubtitleLanguage(options OutputOptions, summary InfoSummary) Ou
 		options.SubtitleLanguages = []string{selected}
 	}
 	return options
+}
+
+// ClampSubtitlesToAnalyzedTracks allowlists playlist and batch subtitle policy
+// against one child's tracks. Only creator captions and same-language auto
+// captions may be muxed. Auto-translated English on a Spanish video is refused
+// even when the track code is "en". A missing pick, or a child with nothing
+// muxable, clears SubtitleMode so the engine cannot invent a track.
+func ClampSubtitlesToAnalyzedTracks(options OutputOptions, summary InfoSummary) OutputOptions {
+	if options.SubtitleMode == "" {
+		return options
+	}
+	manual, automatic := partitionSubtitleTracks(summary.Subtitles)
+	muxable := append([]SubtitleLanguage(nil), manual...)
+	if options.SubtitleAutoCaptions {
+		for _, track := range automatic {
+			if sameSubtitleLanguage(track.Code, summary.Language) {
+				muxable = append(muxable, track)
+			}
+		}
+	}
+	requested := ""
+	if len(options.SubtitleLanguages) > 0 {
+		requested = options.SubtitleLanguages[0]
+	} else {
+		requested = summary.Language
+	}
+	selected := preferredSubtitleTrack(muxable, requested)
+	if selected == "" {
+		options.SubtitleMode = ""
+		options.SubtitleLanguages = nil
+		return options
+	}
+	options.SubtitleLanguages = []string{selected}
+	return options
+}
+
+func partitionSubtitleTracks(tracks []SubtitleLanguage) (manual, automatic []SubtitleLanguage) {
+	for _, track := range tracks {
+		if track.Auto {
+			automatic = append(automatic, track)
+		} else {
+			manual = append(manual, track)
+		}
+	}
+	return manual, automatic
+}
+
+func sameSubtitleLanguage(left, right string) bool {
+	root := bcp47Root(left)
+	return root != "" && root == bcp47Root(right)
 }
 
 func preferredSubtitleTrack(tracks []SubtitleLanguage, language string) string {
