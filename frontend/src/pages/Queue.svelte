@@ -5,19 +5,6 @@
   import QueueOverview from '../lib/lifecycle-ui/QueueOverview.svelte';
   import type { ActionRequiredReviewViewModel, LifecycleJobEventDetail, QueueCollectionActionEvent, QueueOverviewViewModel, QueueView } from '../lib/lifecycle-ui/types.js';
   import { newestQueueView } from '../lib/queue-view.js';
-  import { EmptyState, Tabs } from '../lib/components/ui/index.js';
-
-  type QueuePane = 'queue' | 'following';
-
-  let pane: QueuePane = 'queue';
-  const paneTabs = [
-    { value: 'queue', label: 'Queue' },
-    { value: 'following', label: 'Following' },
-  ];
-
-  function setPane(value: string): void {
-    pane = value === 'following' ? 'following' : 'queue';
-  }
 
   function modelFrom(view: QueueView | null): QueueOverviewViewModel {
     const persistence = view?.persistence;
@@ -273,43 +260,24 @@
   }
 </script>
 
-<div class="queue-route">
-  <div class="pane-rail">
-    <Tabs options={paneTabs} value={pane} onChange={setPane} ariaLabel="Queue sections" />
-  </div>
-
-  {#if pane === 'queue'}
-    <QueueOverview
-      {model}
-      onPauseAll={pauseAll}
-      onClearCompleted={clearCompleted}
-      onCollectionAction={collectionAction}
-      onAction={(event) => {
-        if (event.action === 'pause') action(event, api.queue.pause, 'Could not pause the download');
-        else if (event.action === 'cancel') action(event, api.queue.cancel, 'Could not cancel the download');
-        else if (event.action === 'resume') action(event, api.queue.resume, 'Could not resume the download', 'Download resumed.');
-        else if (event.action === 'retry') action(event, api.queue.retry, 'Could not retry the download', 'Retry added to the queue.');
-        else if (event.action === 'start-again') startAgain(event);
-        else if (event.action === 'open-source') action(event, api.queue.openSource, 'Could not open the source');
-        else if (event.action === 'copy-link') action(event, api.queue.copyLink, 'Could not copy the source link', 'Source link copied.');
-        else if (event.action === 'review') reviewActionRequired(event);
-        else if (event.action === 'open') action(event, api.queue.open, 'Could not open the downloaded file');
-        else if (event.action === 'remove') action(event, api.queue.remove, 'Could not remove the download');
-      }}
-    />
-  {:else}
-    <section class="page" aria-labelledby="following-title">
-      <header class="page-header">
-        <h1 id="following-title">Following</h1>
-        <p>Public playlists you follow live here.</p>
-      </header>
-      <EmptyState
-        title="No playlists followed"
-        message="Follow a public playlist from Home. New videos can show up here later."
-      />
-    </section>
-  {/if}
-</div>
+<QueueOverview
+  {model}
+  onPauseAll={pauseAll}
+  onClearCompleted={clearCompleted}
+  onCollectionAction={collectionAction}
+  onAction={(event) => {
+    if (event.action === 'pause') action(event, api.queue.pause, 'Could not pause the download');
+    else if (event.action === 'cancel') action(event, api.queue.cancel, 'Could not cancel the download');
+    else if (event.action === 'resume') action(event, api.queue.resume, 'Could not resume the download', 'Download resumed.');
+    else if (event.action === 'retry') action(event, api.queue.retry, 'Could not retry the download', 'Retry added to the queue.');
+    else if (event.action === 'start-again') startAgain(event);
+    else if (event.action === 'open-source') action(event, api.queue.openSource, 'Could not open the source');
+    else if (event.action === 'copy-link') action(event, api.queue.copyLink, 'Could not copy the source link', 'Source link copied.');
+    else if (event.action === 'review') reviewActionRequired(event);
+    else if (event.action === 'open') action(event, api.queue.open, 'Could not open the downloaded file');
+    else if (event.action === 'remove') action(event, api.queue.remove, 'Could not remove the download');
+  }}
+/>
 
 <ActionRequiredReviewDialog
   open={actionRequiredReview !== null}
@@ -323,14 +291,3 @@
   onDiscard={discardActionRequired}
   onRetryCleanup={retryCleanup}
 />
-
-<style>
-  .queue-route {
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
-  }
-  .pane-rail {
-    padding: var(--page-pad-y) var(--page-pad-x) 0;
-  }
-</style>

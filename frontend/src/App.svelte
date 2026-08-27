@@ -2,7 +2,7 @@
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { api } from './lib/api.js';
-  import { errorMessage, ffmpeg, history, jobs, queueView, route, settings, modal, persistence, pendingUrl, showBanner } from './lib/stores.js';
+  import { errorMessage, ffmpeg, history, jobs, queueView, route, settings, modal, persistence, pendingUrl, showBanner, type AppRoute } from './lib/stores.js';
   import { progressOf, youtubeUrlFromText } from './lib/format.js';
   import type { QueueView } from './lib/lifecycle-ui/types.js';
   import { newestQueueView } from './lib/queue-view.js';
@@ -16,6 +16,7 @@
   import Banner from './lib/components/Banner.svelte';
   import Home from './pages/Home.svelte';
   import Queue from './pages/Queue.svelte';
+  import Following from './pages/Following.svelte';
   import Downloads from './pages/Downloads.svelte';
   import Settings from './pages/Settings.svelte';
   import About from './pages/About.svelte';
@@ -127,7 +128,7 @@
     if (next?.persistence) persistence.set(next.persistence);
   }
 
-  function navigate(target: 'home' | 'queue' | 'downloads' | 'settings' | 'about') {
+  function navigate(target: AppRoute) {
     route.set(target);
   }
 
@@ -250,6 +251,8 @@
         <Home on:goto={(e) => navigate(e.detail)} />
       {:else if $route === 'queue'}
         <Queue />
+      {:else if $route === 'following'}
+        <Following />
       {:else if $route === 'downloads'}
         <Downloads />
       {:else if $route === 'settings'}

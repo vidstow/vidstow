@@ -43,8 +43,11 @@ test('app shell routes to the About page', async () => {
   ]);
   assert.match(app, /import About from '\.\/pages\/About\.svelte'/);
   assert.match(app, /\$route === 'about'/);
-  assert.match(app, /navigate\(target: 'home' \| 'queue' \| 'downloads' \| 'settings' \| 'about'\)/);
-  assert.match(stores, /writable<'home' \| 'queue' \| 'downloads' \| 'settings' \| 'about'>/);
+  assert.match(app, /import Following from '\.\/pages\/Following\.svelte'/);
+  assert.match(app, /\$route === 'following'/);
+  assert.match(app, /navigate\(target: AppRoute\)/);
+  assert.match(stores, /export type AppRoute = 'home' \| 'queue' \| 'following' \| 'downloads' \| 'settings' \| 'about'/);
+  assert.match(stores, /writable<AppRoute>/);
 });
 
 test('About page uses backend build info with legal copy and external links', async () => {
