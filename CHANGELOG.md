@@ -14,7 +14,7 @@ does not exist yet.
 
 ### Added
 
-- No entries yet.
+- Following is a sidebar page under Queue. The empty list says you are not following any playlists.
 
 ### Changed
 

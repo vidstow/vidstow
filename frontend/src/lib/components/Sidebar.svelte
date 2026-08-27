@@ -1,22 +1,22 @@
 <script lang="ts">
-  import { route, counts, ffmpeg, history } from '../stores.js';
+  import { route, counts, ffmpeg, history, type AppRoute } from '../stores.js';
   import brandMark from '../../assets/images/brand-mark.svg';
-  type Route = 'home' | 'queue' | 'downloads' | 'settings' | 'about';
 
   $: c = $counts;
   $: saved = $history.length;
 
-  const items: Array<{ key: Route; label: string; icon: string }> = [
+  const items: Array<{ key: AppRoute; label: string; icon: string }> = [
     { key: 'home',      label: 'Home',      icon: 'home' },
     { key: 'queue',     label: 'Queue',     icon: 'queue' },
+    { key: 'following', label: 'Following', icon: 'following' },
     { key: 'downloads', label: 'Downloads', icon: 'downloads' },
   ];
-  const utility: Array<{ key: Route; label: string; icon: string }> = [
+  const utility: Array<{ key: AppRoute; label: string; icon: string }> = [
     { key: 'settings', label: 'Settings', icon: 'settings' },
     { key: 'about',    label: 'About',    icon: 'about' },
   ];
 
-  function go(target: Route) {
+  function go(target: AppRoute) {
     route.set(target);
   }
   function openFFmpeg() {
@@ -48,6 +48,8 @@
                 <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/></svg>
               {:else if item.icon === 'queue'}
                 <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/></svg>
+              {:else if item.icon === 'following'}
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
               {:else if item.icon === 'downloads'}
                 <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
               {:else if item.icon === 'about'}

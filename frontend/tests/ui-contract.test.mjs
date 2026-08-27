@@ -9,7 +9,8 @@ test('approved navigation and window branding are used', async () => {
     read('../src/lib/components/Sidebar.svelte'),
     read('../../main.go'),
   ]);
-  for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
+  for (const label of ['Home', 'Queue', 'Following', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
+  assert.match(sidebar, /key: 'following'/);
   assert.match(sidebar, /brand-mark\.svg/);
   for (const rejected of ['v0 · single video', 'Single public YouTube videos only', 'brand-name', 'class="logo"', 'logo-universal']) assert.doesNotMatch(sidebar, new RegExp(rejected));
   assert.match(main, /Title:\s+"VidStow"/);
@@ -17,8 +18,9 @@ test('approved navigation and window branding are used', async () => {
 });
 
 test('page titles and controls match the approved redesign', async () => {
-  const [home, queue, downloads, settings] = await Promise.all([
+  const [home, queue, following, downloads, settings] = await Promise.all([
     read('../src/pages/Home.svelte'), read('../src/pages/Queue.svelte'),
+    read('../src/pages/Following.svelte'),
     read('../src/pages/Downloads.svelte'), read('../src/pages/Settings.svelte'),
   ]);
   assert.match(home, /inputMode === 'batch' \? 'Batch URLs' : 'Download from YouTube'/);
@@ -39,6 +41,10 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, />Add to Queue</);
   assert.match(home, /'Analyze'/);
   assert.match(queue, /<QueueOverview/);
+  assert.doesNotMatch(queue, /Following|pane-rail|Queue sections/);
+  assert.match(following, /<h1 id="following-title">Following<\/h1>/);
+  assert.match(following, /title="You are not following any playlists\."/);
+  assert.doesNotMatch(following, /localStorage|sessionStorage|api\.follow/);
   assert.match(queue, /api\.queue\.pauseAll/);
   assert.match(queue, /api\.queue\.clearCompleted/);
   assert.match(queue, /collectionLabel = collection\?\.kind === 'batch' \? 'batch' : 'playlist'/);

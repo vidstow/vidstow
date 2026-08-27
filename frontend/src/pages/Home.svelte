@@ -1,12 +1,12 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { api } from '../lib/api.js';
-  import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
+  import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner, type AppRoute } from '../lib/stores.js';
   import { formatBytes, formatViewCount, shortTitle } from '../lib/format.js';
   import type { BatchAnalysisView, InfoSummary, OutputOptions, OutputPlan, PlaylistSummary, Quality, SubtitleLanguage, UrlCheckResult } from '../lib/types.js';
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
 
-  const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'downloads' | 'settings' | 'about' }>();
+  const dispatch = createEventDispatcher<{ goto: AppRoute }>();
 
   let inputMode: 'single' | 'batch' = 'single';
   let url = '';
