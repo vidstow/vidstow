@@ -1,0 +1,2359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VidStow — proposed changes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Geist+Mono:wght@450;500&family=Inter:wght@400;500;600;650&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090B;
+      --sidebar: #0C0C0E;
+      --base: #111113;
+      --raised: #18181B;
+      --hover: #1F1F23;
+      --border: #27272A;
+      --text: #FAFAFA;
+      --secondary: #A1A1AA;
+      --muted: #71717A;
+      --accent: #3B82F6;
+      --accent-2: #2563EB;
+      --green: #22C55E;
+      --amber: #F59E0B;
+      --red: #EF4444;
+      --glow: 0 0 14px rgba(59, 130, 246, 0.35);
+      --sans: Geist, Inter, ui-sans-serif, system-ui, sans-serif;
+      --mono: "Geist Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+    body {
+      margin: 0;
+      background: #050506;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #93C5FD; }
+    .top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 18px;
+      height: 56px; padding: 0 28px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, #0C0C0E 88%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .top .mark {
+      width: 22px; height: 22px; display: grid; place-items: center;
+      border-radius: 6px; background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+      font-size: 12px; font-weight: 700;
+    }
+    .top strong { font-size: 14px; font-weight: 600; }
+    .top nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .top nav a {
+      padding: 6px 10px; border-radius: 6px; color: var(--secondary);
+      text-decoration: none; font-size: 12px; font-weight: 500;
+    }
+    .top nav a:hover { color: var(--text); background: #18181B; }
+    .wrap { width: min(1240px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 96px; }
+    .lede h1 { margin: 0 0 12px; font-size: 32px; font-weight: 650; letter-spacing: -0.04em; }
+    .lede p { margin: 0 0 14px; max-width: 72ch; color: var(--secondary); font-size: 17px; }
+    .lede .note {
+      display: inline-block; margin-top: 8px; padding: 4px 10px;
+      border: 1px solid var(--border); border-radius: 999px;
+      color: var(--muted); font-size: 12px;
+    }
+    .toc {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      margin: 36px 0 56px;
+    }
+    .toc a {
+      padding: 14px 14px 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--raised); color: var(--text); text-decoration: none;
+    }
+    .toc a:hover { border-color: #3F3F46; }
+    .toc b { display: block; font-size: 13px; }
+    .toc span { color: var(--muted); font-size: 12px; }
+    section.prop { margin-bottom: 88px; }
+    section.prop > h2 {
+      margin: 0 0 10px; font-size: 22px; font-weight: 650; letter-spacing: -0.03em;
+    }
+    section.prop > .why { max-width: 78ch; margin: 0 0 28px; color: var(--secondary); }
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .col h3 {
+      margin: 0 0 10px; font-size: 12px; font-weight: 650;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .col.now h3 { color: #FCA5A5; }
+    .col.next h3 { color: #86EFAC; }
+    .stage {
+      position: relative;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #070708; overflow: hidden;
+    }
+    .legend { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .legend li {
+      display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;
+      list-style: none; margin: 0; color: var(--secondary); font-size: 13px; line-height: 1.45;
+    }
+    .legend { padding: 0; }
+    .n {
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700;
+    }
+    .now .n { background: #B45309; }
+    .next .n { background: #15803D; }
+    .pin {
+      position: absolute; z-index: 5;
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700;
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.45);
+      pointer-events: none;
+    }
+    .pin.bad { background: #B45309; }
+    .pin.good { background: #15803D; }
+    .ring-hit {
+      position: absolute; z-index: 4; pointer-events: none;
+      border: 1.5px dashed rgba(245, 158, 11, 0.85); border-radius: 8px;
+    }
+    .ring-ok {
+      position: absolute; z-index: 4; pointer-events: none;
+      border: 1.5px dashed rgba(34, 197, 94, 0.7); border-radius: 8px;
+    }
+
+    /* Mini app chrome */
+    .mw {
+      width: 100%; height: 420px;
+      display: grid; grid-template-rows: 28px 1fr 18px;
+      background: var(--bg); font-family: Inter, var(--sans); font-size: 11px;
+      user-select: none;
+    }
+    .mw.tall { height: 460px; }
+    .tb {
+      display: flex; align-items: center; gap: 8px; padding: 0 10px;
+      border-bottom: 1px solid var(--border); background: var(--sidebar);
+    }
+    .dots { display: flex; gap: 5px; }
+    .dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+    .dots i:nth-child(1) { background: #EF4444; }
+    .dots i:nth-child(2) { background: #F59E0B; }
+    .dots i:nth-child(3) { background: #22C55E; }
+    .crumb { color: var(--muted); font-size: 10px; }
+    .crumb b { color: var(--text); font-weight: 600; }
+    .pills { margin-left: auto; display: flex; gap: 4px; }
+    .sp {
+      height: 16px; padding: 0 6px; border: 1px solid #202023; border-radius: 4px;
+      background: #111113; color: var(--muted); font-size: 9px;
+    }
+    .sp.on { border-color: rgba(59,130,246,0.45); color: #60A5FA; box-shadow: var(--glow); }
+    .body { display: grid; grid-template-columns: 112px 1fr; min-height: 0; }
+    .sb {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 8px 6px; border-right: 1px solid var(--border); background: var(--sidebar);
+    }
+    .brand { display: flex; align-items: center; gap: 6px; margin: 0 4px 8px; font-weight: 650; font-size: 11px; }
+    .brand .v {
+      width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px;
+      background: #2563EB; font-size: 9px; font-weight: 700;
+    }
+    .ni {
+      display: flex; align-items: center; gap: 6px;
+      height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: 6px;
+      color: var(--secondary); font-size: 10px;
+    }
+    .ni.on-glow {
+      border-color: rgba(59,130,246,0.45); background: rgba(59,130,246,0.14);
+      color: #fff; box-shadow: var(--glow);
+    }
+    .ni.on-quiet { background: #18181B; color: #fff; }
+    .ni .bdge {
+      margin-left: auto; min-width: 14px; height: 14px; padding: 0 4px;
+      display: grid; place-items: center; border-radius: 99px; background: #27272A; font-size: 8px;
+    }
+    .ff {
+      margin-top: auto; height: 20px; padding: 0 8px;
+      display: flex; align-items: center; gap: 5px;
+      border: 1px solid #1F3A2A; border-radius: 99px; background: #0F1A14;
+      color: #D1D5DB; font-size: 8px;
+    }
+    .ff .led { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+    .mn { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
+    .st {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px; border-top: 1px solid var(--border); background: #0A0A0C;
+      color: var(--muted); font-size: 9px; font-family: var(--mono);
+    }
+    .st .live { color: #60A5FA; }
+
+    .empty {
+      height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 12px 20px;
+    }
+    .url {
+      display: flex; align-items: center; gap: 6px;
+      width: 86%; height: 28px; padding: 0 6px 0 10px;
+      border: 1px solid var(--border); border-radius: 7px; background: var(--base); color: var(--muted);
+    }
+    .url .an {
+      margin-left: auto; height: 20px; padding: 0 8px; border: 0; border-radius: 5px;
+      background: var(--accent-2); color: #fff; font-size: 9px; font-weight: 600;
+    }
+    .url .paste {
+      height: 20px; padding: 0 7px; border: 1px solid var(--border); border-radius: 5px;
+      background: var(--raised); color: var(--secondary); font-size: 8px;
+    }
+    .drop {
+      width: 86%; margin-top: 8px; padding: 14px 8px;
+      border: 1.5px dashed #2A2A30; border-radius: 8px;
+      color: var(--secondary); text-align: center; font-size: 9px;
+    }
+    .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 8px; width: 90%; }
+    .chip {
+      height: 16px; padding: 0 7px; border: 1px solid var(--border); border-radius: 99px;
+      background: var(--raised); color: var(--secondary); font-size: 8px;
+    }
+    .today { margin-top: 8px; color: var(--muted); font-size: 9px; }
+
+    .page { padding: 10px 12px; }
+    .ph { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+    .ph h4 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.03em; }
+    .ph h4.sm { font-size: 13px; }
+    .spd { margin-left: 8px; color: var(--green); font-size: 9px; font-weight: 600; }
+    .btns { display: flex; gap: 4px; }
+    .b {
+      height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 5px;
+      background: var(--raised); color: #E4E4E7; font-size: 8px;
+    }
+    .b.pri { border-color: var(--accent-2); background: var(--accent-2); color: #fff; }
+    .b.ghost { background: transparent; }
+    .b.off { opacity: 0.4; }
+    .job {
+      display: grid; grid-template-columns: 52px 1fr auto; gap: 7px; align-items: center;
+      padding: 7px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised);
+    }
+    .job.glow { border-color: var(--accent); box-shadow: var(--glow); }
+    .job.quiet { border-color: transparent; background: #141416; }
+    .job.warn { border-color: rgba(245,158,11,0.55); background: rgba(245,158,11,0.06); }
+    .th {
+      width: 52px; height: 30px; border-radius: 4px; overflow: hidden; background: #152033; position: relative;
+    }
+    .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .job b { display: block; font-size: 10px; font-weight: 600; }
+    .job .meta { color: var(--muted); font-size: 8px; margin-top: 2px; }
+    .bar { height: 4px; margin: 4px 0 3px; border-radius: 99px; background: #27272A; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--accent); }
+    .phase {
+      display: inline-block; padding: 1px 5px; border-radius: 99px;
+      background: rgba(59,130,246,0.16); color: #93C5FD; font-size: 8px;
+    }
+    .dl {
+      display: grid; grid-template-columns: 1fr 140px; height: 100%;
+    }
+    .dl-l { padding: 10px; }
+    .row {
+      display: grid; grid-template-columns: 44px 1fr auto; gap: 6px; align-items: center;
+      padding: 5px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 6px; background: var(--raised);
+    }
+    .row.glow { border-color: var(--accent); box-shadow: var(--glow); }
+    .row.quiet { background: #1A1A1F; }
+    .insp { padding: 10px; border-left: 1px solid var(--border); background: #101012; }
+    .insp h5 { margin: 0 0 8px; font-size: 10px; }
+    .insp .th.lg { width: 100%; height: 64px; margin-bottom: 8px; }
+    .insp .b { width: 100%; margin-top: 4px; }
+
+    .fmts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px 12px; }
+    .fmt {
+      padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--base);
+    }
+    .fmt.on { border-color: var(--accent); background: rgba(59,130,246,0.08); box-shadow: var(--glow); }
+    .fmt.quiet { border-color: var(--accent-2); background: rgba(37,99,235,0.12); }
+    .fmt b { display: block; font-size: 11px; }
+    .fmt small { color: var(--muted); font-size: 8px; }
+
+    .modal {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      background: rgba(0,0,0,0.62);
+    }
+    .dlg {
+      width: 72%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised);
+    }
+    .dlg h5 { margin: 0 0 8px; font-size: 10px; }
+    .opt {
+      display: block; margin-bottom: 4px; padding: 6px 8px;
+      border: 1px solid var(--border); border-radius: 6px; background: var(--base); font-size: 8px;
+    }
+    .opt.sel { border-color: rgba(59,130,246,0.6); background: rgba(37,99,235,0.12); }
+    .opt.kill { border-color: rgba(239,68,68,0.45); color: #FCA5A5; }
+
+    .type-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 8px; }
+    .specimen {
+      padding: 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--raised);
+    }
+    .specimen .h { font-size: 22px; font-weight: 650; letter-spacing: -0.04em; }
+    .specimen .h2 { font-size: 17px; font-weight: 650; letter-spacing: -0.03em; }
+    .specimen .body { display: block; margin-top: 8px; font-size: 13px; }
+    .specimen .meta { margin-top: 6px; color: var(--muted); font-size: 11px; }
+    .specimen .path { margin-top: 6px; font-family: var(--mono); font-size: 11px; color: #D4D4D8; }
+    .btrow { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .bb { height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); font-size: 12px; }
+    .bb.pri { border-color: var(--accent-2); background: var(--accent-2); color: #fff; }
+    .bb.sm { height: 22px; font-size: 11px; }
+    .bb.chip { height: 26px; border-radius: 99px; font-size: 11px; }
+    .keep {
+      margin-top: 40px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 12px;
+      background: var(--raised); color: var(--secondary); max-width: 90ch;
+    }
+    .keep h2 { margin: 0 0 8px; color: var(--text); font-size: 16px; }
+    .comments {
+      margin: 0 0 20px; padding: 16px 18px;
+      border: 1px solid var(--border); border-radius: 12px; background: var(--raised);
+    }
+    .comments h3 {
+      margin: 0 0 10px; font-size: 12px; font-weight: 650;
+      letter-spacing: 0.08em; text-transform: uppercase; color: #FCD34D;
+    }
+    .comments ol { margin: 0; padding-left: 20px; color: var(--secondary); }
+    .comments li { margin: 0 0 8px; }
+    .comments li:last-child { margin: 0; }
+    .solution {
+      margin: 0 0 28px; padding: 16px 18px;
+      border: 1px solid rgba(34,197,94,0.28); border-radius: 12px;
+      background: rgba(34,197,94,0.06); color: var(--secondary);
+    }
+    .solution h3 {
+      margin: 0 0 10px; font-size: 12px; font-weight: 650;
+      letter-spacing: 0.08em; text-transform: uppercase; color: #86EFAC;
+    }
+    .solution ul { margin: 0; padding-left: 18px; }
+    .solution li { margin: 0 0 8px; }
+    .solution li:last-child { margin: 0; }
+    .stack3 { display: grid; gap: 28px; }
+    .setrow {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--raised);
+    }
+    .setrow.tight { justify-content: flex-start; gap: 10px; }
+    .setrow .lab { font-size: 10px; }
+    .setrow .lab small { display: block; color: var(--muted); font-size: 8px; margin-top: 2px; }
+    .setrow .path {
+      padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--base); font-family: var(--mono); font-size: 8px; color: #D4D4D8;
+    }
+    .col-measure { width: 58%; margin: 0 auto; padding: 10px 0; }
+    .fmt2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+    .setgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .setcell {
+      padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--raised);
+    }
+    .setcell .lab { font-size: 9px; font-weight: 600; }
+    .setcell .lab small { display: block; color: var(--muted); font-size: 8px; font-weight: 500; margin-top: 2px; }
+    .setcell .ctrl { display: flex; align-items: center; gap: 5px; margin-top: 6px; }
+    .kind {
+      display: inline-flex; align-items: center; height: 16px; padding: 0 6px; margin-bottom: 6px;
+      border-radius: 99px; background: rgba(59,130,246,0.16); color: #93C5FD; font-size: 8px; font-weight: 650;
+    }
+    .plist-mini { border: 1px solid var(--border); border-radius: 6px; background: var(--base); overflow: hidden; }
+    .er {
+      display: grid; grid-template-columns: 10px 32px 1fr auto; gap: 5px; align-items: center;
+      padding: 4px 6px; border-bottom: 1px solid #1F1F23; font-size: 8px;
+    }
+    .er:last-child { border-bottom: 0; }
+    .polrow { display: flex; gap: 6px; margin-top: 8px; }
+    .polrow .fmt { flex: 1; padding: 6px; }
+    .hband {
+      display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto; gap: 8px; align-items: center;
+      padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised);
+    }
+    .hband .th { width: 64px; height: 36px; min-height: 36px; }
+    .hthumbs { display: flex; gap: 3px; }
+    .hthumbs .th { width: 36px; height: 22px; min-height: 22px; flex: none; }
+    .segfmt { display: flex; gap: 4px; }
+    .segfmt .fmt { padding: 5px 7px; min-width: 44px; text-align: center; }
+    .mn.mid {
+      display: flex; align-items: center; justify-content: center;
+    }
+    .inst { width: 86%; }
+    .inst .url { width: 100%; }
+    .dock {
+      display: grid; grid-template-columns: 80px minmax(0, 1fr) auto auto;
+      gap: 8px; align-items: center;
+      margin-top: 6px; padding: 6px 8px 6px 6px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--raised);
+    }
+    .dock .th { width: 80px; height: 45px; min-height: 45px; }
+    .dock b { display: block; font-size: 10px; font-weight: 600; }
+    .dock .meta { color: var(--muted); font-size: 8px; margin-top: 2px; }
+    .dock .an {
+      margin-left: 0; white-space: nowrap;
+      display: inline-flex; align-items: center; justify-content: center;
+      height: 20px; padding: 0 8px; border-radius: 5px;
+      background: var(--accent-2); color: #fff; font-size: 9px; font-weight: 600;
+    }
+    .mn.stack { display: flex; flex-direction: column; }
+    .hbar {
+      display: flex; gap: 6px; align-items: center; flex-shrink: 0;
+      padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .hbar .url { flex: 1; width: auto; margin: 0; }
+    .welcome-mini {
+      flex: 1; display: grid; place-items: center;
+      color: var(--muted); font-size: 9px; font-weight: 500;
+    }
+    .confirm {
+      display: grid; grid-template-columns: 120px minmax(0, 1fr);
+      gap: 10px; align-items: start;
+      margin: 10px auto 0; width: 78%;
+      padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised);
+    }
+    .confirm .th { width: 120px; height: 68px; min-height: 68px; }
+    .confirm b { display: block; font-size: 11px; font-weight: 600; line-height: 1.25; }
+    .confirm .meta { color: var(--muted); font-size: 8px; margin-top: 3px; }
+    .confirm .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+    .rec {
+      display: inline-flex; align-items: baseline; gap: 6px;
+      padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--base);
+      font-size: 9px; font-weight: 650;
+    }
+    .rec small { color: var(--muted); font-weight: 500; }
+    .quietlink { color: #93C5FD; font-size: 8px; font-weight: 550; }
+    .planish {
+      margin-top: 6px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--base);
+    }
+    .planish div {
+      display: flex; justify-content: space-between; padding: 4px 6px;
+      border-bottom: 1px solid #1F1F23; font-size: 8px;
+    }
+    .planish div:last-child { border-bottom: 0; }
+    .trail {
+      margin: 0 0 16px; color: var(--muted); font-size: 13px;
+    }
+    .trail a { font-weight: 550; }
+    .built {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+      margin: 0 0 20px; padding: 12px 16px;
+      border: 1px solid rgba(34,197,94,0.28); border-radius: 10px;
+      background: rgba(34,197,94,0.08); color: var(--secondary); font-size: 14px;
+    }
+    .built strong { color: #86EFAC; font-weight: 600; }
+    .built a { font-weight: 600; }
+    @media (max-width: 980px) {
+      .pair, .toc, .type-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="mark">V</div>
+    <strong>Proposed changes</strong>
+    <nav>
+      <a href="index.html">Current chrome</a>
+      <a href="p1.html">Proposal 1</a>
+      <a href="p13.html">Proposal 13</a>
+      <a href="#chrome">Chrome</a>
+      <a href="#queue">Queue</a>
+      <a href="#glow">Selection</a>
+      <a href="#status">Status</a>
+      <a href="#home">Home</a>
+      <a href="#type">Type</a>
+      <a href="#lists">Lists</a>
+      <a href="#empty">Empty</a>
+      <a href="#conflict">Conflict</a>
+      <a href="#measure">Width</a>
+      <a href="#follow-up">Follow-up</a>
+      <a href="#home-band">Home band</a>
+      <a href="#home-instrument">Home instrument</a>
+      <a href="#home-job">Home job</a>
+    </nav>
+  </header>
+
+  <div class="wrap">
+    <div class="lede">
+      <h1>What I would change, and why it should look different.</h1>
+      <p>
+        This page is a design review of the current HTML workstation prototype, not a rewrite of the Svelte app.
+        The zinc palette, the real thumbnails, Home as a start screen, and Queue as a working list are already right.
+        The problems below are the places where the mock still advertises itself instead of behaving like a desktop product.
+        Each pair is the same screen twice: left is what you have now, right is the change I am asking for. The numbered markers sit on the actual chrome, not on a written list that you have to map back yourself.
+      </p>
+      <span class="note">Current chrome: / · Proposal 1: /p1.html · Proposal 13: /p13.html · This review: /proposals.html</span>
+    </div>
+
+    <div class="toc">
+      <a href="p1.html"><b>1. One navigation</b><span>Built · open Proposal 1</span></a>
+      <a href="#queue"><b>2. Queue vs library</b><span>Finished files leave Queue</span></a>
+      <a href="#glow"><b>3. Quiet selection</b><span>Glow is for the live job</span></a>
+      <a href="#status"><b>4. Quiet chrome</b><span>Speed only while transferring</span></a>
+      <a href="#home"><b>5. Home is a start</b><span>Not a landing page</span></a>
+      <a href="#type"><b>6. One type system</b><span>Fewer sizes, Geist, one primary</span></a>
+      <a href="#lists"><b>7. Same list pattern</b><span>Inspector on Queue too</span></a>
+      <a href="#empty"><b>8. Empty states rhyme</b><span>Center empty, top-align work</span></a>
+      <a href="#measure"><b>9. Give pages a measure</b><span>Your notes on width</span></a>
+      <a href="#follow-up"><b>10. Follow-up</b><span>2-up settings · Home types</span></a>
+      <a href="#home-band"><b>11. Home stays a band</b><span>Wide, not tall</span></a>
+      <a href="#home-instrument"><b>12. Same bar, result attached</b><span>Centered instrument</span></a>
+      <a href="p13.html"><b>13. Home confirms, then commits</b><span>Built · open Proposal 13</span></a>
+    </div>
+
+    <section class="prop" id="chrome">
+      <h2>1. Stop navigating in three places at once</h2>
+      <p class="built">
+        <span><strong>Built.</strong> Quiet navigation lives in <a href="p1.html">Proposal 1</a>. Home empty → analyzed lives in <a href="p13.html">Proposal 13</a>.</span>
+        <span><a href="p1.html">Open Proposal 1</a> · <a href="index.html">Compare with current chrome</a></span>
+      </p>
+      <p class="why">
+        Right now the sidebar, the breadcrumb, and the <code>⌘1 ⌘2 ⌘3</code> pills all tell you which screen you are on.
+        On empty Home those pills sit in the title bar and compete with Analyze, which is the only action that matters.
+        A desktop app picks one nav. Shortcuts still exist. They live in the menu bar, in tooltips, and in the user’s hands, not as a second dock painted into the window.
+        Breadcrumbs are for nested documents. Home, Queue, Downloads, and Settings are peers. They do not need a trail.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current</h3>
+          <div class="stage">
+            <div class="ring-hit" style="top:6px;left:148px;width:90px;height:18px"></div>
+            <div class="pin bad" style="top:4px;left:236px">1</div>
+            <div class="ring-hit" style="top:4px;right:8px;width:210px;height:22px"></div>
+            <div class="pin bad" style="top:4px;right:4px">2</div>
+            <div class="ring-hit" style="top:44px;left:8px;width:100px;height:28px"></div>
+            <div class="pin bad" style="top:48px;left:102px">3</div>
+            <div class="mw">
+              <div class="tb">
+                <div class="dots"><i></i><i></i><i></i></div>
+                <div class="crumb">VidStow › <b>Home</b></div>
+                <div class="pills">
+                  <span class="sp on">⌘1 Home</span>
+                  <span class="sp">⌘2 Queue</span>
+                  <span class="sp">⌘3 Downloads</span>
+                  <span class="sp">⌘, Settings</span>
+                </div>
+              </div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on-glow">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni">Settings</div>
+                  <div class="ff"><span class="led"></span>FFmpeg Ready</div>
+                </aside>
+                <div class="mn">
+                  <div class="empty">
+                    <div class="url">Paste YouTube URL… <span class="paste">Paste ⌘V</span><span class="an">Analyze</span></div>
+                    <div class="drop">Drop YouTube links here</div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>ytdlp-go ready</span><span class="live">Live 14.8 MB/s</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The breadcrumb restates the sidebar. It is not a location inside a document.</span></li>
+            <li><span class="n">2</span><span>Shortcut pills are a second nav, and they are almost as bright as Analyze.</span></li>
+            <li><span class="n">3</span><span>Active Home also glows. Three “you are here” signals in one glance.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed</h3>
+          <div class="stage">
+            <div class="ring-ok" style="top:4px;left:118px;width:70px;height:20px"></div>
+            <div class="pin good" style="top:4px;left:186px">1</div>
+            <div class="ring-ok" style="top:4px;right:8px;width:118px;height:20px"></div>
+            <div class="pin good" style="top:4px;right:4px">2</div>
+            <div class="ring-ok" style="top:44px;left:8px;width:100px;height:26px"></div>
+            <div class="pin good" style="top:48px;left:102px">3</div>
+            <div class="mw">
+              <div class="tb">
+                <div class="dots"><i></i><i></i><i></i></div>
+                <div class="crumb" style="color:#A1A1AA">Home</div>
+              </div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on-quiet">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="empty">
+                    <div class="url">Paste YouTube URL… <span class="an">Analyze</span></div>
+                    <div class="drop">Drop YouTube links here</div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span></span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The title bar can name the screen once, like a window title. No trail.</span></li>
+            <li><span class="n">2</span><span>Pills are gone. ⌘1 still works. It does not need a billboard.</span></li>
+            <li><span class="n">3</span><span>Active nav is a quiet fill. Analyze is now the brightest control in the window.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="queue">
+      <h2>2. Queue is work. Downloads is the library.</h2>
+      <p class="why">
+        The completed Rust video, with Open, Show in Finder, and Conflict sitting on the same list as a merge at 88%, is Downloads wearing a Queue costume.
+        Clear Completed exists because the list is already confused about what it is for. In a product I would ship, Queue only holds jobs that still need the machine: downloading, merging, paused, failed, or waiting on a name.
+        The moment a file is on disk, it leaves Queue and appears in Downloads. Conflict is not a third button on a finished row. It is a stop. The row should look wrong, and the dialog should already be the next step.
+        Open as a primary button is correct in Downloads. It is not correct next to a job that is still supposed to be work.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current</h3>
+          <div class="stage">
+            <div class="ring-hit" style="top:42px;left:210px;width:150px;height:16px"></div>
+            <div class="pin bad" style="top:38px;left:356px">1</div>
+            <div class="ring-hit" style="top:42px;right:14px;width:88px;height:18px"></div>
+            <div class="pin bad" style="top:38px;right:8px">2</div>
+            <div class="ring-hit" style="bottom:52px;left:128px;right:12px;height:48px"></div>
+            <div class="pin bad" style="bottom:92px;left:120px">3</div>
+            <div class="mw tall">
+              <div class="tb">
+                <div class="dots"><i></i><i></i><i></i></div>
+                <div class="crumb">VidStow › <b>Queue</b></div>
+                <div class="pills"><span class="sp">⌘1 Home</span><span class="sp on">⌘2 Queue</span></div>
+              </div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on-glow">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                  <div class="ff"><span class="led"></span>FFmpeg Ready</div>
+                </aside>
+                <div class="mn">
+                  <div class="page">
+                    <div class="ph">
+                      <div><h4>Active Queue</h4><span class="spd">● 24.6 MB/s (2 slots occupied)</span></div>
+                      <div class="btns"><span class="b">Pause All</span><span class="b off">Resume All</span><span class="b">Clear Completed</span></div>
+                    </div>
+                    <div class="job">
+                      <div class="th"><img src="thumbs/concurrency.jpg" alt="" /></div>
+                      <div>
+                        <b>Go Concurrency in Practice</b>
+                        <div class="bar"><i style="width:88%"></i></div>
+                        <span class="phase">Merging (88%)</span>
+                      </div>
+                      <span class="b ghost">Pause</span>
+                    </div>
+                    <div class="job">
+                      <div class="th" style="display:grid;place-items:center;color:#93C5FD;font-size:8px;font-weight:700">8/24</div>
+                      <div>
+                        <b>Go Distributed Systems Masterclass</b>
+                        <div class="meta">8/24 finished · 33%</div>
+                      </div>
+                    </div>
+                    <div class="job">
+                      <div class="th"><img src="thumbs/rust.jpg" alt="" /></div>
+                      <div>
+                        <b>Rust vs Go Architecture 2026</b>
+                        <div class="meta">Downloaded to ~/Movies/VidStow</div>
+                      </div>
+                      <div class="btns"><span class="b pri">Open</span><span class="b">Finder</span><span class="b">Conflict</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Live 14.8 MB/s · Slots 2/2</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>A header total that the backend does not emit. Per-job speed is real. This number is theater unless you sum active jobs.</span></li>
+            <li><span class="n">2</span><span>Clear Completed admits finished files are living in the wrong list.</span></li>
+            <li><span class="n">3</span><span>A completed row with Open, Finder, and Conflict. That is the Downloads inspector, parked in Queue.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed</h3>
+          <div class="stage">
+            <div class="ring-ok" style="top:42px;left:128px;width:70px;height:18px"></div>
+            <div class="pin good" style="top:38px;left:196px">1</div>
+            <div class="ring-ok" style="top:42px;right:14px;width:110px;height:18px"></div>
+            <div class="pin good" style="top:38px;right:8px">2</div>
+            <div class="ring-ok" style="bottom:88px;left:128px;right:12px;height:44px"></div>
+            <div class="pin good" style="bottom:124px;left:120px">3</div>
+            <div class="mw tall">
+              <div class="tb">
+                <div class="dots"><i></i><i></i><i></i></div>
+                <div class="crumb">Queue</div>
+              </div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on-quiet">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                </aside>
+                <div class="mn">
+                  <div class="page">
+                    <div class="ph">
+                      <h4 class="sm">Queue</h4>
+                      <div class="btns"><span class="b">Pause all</span><span class="b off">Resume all</span></div>
+                    </div>
+                    <div class="job quiet">
+                      <div class="th"><img src="thumbs/concurrency.jpg" alt="" /></div>
+                      <div>
+                        <b>Go Concurrency in Practice</b>
+                        <div class="bar"><i style="width:88%"></i></div>
+                        <span class="phase">Merging 88% · ETA 12s</span>
+                      </div>
+                      <span class="b ghost">Pause</span>
+                    </div>
+                    <div class="job quiet">
+                      <div class="th" style="display:grid;place-items:center;color:#93C5FD;font-size:8px;font-weight:700">8/24</div>
+                      <div>
+                        <b>Go Distributed Systems Masterclass</b>
+                        <div class="meta">#9 tracing · 6.2 MB/s</div>
+                        <div class="bar"><i style="width:58%"></i></div>
+                      </div>
+                    </div>
+                    <div class="job warn">
+                      <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                      <div>
+                        <b>distributed_systems.mp4 already exists</b>
+                        <div class="meta">Waiting on a unique name</div>
+                      </div>
+                      <span class="b">Choose name</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">18.4 MB/s · 2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The page is called Queue. Speed lives on the job, and in the status bar only while bytes are moving.</span></li>
+            <li><span class="n">2</span><span>No Clear Completed. Finished work is not here to clear.</span></li>
+            <li><span class="n">3</span><span>A conflict is a blocked job, not a trophy button on a completed file. Choose a name, or cancel.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="glow">
+      <h2>3. One selection language. Almost no glow.</h2>
+      <p class="why">
+        In the current prototype, almost everything that is “on” gets a blue aura: the sidebar item, the shortcut pill, the format card, the policy card, the download row.
+        In a generated mock that reads as premium. In a real workstation it reads as every control shouting.
+        I would keep glow for two cases only: keyboard focus, and the one job that is actually transferring bytes. Active nav can be a quiet fill. A selected row can be a slightly lighter background. The primary button stays solid blue. Secondary actions stay border and fill, with no halo.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current</h3>
+          <div class="stage">
+            <div class="pin bad" style="top:58px;left:42%">1</div>
+            <div class="pin bad" style="top:58px;left:68%">2</div>
+            <div class="mw" style="height:220px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home › Video Analysis</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-glow">Home</div></aside>
+                <div class="mn">
+                  <div class="fmts">
+                    <div class="fmt on"><b>4K</b><small>Recommended</small></div>
+                    <div class="fmt"><b>1080p</b><small>FHD</small></div>
+                    <div class="fmt"><b>720p</b><small>HD</small></div>
+                    <div class="fmt"><b>Audio</b><small>MP3</small></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Nav glows.</span></li>
+            <li><span class="n">2</span><span>The chosen format also glows. Two auras, no hierarchy.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed</h3>
+          <div class="stage">
+            <div class="pin good" style="top:58px;left:42%">1</div>
+            <div class="pin good" style="top:58px;left:68%">2</div>
+            <div class="mw" style="height:220px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                <div class="mn">
+                  <div class="fmts">
+                    <div class="fmt quiet"><b>4K</b><small>Recommended</small></div>
+                    <div class="fmt"><b>1080p</b><small>FHD</small></div>
+                    <div class="fmt"><b>720p</b><small>HD</small></div>
+                    <div class="fmt"><b>Audio</b><small>MP3</small></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Nav is a fill. No halo.</span></li>
+            <li><span class="n">2</span><span>The chosen format is a border and a tint. The Add to Queue button, not shown here, is the only solid blue in the region.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="status">
+      <h2>4. The status bar should be boring until something is happening</h2>
+      <p class="why">
+        Empty Home still claims Live 14.8 MB/s and 2/2 slots. The sidebar has a green FFmpeg trophy. The footer also says the engine is ready. The folder path is in the footer and again on every save bar.
+        That is a dashboard glued onto chrome. A status bar should be quiet by default: the folder path, maybe a small idle mark. Engine health belongs in Settings, and should only come forward if FFmpeg is missing. Speed and slots should appear while something is downloading, and disappear when the queue is idle.
+        The green 24.6 MB/s next to Active Queue is the same idea. Per-job speed is already computed from a rolling bytes window. A header total would be a sum of those jobs, and only worth showing when at least one job is moving.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current, on an idle Home</h3>
+          <div class="stage">
+            <div class="ring-hit" style="bottom:4px;left:8px;right:8px;height:18px"></div>
+            <div class="pin bad" style="bottom:22px;right:16px">1</div>
+            <div class="ring-hit" style="bottom:48px;left:10px;width:100px;height:20px"></div>
+            <div class="pin bad" style="bottom:66px;left:108px">2</div>
+            <div class="mw" style="height:160px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow › <b>Home</b></div><div class="pills"><span class="sp on">⌘1 Home</span></div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-glow">Home</div><div class="ff"><span class="led"></span>FFmpeg Ready</div></aside>
+                <div class="mn"><div class="empty" style="color:#52525B">Idle start screen</div></div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>ytdlp-go ready · Persistence healthy</span><span class="live">Live 14.8 MB/s · Slots 2/2</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Live speed on a screen where nothing is downloading. People learn to ignore it.</span></li>
+            <li><span class="n">2</span><span>FFmpeg Ready is a trophy. If it is always true, do not show it. If it is false, it is an alert.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed, same idle Home</h3>
+          <div class="stage">
+            <div class="ring-ok" style="bottom:4px;left:8px;right:8px;height:18px"></div>
+            <div class="pin good" style="bottom:22px;right:16px">1</div>
+            <div class="mw" style="height:160px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                <div class="mn"><div class="empty" style="color:#52525B">Idle start screen</div></div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span></span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Path stays. Idle is enough. When a job is transferring, this same corner becomes 18.4 MB/s · 2 slots, which is a real sum of active jobs.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="home">
+      <h2>5. Empty Home is right. The chips and the extra Paste are not.</h2>
+      <p class="why">
+        Centered URL bar and dropzone is the correct empty state. That is how an empty desktop tool should feel: one place to put a link, one obvious action.
+        The four pills under the dropzone are a landing page. “Single Video Analysis” and “Playlists up to 500 items” exist so this prototype can jump to other screens. In the product they are not controls. If you want a way to try the app, label them as samples. Do not dress them as features.
+        Paste from Clipboard ⌘V is leftover from the web. On the desktop, paste is already the OS. I would keep Analyze and drop the extra Paste, or shrink it to a small icon for people who do not think to hit ⌘V.
+        As soon as a URL has been analyzed, Home should stop being a hero. The URL bar becomes a toolbar at the top, the video or playlist top-aligns like Queue, and the mode follows the URL. One link, a playlist, or a handful of links. The user should not have to declare Single versus Batch after the app already knows.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current</h3>
+          <div class="stage">
+            <div class="ring-hit" style="top:48%;right:18%;width:72px;height:22px"></div>
+            <div class="pin bad" style="top:46%;right:16%">1</div>
+            <div class="ring-hit" style="bottom:28%;left:22%;right:18%;height:28px"></div>
+            <div class="pin bad" style="bottom:26%;left:20%">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow › <b>Home</b></div><div class="pills"><span class="sp on">⌘1 Home</span></div></div>
+              <div class="body">
+                <aside class="sb"><div class="brand"><span class="v">V</span>VidStow</div><div class="ni on-glow">Home</div><div class="ff"><span class="led"></span>FFmpeg Ready</div></aside>
+                <div class="mn">
+                  <div class="empty">
+                    <div class="url">Paste YouTube video, playlist, or Short URL… <span class="paste">Paste ⌘V</span><span class="an">Analyze</span></div>
+                    <div class="drop">Drop YouTube links directly here to analyze</div>
+                    <div class="chips">
+                      <span class="chip">Single Video Analysis</span>
+                      <span class="chip">Playlists up to 500 items</span>
+                      <span class="chip">Batch URL Paste (2–20)</span>
+                      <span class="chip">Complete Files with Subtitles</span>
+                    </div>
+                    <div class="today">3 downloads completed today · 2.4 GB saved</div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Live 14.8 MB/s</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>A second Paste, labeled with a shortcut the OS already owns.</span></li>
+            <li><span class="n">2</span><span>Feature chips. They demo the prototype. They are not a product surface.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed</h3>
+          <div class="stage">
+            <div class="ring-ok" style="top:42%;right:20%;width:58px;height:22px"></div>
+            <div class="pin good" style="top:40%;right:18%">1</div>
+            <div class="ring-ok" style="bottom:32%;left:24%;right:20%;height:20px"></div>
+            <div class="pin good" style="bottom:30%;left:22%">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+              <div class="body">
+                <aside class="sb"><div class="brand"><span class="v">V</span>VidStow</div><div class="ni on-quiet">Home</div></aside>
+                <div class="mn">
+                  <div class="empty">
+                    <div class="url">Paste a YouTube URL <span class="an">Analyze</span></div>
+                    <div class="drop">Or drop links here</div>
+                    <div class="today">3 finished today · 2.4 GB</div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Analyze is the only button in the bar. Paste is ⌘V.</span></li>
+            <li><span class="n">2</span><span>No marketing chips. The daily line can stay if it is real. It is a quiet fact, not a feature list.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="type">
+      <h2>6. Lock type and buttons to a system</h2>
+      <p class="why">
+        The current file mixes a 22px page title that feels like a landing page, 13px body, 11px meta, 10px badges, 22px title-bar pills, 26px chips, 32px buttons, and 36px nav.
+        That is too many heights for one window. I would bring page titles down to about 17 or 18px semibold, keep body at 13, meta at 11 or 12, and put a mono font only on paths.
+        Controls: 28px as the default, 24px for compact chips and filters. The shipped app already uses Geist. Inter from Google Fonts is fine for this HTML file, and it should not survive into product.
+        Button hierarchy matters as much as size. One primary per region. Secondary as ghost or outline. Destructive as red text, not a red fill, unless you are about to delete.
+      </p>
+      <div class="type-row">
+        <div class="col now">
+          <h3>Current sizes, all in one place</h3>
+          <div class="specimen" style="font-family:Inter,sans-serif">
+            <div class="h">Active Queue</div>
+            <span class="body">Go Concurrency in Practice</span>
+            <div class="meta">1080p FHD MP4 · TechCraft · 11px meta · 10px badges</div>
+            <div class="path">~/Movies/VidStow</div>
+            <div class="btrow">
+              <span class="bb pri">Analyze</span>
+              <span class="bb">Pause All</span>
+              <span class="bb sm">⌘2 Queue</span>
+              <span class="bb chip">Playlists up to 500 items</span>
+            </div>
+            <p class="meta" style="margin-top:14px">Five control heights. The 22px title shouts. The shortcut pill is a different species of button from Pause All, which is a different species from the chip.</p>
+          </div>
+        </div>
+        <div class="col next">
+          <h3>Proposed: two control heights, quieter title</h3>
+          <div class="specimen">
+            <div class="h2">Queue</div>
+            <span class="body">Go Concurrency in Practice</span>
+            <div class="meta">1080p FHD MP4 · TechCraft</div>
+            <div class="path">~/Movies/VidStow</div>
+            <div class="btrow">
+              <span class="bb pri">Analyze</span>
+              <span class="bb">Pause all</span>
+              <span class="bb" style="height:24px;font-size:12px">Videos</span>
+            </div>
+            <p class="meta" style="margin-top:14px">Title at 17px. Body 13. Meta 12. Default control 28px, compact 24px. Geist. One solid blue in the cluster.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="lists">
+      <h2>7. Queue and Downloads should share one list pattern</h2>
+      <p class="why">
+        Downloads already has the right shape: select a row, details on the right. Prototype Queue is still a stack of self-contained cards, even though the real Queue already has an inspector.
+        Two information architectures in one product will always feel slightly broken. Nested playlists also get tall fast if every child is a full card. Selection plus inspector scales. Cards with everything inside look great at three items and fall apart at thirty.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current Queue: every card is a whole story</h3>
+          <div class="stage">
+            <div class="pin bad" style="top:40%;right:18%">1</div>
+            <div class="mw" style="height:280px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-glow">Queue</div></aside>
+                <div class="mn">
+                  <div class="page">
+                    <div class="job"><div class="th"><img src="thumbs/concurrency.jpg" alt="" /></div><div><b>Concurrency</b><div class="bar"><i style="width:88%"></i></div></div><span class="b ghost">Pause</span></div>
+                    <div class="job"><div class="th"><img src="thumbs/tracing.jpg" alt="" /></div><div><b>#9 Tracing</b><div class="meta">plus child rows inside the card</div></div></div>
+                    <div class="job"><div class="th"><img src="thumbs/rust.jpg" alt="" /></div><div><b>Rust vs Go</b></div><span class="b pri">Open</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Actions, progress, path, and children all live in the row. There is no selected item. There is no place for detail to go except “make the card taller.”</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed Queue: same master-detail as Downloads</h3>
+          <div class="stage">
+            <div class="pin good" style="top:36%;left:48%">1</div>
+            <div class="pin good" style="top:36%;right:12%">2</div>
+            <div class="mw" style="height:280px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-quiet">Queue</div></aside>
+                <div class="mn">
+                  <div class="dl">
+                    <div class="dl-l">
+                      <div class="row quiet"><div class="th"><img src="thumbs/concurrency.jpg" alt="" /></div><div><b>Concurrency</b><div class="meta">Merging 88%</div></div></div>
+                      <div class="row"><div class="th"><img src="thumbs/go.jpg" alt="" /></div><div><b>Masterclass</b><div class="meta">8/24 · 6.2 MB/s</div></div></div>
+                    </div>
+                    <aside class="insp">
+                      <h5>Go Concurrency in Practice</h5>
+                      <div class="th lg"><img src="thumbs/concurrency.jpg" alt="" /></div>
+                      <div class="meta">AV1 + Opus · FFmpeg merge</div>
+                      <span class="b">Pause</span>
+                      <span class="b">Cancel</span>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">18.4 MB/s</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The list is for scanning. Rows stay short.</span></li>
+            <li><span class="n">2</span><span>The inspector is for acting. Pause, cancel, speed, ETA, output path. Same pattern as Downloads, so switching pages does not switch mental models.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="empty">
+      <h2>8. Empty states should rhyme. Filled states start at the top.</h2>
+      <p class="why">
+        Empty Home is centered because there is nothing to scan. That is correct, and I would keep it. Empty Queue and empty Downloads should be centered the same way, with a short sentence and a way to add work.
+        Any view that has content starts from the top, with the same padding, and a title that is a label rather than a billboard.
+        That is why Home and Queue felt like different products. It was not that centering is wrong. It was that only one empty view got the empty treatment.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current empty Queue would look like this</h3>
+          <div class="stage">
+            <div class="pin bad" style="top:38px;left:140px">1</div>
+            <div class="mw" style="height:240px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-glow">Queue</div></aside>
+                <div class="mn">
+                  <div class="page">
+                    <div class="ph"><h4>Active Queue</h4><div class="btns"><span class="b">Pause All</span><span class="b">Clear Completed</span></div></div>
+                    <p style="color:#3F3F46;font-size:10px;margin:40px 0 0">A title, a hole, and buttons for work that does not exist.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Live 14.8 MB/s</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Top-aligned emptiness. Pause All and Clear Completed on a list with zero jobs.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed empty Queue</h3>
+          <div class="stage">
+            <div class="pin good" style="top:48%;left:55%">1</div>
+            <div class="mw" style="height:240px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-quiet">Queue</div></aside>
+                <div class="mn">
+                  <div class="empty">
+                    <div style="font-size:13px;font-weight:600">Nothing in the queue</div>
+                    <div class="today">Analyze a link on Home, then admit it here.</div>
+                    <span class="an" style="margin-top:10px;display:inline-flex;align-items:center;height:22px">Go to Home</span>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Same optical middle as empty Home. A sentence, one way forward, no ghost toolbars.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="conflict">
+      <h2>Conflict: unique name or cancel. Not replace.</h2>
+      <p class="why">
+        The JPEG mock invented Replace existing file. The live app will not overwrite. A unique name keeps both files. Cancel drops the job. Teaching Replace in this prototype trains the wrong rule, even if the rest of the window looks finished.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Current dialog</h3>
+          <div class="stage">
+            <div class="pin bad" style="top:42%;left:28%">1</div>
+            <div class="mw" style="height:260px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-glow">Queue</div></aside>
+                <div class="mn" style="position:relative">
+                  <div class="modal">
+                    <div class="dlg">
+                      <h5>Destination file exists</h5>
+                      <div class="opt kill">Replace existing file on disk</div>
+                      <div class="opt sel">Save with a unique name (Recommended)</div>
+                      <div class="opt">Keep existing file and cancel</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Replace is in the JPEG. It is not in the product. Showing it here is a lie.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Proposed dialog</h3>
+          <div class="stage">
+            <div class="pin good" style="top:42%;left:28%">1</div>
+            <div class="mw" style="height:260px">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+              <div class="body">
+                <aside class="sb"><div class="ni on-quiet">Queue</div></aside>
+                <div class="mn" style="position:relative">
+                  <div class="modal">
+                    <div class="dlg">
+                      <h5>distributed_systems.mp4 already exists</h5>
+                      <div class="opt sel">Save as distributed_systems-1.mp4</div>
+                      <div class="opt">Cancel this download</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Two choices. The recommended one is selected. Overwrite is not a choice.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="measure">
+      <h2>9. Give pages a measure</h2>
+      <p class="why">
+        Your notes from the prototype. The diagnosis is the same in all three: the window is a 1376px workstation, and every filled page is stretching to fill the main pane. Empty Home is the only view that still has a sensible content width.
+      </p>
+      <p class="trail">Kept as written. Later comments on this topic are in <a href="#follow-up">proposal 10</a>.</p>
+
+      <div class="comments">
+        <h3>Your comments</h3>
+        <ol>
+          <li>Why is the text box centered, with so much space on either side?</li>
+          <li>Settings and About seem very large horizontally, with not much to populate them.</li>
+          <li>Once analyzed, the Home section suddenly becomes big.</li>
+        </ol>
+      </div>
+
+      <div class="solution">
+        <h3>Proposed solution</h3>
+        <ul>
+          <li><b style="color:#FAFAFA">Empty Home stays centered and capped.</b> The URL bar around 780px is the start screen. The gutters inside the window are leftover main-pane, not a bug. Do not stretch that field to fill the pane. The black letterboxing around the whole 1376px frame is only this HTML preview; it goes away in the real desktop window.</li>
+          <li><b style="color:#FAFAFA">Analyzed Home, Settings, and About get a measure, then top-align.</b> Same ~640–780px column as the empty bar. Label, path, and Change stay together. Format choices become a compact row or a short list, not four full-bleed posters. Analyze should feel like the same room getting a decision, not a different layout language.</li>
+          <li><b style="color:#FAFAFA">Queue and Downloads keep the width.</b> They have a list, nested work, and an inspector. They earn the canvas. Settings and About do not.</li>
+        </ul>
+      </div>
+
+      <div class="stack3">
+        <div class="pair">
+          <div class="col now">
+            <h3>Current · empty Home</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:38%;left:8%;bottom:38%;width:12%"></div>
+              <div class="pin bad" style="top:48%;left:6%">1</div>
+              <div class="ring-hit" style="top:38%;right:8%;bottom:38%;width:12%"></div>
+              <div class="pin bad" style="top:48%;right:6%">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="empty">
+                      <div class="url">Paste a YouTube URL <span class="an">Analyze</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Those side gaps are the 780px bar sitting in an 1180px pane. Keep them. Stretching the field would make the start screen worse.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>Proposed · empty Home</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:42%;left:22%;right:22%;height:28px"></div>
+              <div class="pin good" style="top:40%;left:20%">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="empty">
+                      <div class="url">Paste a YouTube URL <span class="an">Analyze</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>No change to empty Home. The bar stays capped and centered. Analyze remains the loud control.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>Current · Settings / About</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:42%;left:28%;right:22%;height:36px"></div>
+              <div class="pin bad" style="top:40%;left:26%">1</div>
+              <div class="mw" style="height:200px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Settings</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Settings</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="setrow">
+                        <div class="lab">Default download folder<small>New downloads are saved here.</small></div>
+                        <span class="path">~/Movies/VidStow</span>
+                        <span class="b">Change…</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Label on the left, Change on the far right, a dead sea in the middle. About has even less to fill that trip.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>Proposed · Settings / About</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:36%;left:22%;width:52%;height:48px"></div>
+              <div class="pin good" style="top:34%;left:20%">1</div>
+              <div class="mw" style="height:200px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Settings</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Settings</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="col-measure" style="margin:0;width:70%">
+                        <div class="setrow tight">
+                          <div class="lab">Default download folder<small>New downloads are saved here.</small></div>
+                          <span class="path">~/Movies/VidStow</span>
+                          <span class="b">Change…</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>A 560–640px column, still top-aligned. Path and button stay attached to the label. Unused pane stays unused.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>Current · analyzed Home</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:28px;left:120px;right:10px;height:22px"></div>
+              <div class="pin bad" style="top:24px;left:118px">1</div>
+              <div class="ring-hit" style="top:88px;left:120px;right:10px;height:52px"></div>
+              <div class="pin bad" style="top:84px;left:118px">2</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="url" style="width:100%">https://youtube.com/watch?v=dG0sys <span class="paste">Paste</span><span class="an">Analyze</span></div>
+                      <div class="job" style="margin-top:8px">
+                        <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                        <div><b>Building Modern Distributed Systems in Go</b><div class="meta">TechCraft · 1.4M views</div></div>
+                      </div>
+                      <div class="fmts" style="padding:0">
+                        <div class="fmt on"><b>4K</b><small>~1.4 GB</small></div>
+                        <div class="fmt"><b>1080p</b><small>~480 MB</small></div>
+                        <div class="fmt"><b>720p</b><small>~220 MB</small></div>
+                        <div class="fmt"><b>Audio</b><small>~42 MB</small></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>The URL bar goes full bleed. A 50-character link in an 1100px field.</span></li>
+              <li><span class="n">2</span><span>Four format posters for two lines of type each. Home stops being a start screen and becomes a dashboard.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>Proposed · analyzed Home</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:28px;left:128px;width:58%;height:22px"></div>
+              <div class="pin good" style="top:24px;left:126px">1</div>
+              <div class="ring-ok" style="top:88px;left:128px;width:58%;height:70px"></div>
+              <div class="pin good" style="top:84px;left:126px">2</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="col-measure" style="margin:0">
+                        <div class="url" style="width:100%">https://youtube.com/watch?v=dG0sys <span class="an">Analyze</span></div>
+                        <div class="job" style="margin-top:8px">
+                          <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                          <div><b>Distributed Systems in Go</b><div class="meta">TechCraft · 1.4M views</div></div>
+                        </div>
+                        <div class="fmt2">
+                          <div class="fmt quiet"><b>4K</b><small>Recommended · 1.4 GB</small></div>
+                          <div class="fmt"><b>1080p</b><small>480 MB</small></div>
+                          <div class="fmt"><b>720p</b><small>220 MB</small></div>
+                          <div class="fmt"><b>Audio</b><small>42 MB</small></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Top-aligned, same width as the empty bar. Paste is ⌘V. Analyze stays primary.</span></li>
+              <li><span class="n">2</span><span>Formats in a compact 2×2, not four billboards. Add to Queue would sit at the end of this column.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="follow-up">
+      <h2>10. Follow-up: two-up settings, and Home that knows playlists</h2>
+      <p class="trail">Follows <a href="#measure">proposal 9</a>. That proposal is unchanged. This one answers the next two comments. Home layout is revised again in <a href="#home-band">proposal 11</a>.</p>
+
+      <div class="comments">
+        <h3>Your comments</h3>
+        <ol>
+          <li>Settings / About: can we fit two entries per line, so we make better use of the space?</li>
+          <li>Propose better things for Home (empty → analyzed). Remember, links can include playlists too.</li>
+        </ol>
+      </div>
+
+      <div class="solution">
+        <h3>Proposed solution</h3>
+        <ul>
+          <li><b style="color:#FAFAFA">Settings and About: two complete cells per row.</b> Each tile owns its label and its control. Nothing rides the far edge of the window. About uses the same grid: Version | Engine, Platform | License. This replaces the single narrow column from proposal 9 for those two pages only.</li>
+          <li><b style="color:#FAFAFA">Empty Home is still the centered bar from proposal 9.</b> After Analyze, that bar becomes a toolbar at the same width. The URL decides the type: one video, a playlist, or a handful of links. No Single / Batch toggle.</li>
+          <li><b style="color:#FAFAFA">A video gets identity, compact formats, Add to Queue.</b> A playlist gets the same toolbar, a playlist pill, a selectable list that may grow taller, one shared policy row, and Admit N. The room stays Home. The list is allowed to get long. The chrome is not allowed to become a different product.</li>
+        </ul>
+      </div>
+
+      <div class="stack3">
+        <div class="pair">
+          <div class="col now">
+            <h3>From proposal 9 · one column</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:36%;left:22%;width:52%;height:48px"></div>
+              <div class="pin bad" style="top:34%;left:20%">1</div>
+              <div class="mw" style="height:200px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Settings</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Settings</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="col-measure" style="margin:0;width:70%">
+                        <div class="setrow tight">
+                          <div class="lab">Default download folder<small>New downloads are saved here.</small></div>
+                          <span class="path">~/Movies/VidStow</span>
+                          <span class="b">Change…</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Proposal 9’s answer: constrain the form. You asked to use the leftover width instead of leaving it empty.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This follow-up · two per line</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:32px;left:122px;right:12px;height:88px"></div>
+              <div class="pin good" style="top:28px;left:118px">1</div>
+              <div class="mw" style="height:240px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Settings</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Settings</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="setgrid">
+                        <div class="setcell">
+                          <div class="lab">Default folder<small>New downloads land here.</small></div>
+                          <div class="ctrl"><span class="path">~/Movies/VidStow</span><span class="b">Change…</span></div>
+                        </div>
+                        <div class="setcell">
+                          <div class="lab">Subfolder per download<small>Video, audio, and .srt together.</small></div>
+                          <div class="ctrl"><span class="b pri" style="font-size:8px">On</span></div>
+                        </div>
+                        <div class="setcell">
+                          <div class="lab">Confirm before starting<small>Show an output summary.</small></div>
+                          <div class="ctrl"><span class="b">Off</span></div>
+                        </div>
+                        <div class="setcell">
+                          <div class="lab">Restore as paused<small>Keep partial bytes.</small></div>
+                          <div class="ctrl"><span class="b pri" style="font-size:8px">On</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Two complete cells per row. Label and control live in the same tile. About: Version | Engine, Platform | License.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>Current · analyzed video</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:28px;left:120px;right:10px;height:22px"></div>
+              <div class="pin bad" style="top:24px;left:118px">1</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="url" style="width:100%">https://youtube.com/watch?v=dG0sys <span class="paste">Paste</span><span class="an">Analyze</span></div>
+                      <div class="fmts" style="padding:8px 0 0">
+                        <div class="fmt on"><b>4K</b></div>
+                        <div class="fmt"><b>1080p</b></div>
+                        <div class="fmt"><b>720p</b></div>
+                        <div class="fmt"><b>Audio</b></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Proposal 9 already said: stop going full bleed. This follow-up says what sits under the bar when the URL is one video.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This follow-up · analyzed video</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:28px;left:128px;width:58%;height:22px"></div>
+              <div class="pin good" style="top:24px;left:126px">1</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="col-measure" style="margin:0">
+                        <div class="url" style="width:100%">https://youtube.com/watch?v=dG0sys <span class="an">Analyze</span></div>
+                        <span class="kind" style="margin-top:8px">Video · 18:42</span>
+                        <div class="job" style="margin-top:4px">
+                          <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                          <div><b>Distributed Systems in Go</b><div class="meta">TechCraft · 1.4M views</div></div>
+                        </div>
+                        <div class="fmt2">
+                          <div class="fmt quiet"><b>4K</b><small>Recommended</small></div>
+                          <div class="fmt"><b>1080p</b></div>
+                          <div class="fmt"><b>720p</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <div style="margin-top:8px;text-align:right"><span class="an">Add to Queue</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Same bar as empty Home. The URL already told us this is one video. No mode switch.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>Current · analyzed playlist</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:28px;left:120px;right:10px;height:70px"></div>
+              <div class="pin bad" style="top:24px;left:116px">1</div>
+              <div class="ring-hit" style="bottom:36px;left:120px;right:10px;height:40px"></div>
+              <div class="pin bad" style="bottom:70px;left:116px">2</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="job">
+                        <div class="th" style="width:52px;height:36px;display:grid;grid-template-columns:1fr 1fr;gap:1px">
+                          <img src="thumbs/go.jpg" alt="" /><img src="thumbs/clocks.jpg" alt="" />
+                        </div>
+                        <div><b>Go Distributed Systems Masterclass</b><div class="meta">24 videos · 6h 45m</div></div>
+                      </div>
+                      <div class="plist-mini">
+                        <div class="er"><span>#1</span><div class="th" style="width:32px;height:18px"><img src="thumbs/go.jpg" alt="" /></div><span>Introduction</span><span>10:38</span></div>
+                        <div class="er"><span>#2</span><div class="th" style="width:32px;height:18px"><img src="thumbs/clocks.jpg" alt="" /></div><span>Clocks and heartbeats</span><span>18:12</span></div>
+                      </div>
+                      <div class="fmts" style="padding:8px 0 0">
+                        <div class="fmt on"><b>1080p</b></div>
+                        <div class="fmt"><b>720p</b></div>
+                        <div class="fmt"><b>MP3</b></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Full-bleed mosaic, search, range, and a long card stack. Same explosion as the single-video page, with more chrome on top.</span></li>
+              <li><span class="n">2</span><span>Three policy posters across the width for one choice that applies to all 24.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>Proposed · analyzed playlist</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:28px;left:128px;width:58%;height:22px"></div>
+              <div class="pin good" style="top:24px;left:126px">1</div>
+              <div class="ring-ok" style="top:58px;left:128px;width:58%;height:150px"></div>
+              <div class="pin good" style="top:54px;left:126px">2</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="col-measure" style="margin:0">
+                        <div class="url" style="width:100%">youtube.com/playlist?list=… <span class="an">Analyze</span></div>
+                        <span class="kind" style="margin-top:8px">Playlist · 24 videos · 8.2 GB</span>
+                        <div class="job" style="margin-top:4px">
+                          <div class="th"><img src="thumbs/go.jpg" alt="" /></div>
+                          <div><b>Go Distributed Systems Masterclass</b><div class="meta">TechCraft · 6h 45m · 24 of 24 selected</div></div>
+                        </div>
+                        <div class="plist-mini">
+                          <div class="er"><span>✓</span><div class="th" style="width:32px;height:18px"><img src="thumbs/go.jpg" alt="" /></div><span>01 Introduction</span><span>10:38</span></div>
+                          <div class="er"><span>✓</span><div class="th" style="width:32px;height:18px"><img src="thumbs/clocks.jpg" alt="" /></div><span>02 Clocks and heartbeats</span><span>18:12</span></div>
+                          <div class="er"><span>✓</span><div class="th" style="width:32px;height:18px"><img src="thumbs/consensus.jpg" alt="" /></div><span>03 Consensus</span><span>22:04</span></div>
+                        </div>
+                        <div class="polrow">
+                          <div class="fmt quiet"><b>1080p</b></div>
+                          <div class="fmt"><b>720p</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <div style="margin-top:8px;text-align:right"><span class="an">Admit 24 to Queue</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Same toolbar as a single video. A playlist pill, not a different page chrome.</span></li>
+              <li><span class="n">2</span><span>The list is allowed to get taller. Policy is one compact row for the whole collection. Search can sit as a filter on the list, not a second hero.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="home-band">
+      <h2>11. Analyzed Home stays a horizontal band</h2>
+      <p class="trail">Follows <a href="#follow-up">proposal 10</a>. Proposals 9 and 10 stay as written. This revises only the Home empty → analyzed shape. Later comments on this topic are in <a href="#home-instrument">proposal 12</a>.</p>
+
+      <div class="comments">
+        <h3>Your comments</h3>
+        <ol>
+          <li>I’d much rather the Home (empty → analyzed) still remain horizontally long only. Redesign accordingly.</li>
+        </ol>
+      </div>
+
+      <div class="solution">
+        <h3>Proposed solution</h3>
+        <ul>
+          <li><b style="color:#FAFAFA">Empty Home is unchanged from proposal 9.</b> Centered, capped URL bar. After Analyze, do not grow a tall column under it.</li>
+          <li><b style="color:#FAFAFA">Analyzed Home is one wide, short instrument.</b> The bar goes full width of the main pane. Directly under it, a single row uses the horizontal space: thumbnail, identity, the choices, the primary action. Two rows at most. The page does not become a scrolling document.</li>
+          <li><b style="color:#FAFAFA">A video row:</b> thumb · title and channel · 4K / 1080 / 720 / Audio as compact segments · Add to Queue. Formats sit in a line, not a 2×2 stack.</li>
+          <li><b style="color:#FAFAFA">A playlist row:</b> mosaic or first thumb · collection title and “24 of 24” · a horizontal strip of episode thumbs · one policy segment · Admit 24. Extra episodes scroll sideways, not down. Search, if needed, is a small filter on that strip.</li>
+          <li><b style="color:#FAFAFA">Settings 2-up from proposal 10 is untouched.</b> This proposal is Home only.</li>
+        </ul>
+      </div>
+
+      <div class="stack3">
+        <div class="pair">
+          <div class="col now">
+            <h3>From proposal 10 · tall column</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:28px;left:128px;width:48%;bottom:28px"></div>
+              <div class="pin bad" style="top:24px;left:124px">1</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="col-measure" style="margin:0">
+                        <div class="url" style="width:100%">watch?v=dG0sys <span class="an">Analyze</span></div>
+                        <div class="job" style="margin-top:6px">
+                          <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                          <div><b>Distributed Systems in Go</b></div>
+                        </div>
+                        <div class="fmt2">
+                          <div class="fmt quiet"><b>4K</b></div>
+                          <div class="fmt"><b>1080p</b></div>
+                          <div class="fmt"><b>720p</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <div style="margin-top:8px;text-align:right"><span class="an">Add to Queue</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Proposal 10 stacked identity, formats, and the button down a 780px column. That is what made analyzed Home feel suddenly big.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · video as a band</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:36px;left:118px;right:10px;height:72px"></div>
+              <div class="pin good" style="top:32px;left:114px">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="url" style="width:100%">watch?v=dG0sys <span class="an">Analyze</span></div>
+                      <div class="hband" style="margin-top:8px">
+                        <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                        <div>
+                          <b style="font-size:10px">Distributed Systems in Go</b>
+                          <div class="meta">Video · TechCraft · 18:42</div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>4K</b></div>
+                          <div class="fmt"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Add to Queue</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Full width, one row. Formats and Add to Queue sit on the same line as the title. Height barely moves from empty Home.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>From proposal 10 · playlist as a stack</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:28px;left:128px;width:48%;bottom:24px"></div>
+              <div class="pin bad" style="top:24px;left:124px">1</div>
+              <div class="mw tall">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="col-measure" style="margin:0">
+                        <div class="url" style="width:100%">playlist?list=… <span class="an">Analyze</span></div>
+                        <span class="kind">Playlist · 24</span>
+                        <div class="plist-mini">
+                          <div class="er"><span>✓</span><div class="th" style="width:32px;height:18px"><img src="thumbs/go.jpg" alt="" /></div><span>01 Introduction</span><span>10:38</span></div>
+                          <div class="er"><span>✓</span><div class="th" style="width:32px;height:18px"><img src="thumbs/clocks.jpg" alt="" /></div><span>02 Clocks</span><span>18:12</span></div>
+                          <div class="er"><span>✓</span><div class="th" style="width:32px;height:18px"><img src="thumbs/consensus.jpg" alt="" /></div><span>03 Consensus</span><span>22:04</span></div>
+                        </div>
+                        <div style="margin-top:8px;text-align:right"><span class="an">Admit 24</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>A vertical episode list is what makes a playlist “suddenly big.” Twenty-four rows will always win against a column.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · playlist as a band</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:36px;left:118px;right:10px;height:78px"></div>
+              <div class="pin good" style="top:32px;left:114px">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="url" style="width:100%">playlist?list=… <span class="an">Analyze</span></div>
+                      <div class="hband" style="margin-top:8px;grid-template-columns:64px minmax(0,1.1fr) minmax(0,1fr) auto auto">
+                        <div class="th"><img src="thumbs/go.jpg" alt="" /></div>
+                        <div>
+                          <b style="font-size:10px">Go Distributed Systems</b>
+                          <div class="meta">Playlist · 24 of 24 · 6h 45m</div>
+                        </div>
+                        <div class="hthumbs">
+                          <div class="th"><img src="thumbs/go.jpg" alt="" /></div>
+                          <div class="th"><img src="thumbs/clocks.jpg" alt="" /></div>
+                          <div class="th"><img src="thumbs/consensus.jpg" alt="" /></div>
+                          <div class="th"><img src="thumbs/tracing.jpg" alt="" /></div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Admit 24</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Episodes run sideways. Policy and Admit sit on the same row. Clicking the strip can still open a denser picker later; it does not dump 24 rows onto Home.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="home-instrument">
+      <h2>12. Same bar, result attached</h2>
+      <p class="trail">Follows <a href="#home-band">proposal 11</a>. Proposals 9, 10, and 11 stay as written. Settings two-up from 10, Queue width, and the quiet nav in <a href="p1.html">Proposal 1</a> are untouched. Later comments on this topic are in <a href="#home-job">proposal 13</a>.</p>
+      <p class="why">
+        Empty Home and analyzed Home still do not feel like the same tool. Proposal 9 kept the 780px measure, then stacked a column of identity and format tiles under the bar. That made analyzed Home a short document. Proposal 10 put playlist episodes in that column. You rejected a tall Home, especially for playlists. Proposal 11 heard "horizontally long only" and stretched the bar across the main pane, then packed thumbnail, title, formats, and a filmstrip into one toolbar row. Height stopped exploding. The jump did not.
+      </p>
+      <p class="why">
+        Three things are still wrong. The width still jumps. Empty Home is a capped bar in the middle of the pane, which you already accepted as the empty-state rhyme. Analyze in 11 turns that field into a full-bleed instrument. The gutters vanish. The field you were looking at moves. The band is also too dense to read as a video. A 36px thumb, a truncated title, four chips, and Add sit on one Finder-style row. You asked for horizontally long. You did not ask for a toolbar. The JPEG mockups and the live app both treat the result as something you can look at. 11 treated it as chrome. And the playlist filmstrip is a fake. Tiny thumbs with no titles cannot be selected. They hint at 24 episodes without letting you do anything. If Home is not the place to pick episodes, do not draw them. If it is, they need names and checkboxes, which is proposal 10 again.
+      </p>
+      <p class="why">
+        Empty Home in the clickable prototype still carries the landing page that proposal 5 already called out. Paste ⌘V, a dashed dropzone, feature chips, a daily-stats pill. Analyze then deletes all of that and substitutes a different layout. The chips make the jump worse. The live product's job is simpler than any of those screens. Paste a URL, identify it, pick a format, queue it. For a playlist the shipped Home currently also dumps every episode into a selectable list, which is why analyzed Home in the real window becomes a document. Queue already has nested playlist rows. Home does not need to preview the collection as a list.
+      </p>
+      <p class="why">
+        I looked at making analyzed a bit wider than empty, at putting format next to Analyze in the URL row, and at a single default with a chevron. Wider still moves the field. Format in the URL row fights Analyze. A chevron hides the other qualities you actually choose between. The attached row keeps the bar still and puts the decision on the thing you just identified.
+      </p>
+
+      <div class="comments">
+        <h3>Your comments</h3>
+        <ol>
+          <li>Still not happy with the Home section (empty, Analysed). How can we improve this?</li>
+        </ol>
+      </div>
+
+      <div class="solution">
+        <h3>Proposed solution</h3>
+        <ul>
+          <li><b style="color:#FAFAFA">Empty and analyzed share one measure.</b> The empty-state bar stays about 780px, centered. After Analyze, that field does not jump to the window width and does not grow into a column. A compact result attaches under it at the same width. The pair stays in the middle of the pane. Drop, chips, Paste ⌘V, and the daily-stats pill leave the empty story. The bar is the start screen. Drop can still land on the pane without a dashed marketing well.</li>
+          <li><b style="color:#FAFAFA">A video docks as one short row.</b> Readable 16:9 thumb, title plus channel and duration, format as a segmented control (4K / 1080 / 720 / Audio), primary Add to Queue. Budget about 56 to 72px under the bar. Not four posters. Not the live radio list of every resolution. Not a full-page detail.</li>
+          <li><b style="color:#FAFAFA">A playlist docks as identity, not a list.</b> Collection thumb, title, "24 videos", one shared policy segment, Admit 24. No episode stack and no filmstrip on Home. Home answers what this collection is. Episodes belong in Queue after admit, where nested rows already exist. Picking a subset is Queue work, not a second Home layout.</li>
+          <li><b style="color:#FAFAFA">A batch of URLs docks the same way.</b> "4 ready · 1 duplicate ignored", the same policy segment, Admit 4. The line editor is how you paste. It is not a split dashboard of metrics cards after review.</li>
+          <li><b style="color:#FAFAFA">This does not change Settings, Queue, or nav.</b> Settings two-up from proposal 10 stays. Queue and Downloads keep the width. Proposal 1's quiet sidebar is untouched. Destination conflicts stay rename or cancel. No Dashboard, no Library, no overwrite.</li>
+        </ul>
+      </div>
+
+      <div class="stack3">
+        <div class="pair">
+          <div class="col now">
+            <h3>Current · empty Home still a landing page</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:42%;right:16%;width:70px;height:20px"></div>
+              <div class="pin bad" style="top:40%;right:14%">1</div>
+              <div class="ring-hit" style="bottom:22%;left:20%;right:16%;height:36px"></div>
+              <div class="pin bad" style="bottom:20%;left:18%">2</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="empty">
+                      <div class="url">Paste a YouTube URL <span class="paste">Paste ⌘V</span><span class="an">Analyze</span></div>
+                      <div class="drop">Drop YouTube links here</div>
+                      <div class="chips">
+                        <span class="chip">Single Video Analysis</span>
+                        <span class="chip">Playlists up to 500</span>
+                        <span class="chip">Batch URL Paste</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>A second Paste, labeled with a shortcut the OS already owns.</span></li>
+              <li><span class="n">2</span><span>Feature chips and a drop well. They demo the prototype. They vanish on Analyze, which is why empty and analyzed feel like different products.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · empty is the bar</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:44%;left:20%;right:20%;height:28px"></div>
+              <div class="pin good" style="top:42%;left:18%">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn mid">
+                    <div class="inst">
+                      <div class="url">Paste a YouTube URL <span class="an">Analyze</span></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Same centered 780px bar as proposal 9. Analyze is the only control. No chips, no extra Paste, no dashed well.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>From proposal 11 · video as a full-bleed band</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:36px;left:118px;right:10px;height:72px"></div>
+              <div class="pin bad" style="top:32px;left:114px">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="url" style="width:100%">watch?v=dG0sys <span class="an">Analyze</span></div>
+                      <div class="hband" style="margin-top:8px">
+                        <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                        <div>
+                          <b style="font-size:10px">Distributed Systems in Go</b>
+                          <div class="meta">Video · TechCraft · 18:42</div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>4K</b></div>
+                          <div class="fmt"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Add to Queue</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>The bar left the 780px measure and went full pane. Identity, formats, and Add share one cramped toolbar. Height is right. Width and density are not.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · video docks under the same bar</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:36%;left:18%;right:18%;height:86px"></div>
+              <div class="pin good" style="top:34%;left:16%">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn mid">
+                    <div class="inst">
+                      <div class="url">watch?v=dG0sys <span class="an">Analyze</span></div>
+                      <div class="dock">
+                        <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                        <div>
+                          <b>Distributed Systems in Go</b>
+                          <div class="meta">TechCraft · 18:42 · 1.4M views</div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>4K</b></div>
+                          <div class="fmt"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Add to Queue</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Same width as empty. The thumb is large enough to recognize. Formats are a segment, not posters. Add sits on the result, not in the URL row.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>From proposal 11 · playlist filmstrip</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:36px;left:118px;right:10px;height:78px"></div>
+              <div class="pin bad" style="top:32px;left:114px">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="url" style="width:100%">playlist?list=… <span class="an">Analyze</span></div>
+                      <div class="hband" style="margin-top:8px;grid-template-columns:64px minmax(0,1.1fr) minmax(0,1fr) auto auto">
+                        <div class="th"><img src="thumbs/go.jpg" alt="" /></div>
+                        <div>
+                          <b style="font-size:10px">Go Distributed Systems</b>
+                          <div class="meta">Playlist · 24 of 24 · 6h 45m</div>
+                        </div>
+                        <div class="hthumbs">
+                          <div class="th"><img src="thumbs/go.jpg" alt="" /></div>
+                          <div class="th"><img src="thumbs/clocks.jpg" alt="" /></div>
+                          <div class="th"><img src="thumbs/consensus.jpg" alt="" /></div>
+                          <div class="th"><img src="thumbs/tracing.jpg" alt="" /></div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Admit 24</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Four mute thumbs standing in for 24 videos. You cannot read titles. You cannot deselect. It is a list that pretends not to be a list.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · playlist is a collection</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:36%;left:18%;right:18%;height:86px"></div>
+              <div class="pin good" style="top:34%;left:16%">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn mid">
+                    <div class="inst">
+                      <div class="url">playlist?list=… <span class="an">Analyze</span></div>
+                      <div class="dock">
+                        <div class="th"><img src="thumbs/go.jpg" alt="" /></div>
+                        <div>
+                          <b>Go Distributed Systems Masterclass</b>
+                          <div class="meta">Playlist · 24 videos · TechCraft · 6h 45m</div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Admit 24</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>One collection, one policy, Admit. No filmstrip. No 24-row dump. Episodes show up in Queue after they are admitted.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>Current · batch as a dashboard</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:28px;left:120px;right:10px;bottom:28px"></div>
+              <div class="pin bad" style="top:24px;left:116px">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="page">
+                      <div class="url" style="width:100%">4 URLs pasted <span class="an">Analyze</span></div>
+                      <div class="fmt2" style="margin-top:8px">
+                        <div class="fmt"><b>Ready 4</b><small>editor + metrics</small></div>
+                        <div class="fmt"><b>Dup 1</b><small>invalid 1</small></div>
+                      </div>
+                      <div class="polrow">
+                        <div class="fmt quiet"><b>1080p</b></div>
+                        <div class="fmt"><b>720p</b></div>
+                        <div class="fmt"><b>Audio</b></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>The JPEG batch composer is a second product. Split editor, validation cards, policy posters. Home should not grow a dashboard because you pasted four links.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · batch docks like a playlist</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:36%;left:18%;right:18%;height:86px"></div>
+              <div class="pin good" style="top:34%;left:16%">1</div>
+              <div class="mw" style="height:220px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn mid">
+                    <div class="inst">
+                      <div class="url">4 YouTube URLs <span class="an">Analyze</span></div>
+                      <div class="dock" style="grid-template-columns:auto minmax(0,1fr) auto auto">
+                        <span class="kind" style="margin:0">4 ready</span>
+                        <div>
+                          <b>Batch of public videos</b>
+                          <div class="meta">1 duplicate ignored · same format for all</div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Admit 4</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Count, policy, Admit. The textarea is how those four URLs arrived. It is not the analyzed layout.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="home-job">
+      <h2>13. Home confirms, then commits</h2>
+      <p class="trail">Follows <a href="#home-instrument">proposal 12</a>. Proposals 9 through 12 stay as written. This is a product decision, not another box width.</p>
+      <p class="built">
+        <span><strong>Built.</strong> Empty Home, Analyze, confirmation card, playlist Choose videos, batch, and Add are a clickable app with motion.</span>
+        <span><a href="p13.html">Open Proposal 13</a> · <a href="p1.html">Proposal 1 nav</a></span>
+      </p>
+      <p class="why">
+        Empty Home and analyzed Home still feel wrong because we have been rearranging the URL bar. Column, band, dock. The bar was never the product question. Home currently does three jobs that do not belong on one screen: take a URL, prove it is the right video, and configure the download. The live app already fills the first from the clipboard and from a drop. Then Analyze opens a workstation. Identity at 72px, Video/Audio tabs, every yt-dlp plan as a radio row with a byte size, a paragraph about subtitles and chapters, a folder picker, and for a playlist a search box, a range, and every episode. Empty is a field. Analyzed is a studio. No strip will hold a studio. That is why 11 became a toolbar and 12 became a sticky note.
+      </p>
+      <p class="why">
+        There are two Homes in the repo. The shipped window puts the field at the top of the pane, always. The welcome line sits quietly in the leftover space. That is correct empty chrome. It matches Queue and Downloads, where tools stay put. The prototype and the JPEG mockups put a 680px hero in the middle of the void, then a mode pill, a dashed well, feature chips, and a daily-stats pill. Proposal 9 kept that hero and capped it at 780px. Every later Home proposal inherited a search-engine empty state inside a sidebar app. Analyzed then had to morph in place or jump. The live empty is the better empty. Steal it. Kill the chips.
+      </p>
+      <p class="why">
+        The live analyzed state is the worse analyzed state. It grew because each real need (size, subtitles, a 500-item playlist, FFmpeg) landed on Home instead of in Settings or Queue. The JPEG four-poster grid is the same mistake in marketing clothes. Format is not four equal products you browse. Most people want the recommended file. Size is the reason to pick 720p over 4K, so hide the other qualities, do not delete the bytes. Subtitles, artwork, and the folder already have a home: Settings, and the status bar that already shows <code>~/Movies/VidStow</code>. Repeating them on every paste trains people that Home is a form.
+      </p>
+      <p class="why">
+        Playlist picking is a real job. It is not the default job. The default is "this course, all of it, 1080p, Admit." "Choose videos…" can open the list that already exists. Putting that list on every analyzed playlist is why Home becomes a document. Proposal 10 was right that a list needs names and checkboxes. It was wrong to make the list the first screen. Proposal 11's filmstrip was a list that refused to be a list.
+      </p>
+      <p class="why">
+        After Add, stay on Home. Clear the card. Focus the field. A toast is enough. Batch already jumps to Queue. Single paste is a loop. Do not send someone to Queue to get them out of a layout we could not finish.
+      </p>
+
+      <div class="comments">
+        <h3>Your comments</h3>
+        <ol>
+          <li>Think like an expert Product / UI designer</li>
+        </ol>
+      </div>
+
+      <div class="solution">
+        <h3>Proposed solution</h3>
+        <ul>
+          <li><b style="color:#FAFAFA">Decide the job.</b> Home identifies what you pasted and commits it with a default. It is not the format catalog, not the subtitle inspector, and not the playlist editor.</li>
+          <li><b style="color:#FAFAFA">Empty follows the live window, not the JPEG.</b> The field is top chrome of Home, full width of the pane, the same place before and after Analyze. A short welcome sits in the middle of the leftover space. No chips, no extra Paste, no dashed well, no Single/Batch pill floating in the canvas. Batch stays the small control already on the live bar. Drop can hit the pane without a target graphic.</li>
+          <li><b style="color:#FAFAFA">Analyzed is a confirmation card.</b> A still you can actually recognize, about 192×108 in the real window, title and channel, one recommended quality with a size ("1080p · ~480 MB"), Add to Queue. Other qualities sit behind a control, not as four equal posters and not as the live radio novel. Folder stays in the status bar. Output extras stay Settings defaults, with one quiet line if you must show them.</li>
+          <li><b style="color:#FAFAFA">A playlist uses the same card.</b> Collection still, "24 videos", the same recommended quality, Admit 24. "Choose videos…" is how the list appears. Range and search live on that disclosure, not on the default path.</li>
+          <li><b style="color:#FAFAFA">Horizontally long still holds.</b> The composition is thumb left, copy and action right. The card is allowed to be about 160px tall because a readable 16:9 still is that tall. That is not a 24-row page and not a 56px toolbar. Proposal 12 obeyed "long only" too literally.</li>
+          <li><b style="color:#FAFAFA">This does not change Settings two-up, Queue width, or Proposal 1 nav.</b> Destination conflicts stay rename or cancel.</li>
+        </ul>
+      </div>
+
+      <div class="stack3">
+        <div class="pair">
+          <div class="col now">
+            <h3>Prototype empty · a landing page</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:28%;left:18%;right:16%;height:28px"></div>
+              <div class="pin bad" style="top:24%;left:16%">1</div>
+              <div class="ring-hit" style="bottom:18%;left:18%;right:16%;height:40px"></div>
+              <div class="pin bad" style="bottom:16%;left:16%">2</div>
+              <div class="mw" style="height:240px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn">
+                    <div class="empty">
+                      <div class="url">Paste a YouTube URL <span class="paste">Paste ⌘V</span><span class="an">Analyze</span></div>
+                      <div class="drop">Drop YouTube links here</div>
+                      <div class="chips">
+                        <span class="chip">Single Video</span>
+                        <span class="chip">Playlists</span>
+                        <span class="chip">Batch</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>A centered hero. Analyze will have to move this field or leave a hole.</span></li>
+              <li><span class="n">2</span><span>Chips and a well that vanish. The live window does not do this. Empty is already a quiet line under a top field.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · field is chrome</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:28px;left:118px;right:8px;height:24px"></div>
+              <div class="pin good" style="top:24px;left:114px">1</div>
+              <div class="mw" style="height:240px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn stack">
+                    <div class="hbar">
+                      <div class="url">Paste a YouTube URL <span class="an">Analyze</span></div>
+                    </div>
+                    <div class="welcome-mini">Paste a YouTube URL</div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Same slot as the live analyze bar. It does not move after Analyze. The welcome is the only thing that is allowed to sit in the middle.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>Live analyzed · a download studio</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:52px;left:118px;right:8px;bottom:28px"></div>
+              <div class="pin bad" style="top:48px;left:114px">1</div>
+              <div class="mw" style="height:240px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn stack">
+                    <div class="hbar">
+                      <div class="url">watch?v=dG0sys <span class="an">Analyze</span></div>
+                    </div>
+                    <div class="page" style="padding-top:6px">
+                      <div class="job">
+                        <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                        <div>
+                          <b>Distributed Systems in Go</b>
+                          <div class="meta">TechCraft · 18:42</div>
+                        </div>
+                      </div>
+                      <div class="planish">
+                        <div><span>4K · AV1</span><span>~1.4 GB</span></div>
+                        <div><span>1080p · Recommended</span><span>~480 MB</span></div>
+                        <div><span>720p</span><span>~220 MB</span></div>
+                        <div><span>Audio</span><span>~42 MB</span></div>
+                      </div>
+                      <div class="meta" style="margin-top:4px">Subtitles · chapters · artwork · Save to…</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>The 72px identity is already a confirmation. Everything under it is configuration that Settings and a disclosure could own.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>This proposal · a confirmation</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:52px;left:24%;right:16%;height:110px"></div>
+              <div class="pin good" style="top:48px;left:22%">1</div>
+              <div class="mw" style="height:240px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn stack">
+                    <div class="hbar">
+                      <div class="url">watch?v=dG0sys <span class="an">Analyze</span></div>
+                    </div>
+                    <div class="confirm">
+                      <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                      <div>
+                        <b>Building Modern Distributed Systems in Go</b>
+                        <div class="meta">TechCraft · 18:42 · 1.4M views</div>
+                        <div class="actions">
+                          <span class="rec">1080p <small>~480 MB</small></span>
+                          <span class="quietlink">Other qualities</span>
+                          <span class="an">Add to Queue</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>You look at the still. You accept the recommended file, or you open the other sizes. Add is the only primary. The field above did not move.</span></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="pair">
+          <div class="col now">
+            <h3>From proposal 12 · a docked toolbar</h3>
+            <div class="stage">
+              <div class="ring-hit" style="top:38%;left:16%;right:16%;height:72px"></div>
+              <div class="pin bad" style="top:34%;left:14%">1</div>
+              <div class="mw" style="height:240px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn mid">
+                    <div class="inst">
+                      <div class="url">watch?v=dG0sys <span class="an">Analyze</span></div>
+                      <div class="dock">
+                        <div class="th"><img src="thumbs/code.jpg" alt="" /></div>
+                        <div>
+                          <b>Distributed Systems in Go</b>
+                          <div class="meta">TechCraft · 18:42</div>
+                        </div>
+                        <div class="segfmt">
+                          <div class="fmt quiet"><b>4K</b></div>
+                          <div class="fmt"><b>1080</b></div>
+                          <div class="fmt"><b>720</b></div>
+                          <div class="fmt"><b>Audio</b></div>
+                        </div>
+                        <span class="an">Add to Queue</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>The field stayed. The result cannot be read as a video. Four equal chips ask for a decision every time. No size, so the decision has no facts.</span></li>
+            </ol>
+          </div>
+          <div class="col next">
+            <h3>Playlist · admit, then maybe choose</h3>
+            <div class="stage">
+              <div class="ring-ok" style="top:52px;left:24%;right:16%;height:110px"></div>
+              <div class="pin good" style="top:48px;left:22%">1</div>
+              <div class="mw" style="height:240px">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Home</div></div>
+                <div class="body">
+                  <aside class="sb"><div class="ni on-quiet">Home</div></aside>
+                  <div class="mn stack">
+                    <div class="hbar">
+                      <div class="url">playlist?list=… <span class="an">Analyze</span></div>
+                    </div>
+                    <div class="confirm">
+                      <div class="th"><img src="thumbs/go.jpg" alt="" /></div>
+                      <div>
+                        <b>Go Distributed Systems Masterclass</b>
+                        <div class="meta">Playlist · 24 videos · TechCraft · 6h 45m</div>
+                        <div class="actions">
+                          <span class="rec">1080p <small>~8.2 GB</small></span>
+                          <span class="quietlink">Choose videos…</span>
+                          <span class="an">Admit 24</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span></div>
+              </div>
+            </div>
+            <ol class="legend">
+              <li><span class="n">1</span><span>Same card as a single video. The list is behind Choose videos. It is not a filmstrip and not the first screen.</span></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="keep">
+      <h2>Leave these alone</h2>
+      <p>
+        The zinc palette, the 16:9 thumbs, nested playlist rows, Home as a start screen, and the Downloads inspector are already the product.
+        I would not yank empty Home up to match Queue. I would not add Dashboard, Library, or any of the hallucinated JPEG nav.
+        If there is only one pass after this review, do it in this order: strip the self-advertising chrome, split Queue from Downloads for real, quiet the glow, then lock type. After that it stops looking generated and starts looking like something that could sit next to Finder.
+      </p>
+      <p style="margin-top:12px">
+        Three places, with different jobs. <a href="index.html">Current chrome</a> is the original prototype, crumbs and shortcut pills included.
+        <a href="p1.html">Proposal 1</a> is that same app with one navigation: sidebar, a window title, keyboard shortcuts that still work, no title-bar dock.
+        <a href="p13.html">Proposal 13</a> is Home as confirm-then-commit, with motion. This page stays the review. New comments become a new numbered proposal. Older ones stay as written.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

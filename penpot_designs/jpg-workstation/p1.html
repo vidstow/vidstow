@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="en" class="p1">
+<head>
+  <meta charset="UTF-8" />
+  <title>VidStow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;650;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090B;
+      --sidebar: #0C0C0E;
+      --base: #111113;
+      --raised: #18181B;
+      --hover: #1F1F23;
+      --border: #27272A;
+      --border-strong: #3F3F46;
+      --text: #FAFAFA;
+      --secondary: #A1A1AA;
+      --muted: #71717A;
+      --accent: #3B82F6;
+      --accent-2: #2563EB;
+      --accent-soft: rgba(59, 130, 246, 0.14);
+      --glow: 0 0 14px rgba(59, 130, 246, 0.35);
+      --green: #22C55E;
+      --amber: #F59E0B;
+      --red: #EF4444;
+      --r: 8px;
+      --sidebar-w: 196px;
+      --title-h: 36px;
+      --status-h: 22px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #050506; }
+    body {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 14px;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    .switcher {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 6px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--sidebar); color: var(--muted); font-size: 12px; font-weight: 500;
+    }
+    .switcher a, .switcher [aria-current="page"] {
+      padding: 5px 10px; border-radius: 999px; text-decoration: none; color: var(--secondary);
+    }
+    .switcher a:hover { color: var(--text); background: #18181B; }
+    .switcher [aria-current="page"] {
+      background: #18181B; color: var(--text); font-weight: 600;
+    }
+    .switcher .sep { color: #3F3F46; padding: 0 2px; }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button, input, textarea { outline: none; }
+
+    .window {
+      position: relative;
+      display: grid;
+      grid-template-rows: var(--title-h) 1fr var(--status-h);
+      width: 1376px; height: 768px;
+      overflow: hidden;
+      border: 1px solid #1A1A1E;
+      border-radius: 12px;
+      background: var(--bg);
+      box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+    }
+    .titlebar {
+      display: flex; align-items: center; gap: 14px;
+      padding: 0 14px 0 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--sidebar);
+      -webkit-app-region: drag;
+    }
+    .lights { display: flex; gap: 7px; }
+    .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+    .lights i:nth-child(1) { background: #EF4444; }
+    .lights i:nth-child(2) { background: #F59E0B; }
+    .lights i:nth-child(3) { background: #22C55E; }
+    .crumbs { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 500; }
+    .crumbs b { color: var(--text); font-weight: 600; }
+    .shortcuts { margin-left: auto; display: flex; gap: 6px; }
+    .pill {
+      height: 22px; padding: 0 8px; border: 1px solid #202023; border-radius: 6px;
+      background: #111113; color: var(--muted); font-size: 11px; font-weight: 500;
+    }
+    .pill.on { border-color: rgba(59,130,246,0.45); background: #18181B; color: #60A5FA; box-shadow: var(--glow); }
+
+    .shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 0; }
+    .sidebar {
+      display: flex; flex-direction: column;
+      padding: 12px 10px 12px;
+      border-right: 1px solid var(--border);
+      background: var(--sidebar);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; margin: 2px 6px 16px; }
+    .mark {
+      width: 28px; height: 28px; display: grid; place-items: center;
+      border-radius: 7px; background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+      color: #fff; font-size: 14px; font-weight: 700; letter-spacing: -0.04em;
+    }
+    .brand strong { font-size: 15px; font-weight: 650; letter-spacing: -0.03em; }
+    .nav { display: flex; flex-direction: column; gap: 2px; }
+    .nav-btn {
+      display: flex; align-items: center; gap: 10px;
+      height: 36px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px;
+      background: transparent; color: var(--secondary); font-size: 13px; font-weight: 500; text-align: left;
+    }
+    .nav-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+    .nav-btn:hover { background: #141416; color: var(--text); }
+    .nav-btn.active {
+      border-color: rgba(59,130,246,0.45); background: var(--accent-soft); color: #fff;
+      box-shadow: var(--glow);
+    }
+    .nav-btn.active svg { color: var(--accent); }
+    .nav-btn .badge {
+      margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
+      display: grid; place-items: center; border-radius: 999px; background: #27272A;
+      color: var(--secondary); font-size: 10px; font-weight: 650;
+    }
+    .nav-btn.active .badge { background: var(--accent-2); color: #fff; }
+    .nav-gap { height: 1px; margin: 10px 8px; background: var(--border); }
+    .sidebar .spacer { flex: 1; }
+    .ffmpeg {
+      display: flex; align-items: center; gap: 8px;
+      height: 32px; margin: 0 4px; padding: 0 10px; border: 1px solid #1F3A2A;
+      border-radius: 999px; background: #0F1A14; color: #D1D5DB; font-size: 11px; font-weight: 550;
+    }
+    .ffmpeg .led { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+    .main { min-width: 0; min-height: 0; overflow: auto; background: var(--bg); }
+    .page { padding: 18px 22px 20px; min-height: 100%; }
+    .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .page-head h1 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.04em; }
+    .page-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+    .statusbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; border-top: 1px solid var(--border); background: #0A0A0C;
+      color: var(--muted); font-size: 11px;
+    }
+    .statusbar .live { color: #60A5FA; }
+
+    .btn {
+      height: 32px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r);
+      background: var(--raised); color: #E4E4E7; font-size: 12px; font-weight: 550;
+    }
+    .btn:hover { background: var(--hover); }
+    .btn.primary { border-color: var(--accent-2); background: var(--accent-2); color: #fff; }
+    .btn.primary:hover { background: #1D4ED8; }
+    .btn.ghost { background: transparent; }
+    .btn.danger { color: #F87171; }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    .urlbar {
+      display: flex; align-items: center; gap: 10px;
+      height: 44px; padding: 0 8px 0 14px;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--base);
+    }
+    .urlbar:focus-within { border-color: rgba(59,130,246,0.55); box-shadow: var(--glow); }
+    .urlbar input {
+      flex: 1; border: 0; background: transparent; color: var(--text); font-size: 13px;
+    }
+    .urlbar input::placeholder { color: var(--muted); }
+    .icon-btn {
+      width: 28px; height: 28px; display: grid; place-items: center;
+      border: 0; border-radius: 6px; background: transparent; color: var(--secondary);
+    }
+
+    .empty {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 620px; padding: 24px 80px 40px;
+    }
+    .empty .urlbar { width: min(780px, 100%); }
+    .drop {
+      width: min(780px, 100%); margin-top: 16px; padding: 36px 24px;
+      border: 1.5px dashed #2A2A30; border-radius: 12px;
+      color: var(--secondary); text-align: center; font-size: 13px;
+    }
+    .drop svg { width: 28px; height: 28px; margin-bottom: 8px; color: var(--accent); }
+    .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+    .chip {
+      height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--raised); color: var(--secondary); font-size: 11px; font-weight: 500;
+    }
+    .chip:hover { color: var(--text); border-color: var(--border-strong); }
+    .stat-pill {
+      margin-top: 18px; height: 28px; padding: 0 12px;
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid var(--border); border-radius: 999px; background: var(--base);
+      color: var(--secondary); font-size: 12px;
+    }
+
+    .mode {
+      display: inline-flex; align-items: center; padding: 3px;
+      border: 1px solid var(--border); border-radius: 999px; background: var(--base);
+    }
+    .mode button {
+      height: 26px; padding: 0 12px; border: 0; border-radius: 999px;
+      background: transparent; color: var(--muted); font-size: 12px; font-weight: 550;
+    }
+    .mode button.on { background: var(--accent-2); color: #fff; }
+
+    .card { border: 1px solid var(--border); border-radius: 12px; background: var(--raised); }
+    .video-card { display: grid; grid-template-columns: 220px 1fr; gap: 16px; padding: 12px; margin: 14px 0; }
+    .thumb {
+      position: relative; border-radius: 8px; overflow: hidden; background: #152033;
+      min-height: 112px; aspect-ratio: 16 / 9;
+    }
+    .thumb.lg { min-height: 148px; }
+    .thumb.mini {
+      width: 92px; height: 52px; min-height: 52px; aspect-ratio: auto; flex: none;
+    }
+    .thumb img.frame {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .thumb:not(.mini) img.frame { position: absolute; inset: 0; }
+    .badge {
+      position: absolute; padding: 2px 6px; border-radius: 4px;
+      background: rgba(0,0,0,0.72); color: #fff; font-size: 10px; font-weight: 650;
+      z-index: 1;
+    }
+    .badge.tl { top: 8px; left: 8px; background: var(--accent-2); }
+    .badge.br { right: 8px; bottom: 8px; }
+    .thumb.mini .badge.tl { top: 4px; left: 4px; font-size: 9px; padding: 1px 5px; }
+    .thumb.mini .badge.br { right: 4px; bottom: 4px; font-size: 9px; padding: 1px 5px; }
+    .meta h2 { margin: 10px 0 6px; font-size: 16px; font-weight: 650; letter-spacing: -0.03em; }
+    .meta p { margin: 0; color: var(--secondary); font-size: 12px; }
+    .tag {
+      display: inline-flex; margin-top: 10px; padding: 3px 8px;
+      border: 1px solid rgba(34,197,94,0.35); border-radius: 999px;
+      color: #86EFAC; font-size: 11px;
+    }
+
+    .label { margin: 14px 0 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
+    .formats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .fmt {
+      padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--base); text-align: left;
+    }
+    .fmt:hover { border-color: var(--border-strong); }
+    .fmt.on { border-color: var(--accent); background: rgba(59,130,246,0.08); box-shadow: var(--glow); }
+    .fmt b { display: block; font-size: 14px; }
+    .fmt .rec {
+      display: inline-block; margin: 6px 0; padding: 1px 6px; border-radius: 999px;
+      background: var(--accent-2); color: #fff; font-size: 10px; font-weight: 650;
+    }
+    .fmt small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+    .extras { display: flex; align-items: center; gap: 22px; padding: 12px 14px; }
+    .toggle { display: inline-flex; align-items: center; gap: 8px; color: var(--secondary); font-size: 12px; }
+    .switch {
+      width: 34px; height: 18px; border: 0; border-radius: 999px; background: #3F3F46; position: relative;
+    }
+    .switch:after {
+      content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+      border-radius: 50%; background: #fff;
+    }
+    .switch.on { background: var(--accent); }
+    .switch.on:after { left: 18px; }
+
+    .savebar {
+      display: flex; align-items: center; gap: 10px; margin-top: 16px;
+      color: var(--secondary); font-size: 12px;
+    }
+    .savebar .path { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #D4D4D8; }
+    .savebar .btn.primary { margin-left: auto; height: 36px; padding: 0 16px; font-size: 13px; }
+
+    .split { display: grid; grid-template-columns: 1fr 220px; gap: 12px; }
+    .editor {
+      display: grid; grid-template-columns: 28px 18px 1fr; gap: 0 8px;
+      padding: 12px; min-height: 168px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px;
+    }
+    .editor .ln { color: var(--muted); text-align: right; line-height: 1.7; }
+    .editor .st { line-height: 1.7; }
+    .editor .url { color: #E8E0B0; line-height: 1.7; }
+    .metrics { padding: 14px; }
+    .metrics h3 { margin: 0 0 12px; font-size: 13px; }
+    .mpill { display: inline-flex; margin: 0 6px 6px 0; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; }
+    .mpill.ok { background: rgba(34,197,94,0.12); color: #86EFAC; }
+    .mpill.warn { background: rgba(245,158,11,0.12); color: #FCD34D; }
+    .mpill.bad { background: rgba(239,68,68,0.12); color: #FCA5A5; }
+    .expire { margin-top: 10px; color: var(--muted); font-size: 11px; }
+
+    .policies { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .policy { padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--base); text-align: left; }
+    .policy.on { border-color: var(--accent); box-shadow: var(--glow); }
+    .policy b { display: block; }
+    .policy small { color: var(--muted); }
+
+    .plist-head { display: grid; grid-template-columns: 148px 1fr; gap: 16px; padding: 12px; }
+    .mosaic { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; border-radius: 8px; overflow: hidden; height: 96px; }
+    .mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .toolbar { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+    .search {
+      flex: 1; height: 32px; padding: 0 10px 0 30px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--base) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2371717A' stroke-width='1.6'><circle cx='7' cy='7' r='5'/><path d='M11 11l3 3'/></svg>") 8px 50% no-repeat;
+      color: var(--text); font-size: 12px;
+    }
+    .entry {
+      display: grid; grid-template-columns: 18px 28px 92px 1fr auto; gap: 10px; align-items: center;
+      padding: 8px 10px; border-bottom: 1px solid #1F1F23;
+    }
+    .entry:last-child { border-bottom: 0; }
+    .entry .thumb.mini { width: 92px; height: 48px; min-height: 48px; border-radius: 6px; }
+    .entry .t { font-size: 13px; font-weight: 550; }
+    .entry .s { color: var(--muted); font-size: 11px; }
+
+    .q-tools { display: flex; gap: 8px; }
+    .speed { display: inline-flex; align-items: center; gap: 6px; margin-left: 12px; color: var(--green); font-size: 12px; font-weight: 550; }
+    .job { padding: 12px; margin-bottom: 10px; }
+    .job-row { display: grid; grid-template-columns: 92px 1fr auto; gap: 12px; align-items: center; }
+    .bar { height: 6px; margin: 8px 0 6px; border-radius: 999px; background: #27272A; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--accent); }
+    .phase {
+      display: inline-flex; padding: 3px 8px; border-radius: 999px;
+      background: rgba(59,130,246,0.16); color: #93C5FD; font-size: 11px;
+    }
+    .coll-head { display: flex; align-items: center; gap: 12px; padding: 4px 4px 10px; cursor: pointer; }
+    .ring {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: conic-gradient(var(--accent) 33%, #27272A 0);
+      display: grid; place-items: center; flex: none;
+    }
+    .ring span { width: 30px; height: 30px; border-radius: 50%; background: var(--raised); color: var(--text); font-size: 9px; font-weight: 700; display: grid; place-items: center; }
+    .child { padding: 6px 8px 8px 16px; }
+    .child .job-row { grid-template-columns: 92px 1fr; }
+
+    .dl { display: grid; grid-template-columns: 1fr 340px; min-height: 100%; }
+    .dl-list { padding: 18px 18px 18px 22px; min-width: 0; }
+    .filters { display: flex; gap: 6px; margin: 12px 0 14px; flex-wrap: wrap; }
+    .filters button {
+      height: 26px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px;
+      background: var(--base); color: var(--secondary); font-size: 11px; font-weight: 550;
+    }
+    .filters button.on { border-color: transparent; background: var(--accent-2); color: #fff; }
+    .row {
+      display: grid; grid-template-columns: 92px 1fr auto; gap: 12px; align-items: center;
+      padding: 8px; margin-bottom: 8px; border: 1px solid transparent; border-radius: 10px;
+      background: var(--raised); text-align: left; width: 100%;
+    }
+    .row.on { border-color: var(--accent); box-shadow: var(--glow); }
+    .fpill { padding: 2px 7px; border: 1px solid #2B3A55; border-radius: 6px; color: #93C5FD; font-size: 10px; font-weight: 650; }
+    .inspector {
+      padding: 16px; border-left: 1px solid var(--border); background: #101012;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .inspector h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.02em; }
+    .kv { display: grid; grid-template-columns: 110px 1fr; gap: 8px 10px; font-size: 12px; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; word-break: break-all; }
+    .inspector .btn { width: 100%; }
+    .stack { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+
+    .group { margin-bottom: 14px; padding: 16px 18px; }
+    .group h2 { margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+    .setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid #1F1F23; }
+    .setting:last-child { border-bottom: 0; }
+    .setting .sub { margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .seg { display: flex; gap: 6px; }
+    .seg button {
+      width: 32px; height: 32px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--base); color: var(--secondary); font-size: 12px;
+    }
+    .seg button.on { border-color: var(--accent); background: var(--accent-2); color: #fff; }
+    .okpill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
+      border: 1px solid rgba(34,197,94,0.3); border-radius: 999px;
+      background: rgba(34,197,94,0.1); color: #86EFAC; font-size: 11px; font-weight: 600;
+    }
+    .mono { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--base); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #D4D4D8; }
+
+    .overlay {
+      position: absolute; inset: 0; z-index: 20; display: none; place-items: center;
+      background: rgba(0,0,0,0.72);
+    }
+    .overlay.open { display: grid; }
+    .overlay[hidden] { display: none !important; }
+    .kv dd.path { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; color: #D4D4D8; }
+    .dialog { width: 560px; border: 1px solid var(--border); border-radius: 12px; background: var(--raised); overflow: hidden; }
+    .dialog header { display: flex; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+    .warn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 999px; background: rgba(245,158,11,0.12); color: #FBBF24; font-weight: 700; }
+    .dialog header h3 { margin: 0; font-size: 14px; }
+    .dialog header p { margin: 4px 0 0; color: var(--secondary); font-size: 12px; }
+    .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 16px; background: var(--base); }
+    .cmp article { padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); font-size: 12px; }
+    .cmp article.new { border-color: rgba(59,130,246,0.45); }
+    .cmp .thumb { width: 100%; height: 72px; min-height: 72px; margin-bottom: 8px; aspect-ratio: auto; }
+    .cmp .k { display: block; margin-bottom: 6px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    .cmp .new .k { color: #60A5FA; }
+    .opts { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+    .opts label { display: flex; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--base); font-size: 12px; }
+    .opts label.sel { border-color: rgba(59,130,246,0.6); background: rgba(37,99,235,0.12); }
+    .opts .hint { margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .opts label.sel .hint { color: #60A5FA; }
+    .dialog footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); background: var(--base); }
+
+    .toast {
+      position: absolute; left: 50%; bottom: 36px; transform: translateX(-50%);
+      display: none; padding: 8px 14px; border: 1px solid rgba(34,197,94,0.35);
+      border-radius: 8px; background: #0F1A14; color: #86EFAC; font-size: 12px; z-index: 10;
+    }
+    .toast.show { display: block; }
+
+    html.p1 .shortcuts { display: none; }
+    html.p1 .crumbs { color: var(--text); }
+    html.p1 .crumbs b { font-weight: 600; }
+    html.p1 .nav-btn.active {
+      border-color: transparent;
+      background: #18181B;
+      color: #fff;
+      box-shadow: none;
+    }
+    html.p1 .nav-btn.active svg { color: #D4D4D8; }
+    html.p1 .nav-btn.active .badge { background: #3F3F46; color: #fff; }
+  </style>
+</head>
+<body>
+  <nav class="switcher" aria-label="Chrome versions">
+    <a id="link-current" href="index.html">Current chrome</a>
+    <span class="sep" aria-hidden="true">·</span>
+    <a id="link-p1" href="p1.html">Proposal 1</a>
+    <span class="sep" aria-hidden="true">·</span>
+    <a id="link-p13" href="p13.html">Proposal 13</a>
+    <span class="sep" aria-hidden="true">·</span>
+    <a href="proposals.html#chrome">Design review</a>
+  </nav>
+  <div class="window" id="app">
+    <header class="titlebar">
+      <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="crumbs" id="crumbs"><span>VidStow</span> › <b>Home</b></div>
+      <div class="shortcuts">
+        <button class="pill on" type="button" data-go="home">⌘1 Home</button>
+        <button class="pill" type="button" data-go="queue">⌘2 Queue</button>
+        <button class="pill" type="button" data-go="downloads">⌘3 Downloads</button>
+        <button class="pill" type="button" data-go="settings">⌘, Settings</button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand"><div class="mark">V</div><strong>VidStow</strong></div>
+        <nav class="nav" aria-label="Primary">
+          <button class="nav-btn active" type="button" data-go="home" title="Home ⌘1">
+            <svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4Z"/></svg>
+            Home
+          </button>
+          <button class="nav-btn" type="button" data-go="queue" title="Queue ⌘2">
+            <svg viewBox="0 0 24 24"><path d="M8 7h12M8 12h12M8 17h8"/><circle cx="4.5" cy="7" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17" r="1"/></svg>
+            Queue <span class="badge">2</span>
+          </button>
+          <button class="nav-btn" type="button" data-go="downloads" title="Downloads ⌘3">
+            <svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>
+            Downloads
+          </button>
+        </nav>
+        <div class="nav-gap"></div>
+        <nav class="nav" aria-label="App">
+          <button class="nav-btn" type="button" data-go="settings" title="Settings ⌘,">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.4-6.4-1.4 1.4M7 17l-1.4 1.4m12.8 0L17 17M7 7 5.6 5.6"/></svg>
+            Settings
+          </button>
+          <button class="nav-btn" type="button" data-go="about">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg>
+            About
+          </button>
+        </nav>
+        <div class="spacer"></div>
+        <div class="ffmpeg"><span class="led"></span>FFmpeg Ready</div>
+      </aside>
+
+      <main class="main" id="main"></main>
+    </div>
+
+    <footer class="statusbar">
+      <span id="status-left">~/Movies/VidStow</span>
+      <span>ytdlp-go ready · Persistence healthy</span>
+      <span class="live" id="status-right">Live 14.8 MB/s · Slots 2/2</span>
+    </footer>
+    <div class="toast" id="toast">Added to queue</div>
+    <div class="overlay" id="overlay" hidden aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true">
+      <header>
+        <div class="warn">△</div>
+        <div>
+          <h3>Action Required: Destination File Exists</h3>
+          <p>“distributed_systems.mp4” already exists in your destination folder.</p>
+        </div>
+      </header>
+      <div class="cmp">
+        <article>
+          <div class="thumb"><img class="frame" src="thumbs/code.jpg" alt="" /></div>
+          <span class="k">Existing file on disk</span>
+          <strong>distributed_systems.mp4</strong>
+          <p class="hint" style="margin:8px 0 0;color:#A1A1AA;font-size:12px;line-height:1.5">Size: 1.18 GB<br>Format: 1080p H.264 MP4<br>Modified 2 weeks ago</p>
+        </article>
+        <article class="new">
+          <div class="thumb"><img class="frame" src="thumbs/code.jpg" alt="" /><span class="badge tl">4K</span></div>
+          <span class="k">New download</span>
+          <strong>distributed_systems.mp4</strong>
+          <p class="hint" style="margin:8px 0 0;color:#A1A1AA;font-size:12px;line-height:1.5">Size: ~1.42 GB<br>Format: 4K 2160p AV1 MP4<br><span style="color:#4ADE80">Higher Resolution &amp; Quality</span></p>
+        </article>
+      </div>
+      <div class="opts">
+        <label><input type="radio" name="c"><div>Replace existing file on disk<div class="hint">Overwrites the previous file with the higher quality version.</div></div></label>
+        <label class="sel"><input type="radio" name="c" checked><div>Save with a unique name (Recommended)<div class="hint">Saves as distributed_systems-1.mp4. Both files are kept.</div></div></label>
+        <label><input type="radio" name="c"><div>Keep existing file and cancel this download<div class="hint">Drops the queue task without modifying your local folder.</div></div></label>
+      </div>
+      <footer>
+        <button class="btn" type="button" id="dismiss">Dismiss</button>
+        <button class="btn primary" type="button" id="apply">Apply Decision</button>
+      </footer>
+    </div>
+    </div>
+  </div>
+
+  <script>
+    const P1 = /(^|\/)p1\.html$/i.test(location.pathname);
+    const P13 = /(^|\/)p13\.html$/i.test(location.pathname);
+    document.documentElement.classList.toggle("p1", P1);
+    document.title = P1 ? "VidStow — Proposal 1" : "VidStow";
+
+    const main = document.getElementById("main");
+    const crumbs = document.getElementById("crumbs");
+    const toast = document.getElementById("toast");
+    const overlay = document.getElementById("overlay");
+    let route = "home";
+    let home = "empty";
+    let format = "4k";
+    let policy = "1080";
+    let batchPolicy = "1080";
+    let selectedDl = 0;
+    let dlFilter = "all";
+    let collectionOpen = true;
+    let url = "";
+    let concurrency = 2;
+
+    const downloads = [
+      { title: "Building Modern Distributed Systems in Go", ch: "TechCraft", size: "1.42 GB", ago: "2 days ago", fmt: "4K MP4", kind: "video", thumb: "thumbs/code.jpg", dur: "18:42", res: "3840×2160", v: "AV1", a: "Opus 160kbps", sub: "Embedded + English.srt", path: "~/Movies/VidStow/distributed_systems.mp4" },
+      { title: "Rust vs Go Architecture 2026: A Deep Dive", ch: "DevByte", size: "1.20 GB", ago: "1 week ago", fmt: "1080p MP4", kind: "video", thumb: "thumbs/rust.jpg", dur: "24:11", res: "1920×1080", v: "H.264", a: "AAC 192kbps", sub: "None", path: "~/Movies/VidStow/rust_vs_go.mp4" },
+      { title: "Designing Event-Driven Microservices Podcast", ch: "Go Weekly", size: "42 MB", ago: "2 weeks ago", fmt: "MP3 320k", kind: "audio", thumb: "thumbs/podcast.jpg", dur: "48:20", res: "—", v: "—", a: "MP3 320kbps", sub: "—", path: "~/Movies/VidStow/microservices.mp3" },
+      { title: "Go Concurrency in Practice", ch: "TechCraft", size: "860 MB", ago: "3 weeks ago", fmt: "1080p MKV", kind: "video", thumb: "thumbs/concurrency.jpg", dur: "32:08", res: "1920×1080", v: "AV1", a: "Opus", sub: "Embedded", path: "~/Movies/VidStow/concurrency.mkv" }
+    ];
+
+    const titles = { home: "Home", queue: "Queue", downloads: "Downloads", settings: "Settings", about: "About" };
+    const crumbsFor = () => {
+      if (route === "home" && home === "batch") return ["VidStow", "Home", "Batch URL Composer"];
+      if (route === "home" && home === "playlist") return ["VidStow", "Home", "Playlist Review"];
+      if (route === "home" && home === "video") return ["VidStow", "Home", "Video Analysis"];
+      return ["VidStow", titles[route]];
+    };
+    function windowTitle() {
+      return titles[route] || "Home";
+    }
+    function querySuffix() {
+      const q = new URLSearchParams(location.search);
+      q.delete("p1");
+      if (["proposals", "p1", "p13"].includes(q.get("page"))) q.delete("page");
+      const s = q.toString();
+      return s ? `?${s}` : "";
+    }
+    function wireSwitcher() {
+      const suffix = querySuffix();
+      const here = P13 ? "p13.html" : P1 ? "p1.html" : "index.html";
+      [
+        ["link-current", "index.html"],
+        ["link-p1", "p1.html"],
+        ["link-p13", "p13.html"],
+      ].forEach(([id, file]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (file === here) {
+          el.removeAttribute("href");
+          el.setAttribute("aria-current", "page");
+        } else {
+          el.href = file + suffix;
+          el.removeAttribute("aria-current");
+        }
+      });
+    }
+    function setTitlebar() {
+      if (P1) {
+        crumbs.innerHTML = `<b>${windowTitle()}</b>`;
+        return;
+      }
+      const c = crumbsFor();
+      crumbs.innerHTML = c.map((x, i) => i === c.length - 1 ? `<b>${x}</b>` : `<span>${x}</span>`).join(" › ");
+      document.querySelectorAll(".shortcuts .pill").forEach((b) => b.classList.toggle("on", b.dataset.go === route));
+    }
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 1600);
+    }
+    function openOverlay() {
+      overlay.hidden = false;
+      overlay.setAttribute("aria-hidden", "false");
+      overlay.classList.add("open");
+    }
+    function closeOverlay() {
+      overlay.classList.remove("open");
+      overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
+    }
+
+    function go(next, homeMode) {
+      route = next;
+      if (homeMode) home = homeMode;
+      if (next !== "home") home = home;
+      closeOverlay();
+      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.go === route));
+      setTitlebar();
+      render();
+    }
+
+    function analyze() {
+      const t = url.toLowerCase();
+      if (home === "batch" || t.includes("batch")) return go("home", "batch");
+      if (t.includes("list=") || t.includes("playlist")) return go("home", "playlist");
+      go("home", "video");
+    }
+
+    function admit(n) {
+      showToast(n ? `Admitted ${n} to queue` : "Added to queue");
+      go("queue");
+    }
+
+    function pages() {
+      if (route === "home" && home === "empty") return `
+        <div class="empty">
+          <div class="urlbar">
+            <svg width="16" height="16" fill="none" stroke="#71717A" stroke-width="1.7"><path d="M7 9a4 4 0 0 0 6 0l1-1a4 4 0 0 0-6-6L7 3"/><path d="M9 7a4 4 0 0 0-6 0l-1 1a4 4 0 0 0 6 6L9 13"/></svg>
+            <input id="url" placeholder="Paste YouTube video, playlist, or Short URL..." value="${url.replaceAll('"','&quot;')}" />
+            <button class="btn" type="button" id="paste">Paste from Clipboard ⌘V</button>
+            <button class="btn primary" type="button" id="analyze">Analyze</button>
+          </div>
+          <div class="drop" id="drop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg>
+            <div>Drop YouTube links directly here to analyze</div>
+          </div>
+          <div class="chips">
+            <button class="chip" type="button" data-demo="video">Single Video Analysis</button>
+            <button class="chip" type="button" data-demo="playlist">Playlists up to 500 items</button>
+            <button class="chip" type="button" data-demo="batch">Batch URL Paste (2–20)</button>
+            <button class="chip" type="button">Complete Files with Subtitles</button>
+          </div>
+          <div class="stat-pill">3 downloads completed today · 2.4 GB saved</div>
+        </div>`;
+
+      if (route === "home" && home === "video") return `
+        <div class="page">
+          <div class="page-head">
+            <div></div>
+            <div class="mode">
+              <button class="on" type="button">Single Video</button>
+              <button type="button" id="to-batch">Batch URLs (2–20)</button>
+            </div>
+          </div>
+          <div class="urlbar">
+            <input id="url" value="https://www.youtube.com/watch?v=dG0sys" />
+            <button class="btn" type="button" id="paste">Paste from Clipboard</button>
+          </div>
+          <div class="card video-card">
+            ${thumb("thumbs/code.jpg", "lg", `<span class="badge tl">4K HDR</span><span class="badge br">18:42</span>`)}
+            <div class="meta">
+              <h2>Building Modern Distributed Systems in Go</h2>
+              <p>TechCraft · 1.4M views · 2 days ago</p>
+              <span class="tag">Public Video</span>
+            </div>
+          </div>
+          <div class="label">Format</div>
+          <div class="formats">
+            ${fmt("4k","4K","Recommended","2160p UHD","AV1 / Opus · ~1.4 GB")}
+            ${fmt("1080","1080p","","FHD","H.264 / AAC · ~480 MB")}
+            ${fmt("720","720p","","HD","H.264 · ~220 MB")}
+            ${fmt("audio","Audio","","MP3 320kbps","~42 MB")}
+          </div>
+          <div class="label">Output extras</div>
+          <div class="card extras">
+            <div class="toggle">Embed Subtitles (English) <button class="switch on" type="button" data-sw></button></div>
+            <label class="toggle"><input type="checkbox"> Keep .SRT Sidecar</label>
+          </div>
+          <div class="savebar">
+            <span>Save to:</span><span class="path">~/Movies/VidStow</span>
+            <button class="btn" type="button">Change…</button>
+            <button class="btn primary" type="button" id="add">Add to Queue</button>
+          </div>
+        </div>`;
+
+      if (route === "home" && home === "playlist") return `
+        <div class="page">
+          <div class="card plist-head">
+            <div class="mosaic">
+              <img src="thumbs/go.jpg" alt="" />
+              <img src="thumbs/clocks.jpg" alt="" />
+              <img src="thumbs/consensus.jpg" alt="" />
+              <img src="thumbs/servers.jpg" alt="" />
+            </div>
+            <div class="meta">
+              <h2>Go Distributed Systems Masterclass (24 videos)</h2>
+              <p>TechCraft · 6h 45m · Est. size ~8.2 GB</p>
+              <span class="tag">All 24 items ready</span>
+            </div>
+          </div>
+          <div class="toolbar">
+            <label class="toggle"><input type="checkbox" checked> Select All (24)</label>
+            <input class="search" placeholder="Search videos in playlist..." />
+            <span style="color:var(--muted);font-size:12px">Range 1–24</span>
+          </div>
+          <div class="card">
+            ${pentry(1,"01 — Introduction to Distributed Primitives in Go","10:38","thumbs/go.jpg")}
+            ${pentry(2,"02 — Clocks, Heartbeats, and Failure Detection","18:12","thumbs/clocks.jpg")}
+            ${pentry(3,"03 — Consensus without the mythology","22:04","thumbs/consensus.jpg")}
+            ${pentry(4,"04 — Tracing production Go services","16:40","thumbs/tracing.jpg")}
+          </div>
+          <div class="label">Unified output policy for all 24 videos</div>
+          <div class="policies">
+            ${pol("1080","1080p FHD MP4","Recommended")}
+            ${pol("720","720p HD MP4","")}
+            ${pol("mp3","Audio MP3 320k","")}
+          </div>
+          <div class="savebar">
+            <span>Save to:</span><span class="path">~/Movies/VidStow/Playlists</span>
+            <button class="btn primary" type="button" id="add">Admit Collection to Queue (24 items)</button>
+          </div>
+        </div>`;
+
+      if (route === "home" && home === "batch") return `
+        <div class="page">
+          <div class="page-head">
+            <div></div>
+            <div class="mode">
+              <button type="button" id="to-single">Single Video</button>
+              <button class="on" type="button">Batch URLs (2–20)</button>
+            </div>
+          </div>
+          <div class="split">
+            <div class="card editor">
+              <div class="ln">1<br>2<br>3<br>4<br>5<br>6</div>
+              <div class="st">✓<br>✓<br>✓<br>△<br>✓<br>✕</div>
+              <div class="url">youtube.com/watch?v=aaa111<br>youtube.com/watch?v=bbb222<br>youtube.com/watch?v=ccc333<br>youtube.com/watch?v=aaa111  (Duplicate)<br>youtube.com/watch?v=eee555<br>example.com/not-youtube  (Unsupported)</div>
+            </div>
+            <div class="card metrics">
+              <h3>Validation</h3>
+              <div class="mpill ok">Ready: 4 videos</div>
+              <div class="mpill warn">Duplicates: 1</div>
+              <div class="mpill bad">Invalid: 1</div>
+              <div class="expire">Validation expires in 4m 18s</div>
+            </div>
+          </div>
+          <div class="label">Batch output policy (applies to all 4 ready videos)</div>
+          <div class="policies">
+            ${bpol("1080","1080p FHD MP4","Recommended · ~1.85 GB")}
+            ${bpol("720","720p HD MP4","~860 MB")}
+            ${bpol("mp3","Audio Only","MP3 320k")}
+          </div>
+          <div class="savebar">
+            <span>Save to:</span><span class="path">~/Movies/VidStow/Batches</span>
+            <button class="btn primary" type="button" id="add">Admit Batch to Queue (4 videos)</button>
+          </div>
+        </div>`;
+
+      if (route === "queue") return `
+        <div class="page">
+          <div class="page-head">
+            <div style="display:flex;align-items:center">
+              <h1>Active Queue</h1>
+              <span class="speed">● 24.6 MB/s (2 slots occupied)</span>
+            </div>
+            <div class="q-tools">
+              <button class="btn" type="button">Pause All</button>
+              <button class="btn" type="button" disabled>Resume All</button>
+              <button class="btn" type="button">Clear Completed</button>
+            </div>
+          </div>
+          <div class="card job">
+            <div class="job-row">
+              ${thumb("thumbs/concurrency.jpg", "mini", `<span class="badge br">32:08</span>`)}
+              <div>
+                <b>Go Concurrency in Practice: Deep Dive into Channels</b>
+                <div style="color:var(--muted);font-size:12px;margin-top:4px">1080p FHD MP4 · TechCraft</div>
+                <div class="bar"><i style="width:88%"></i></div>
+                <span class="phase">Merging AV1 Video &amp; Opus Audio with FFmpeg (88%)</span>
+                <span style="margin-left:8px;color:var(--secondary);font-size:11px">18.4 MB/s · ETA 12s</span>
+              </div>
+              <div class="q-tools"><button class="btn ghost" type="button">Pause</button><button class="btn ghost" type="button">✕</button></div>
+            </div>
+          </div>
+          <div class="card job">
+            <div class="coll-head" id="toggle-col">
+              <div class="ring"><span>8/24</span></div>
+              <div style="flex:1">
+                <b>Go Distributed Systems Masterclass (24 videos)</b>
+                <div style="color:var(--muted);font-size:12px;margin-top:4px">8/24 finished · 33% · ~8.2 GB</div>
+              </div>
+              <span style="color:var(--muted)">${collectionOpen ? "▾" : "▸"}</span>
+            </div>
+            ${collectionOpen ? `
+              <div class="child">
+                <div class="job-row">
+                  ${thumb("thumbs/tracing.jpg", "mini", `<span class="badge br">14:22</span>`)}
+                  <div>
+                    <div style="font-size:13px">#9 Distributed Tracing with OpenTelemetry</div>
+                    <div class="bar"><i style="width:58%"></i></div>
+                    <div style="color:var(--muted);font-size:11px">58% · 6.2 MB/s</div>
+                  </div>
+                </div>
+              </div>
+              <div class="child">
+                <div class="job-row">
+                  ${thumb("thumbs/chaos.jpg", "mini", `<span class="badge br">19:05</span>`)}
+                  <div>
+                    <div style="font-size:13px">#10 Fault Injection &amp; Chaos Engineering</div>
+                    <span class="phase" style="background:#27272A;color:var(--secondary)">Queued in collection</span>
+                  </div>
+                </div>
+              </div>` : ""}
+          </div>
+          <div class="card job">
+            <div class="job-row">
+              ${thumb("thumbs/rust.jpg", "mini", `<span class="badge tl">4K</span><span class="badge br">24:11</span>`)}
+              <div>
+                <b>Rust vs Go Architecture 2026</b>
+                <div style="color:var(--muted);font-size:12px;margin-top:4px">4K MP4 · 1.2 GB · Downloaded to ~/Movies/VidStow</div>
+              </div>
+              <div class="q-tools">
+                <button class="btn primary" type="button">Open</button>
+                <button class="btn" type="button">Show in Finder</button>
+                <button class="btn" type="button" id="conflict">Conflict</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+      if (route === "downloads") {
+        const visible = downloads
+          .map((x, i) => ({ ...x, i }))
+          .filter((x) => dlFilter === "all" || x.kind === dlFilter);
+        if (!visible.some((x) => x.i === selectedDl) && visible.length) selectedDl = visible[0].i;
+        const d = downloads[selectedDl];
+        const rows = visible.map((x) => `
+          <button class="row ${x.i===selectedDl?"on":""}" type="button" data-dl="${x.i}">
+            ${thumb(x.thumb, "mini", `<span class="badge br">${x.dur}</span>`)}
+            <div>
+              <div style="font-weight:600;font-size:13px">${x.title}</div>
+              <div style="color:var(--muted);font-size:11px;margin-top:3px">${x.ch} · ${x.size} · ${x.ago}</div>
+            </div>
+            <span class="fpill">${x.fmt}</span>
+          </button>`).join("");
+        return `
+          <div class="dl">
+            <div class="dl-list">
+              <div class="page-head"><h1>Downloads</h1></div>
+              <input class="search" placeholder="Search 42 downloads..." />
+              <div class="filters">
+                <button class="${dlFilter==="all"?"on":""}" type="button" data-filter="all">All (4)</button>
+                <button class="${dlFilter==="video"?"on":""}" type="button" data-filter="video">Videos (3)</button>
+                <button class="${dlFilter==="audio"?"on":""}" type="button" data-filter="audio">Audio (1)</button>
+                <button type="button">Missing on disk</button>
+              </div>
+              ${rows}
+            </div>
+            <aside class="inspector">
+              <h2>${d.title}</h2>
+              ${thumb(d.thumb, "lg", d.kind === "audio" ? `<span class="badge br">${d.dur}</span>` : `<span class="badge tl">${d.fmt.split(" ")[0]}</span><span class="badge br">${d.dur}</span>`)}
+              <dl class="kv">
+                <dt>Resolution</dt><dd>${d.res}</dd>
+                <dt>Video codec</dt><dd>${d.v}</dd>
+                <dt>Audio</dt><dd>${d.a}</dd>
+                <dt>Subtitles</dt><dd>${d.sub}</dd>
+                <dt>File size</dt><dd>${d.size}</dd>
+                <dt>Path</dt><dd class="path">${d.path}</dd>
+              </dl>
+              <div class="stack">
+                <button class="btn" type="button">${d.kind === "audio" ? "Open Audio" : "Open Video"}</button>
+                <button class="btn" type="button">Show in Finder</button>
+                <button class="btn danger" type="button">Delete File</button>
+              </div>
+            </aside>
+          </div>`;
+      }
+
+      if (route === "settings") return `
+        <div class="page">
+          <div class="page-head">
+            <div><h1>Settings</h1><p>Storage, concurrency, output policy, and FFmpeg.</p></div>
+            <div><button class="btn" type="button">Reset to Defaults</button> <button class="btn primary" type="button">Save Settings</button></div>
+          </div>
+          <div class="card group">
+            <h2>Storage &amp; General</h2>
+            <div class="setting"><div>Default download folder<div class="sub">New downloads and collections are saved here.</div></div><span class="mono">~/Movies/VidStow</span> <button class="btn" type="button">Change…</button></div>
+            <div class="setting"><div>Create a subfolder for each download<div class="sub">Places video, audio, and .srt together.</div></div><input type="checkbox" checked></div>
+            <div class="setting"><div>Confirm before starting downloads<div class="sub">Shows an output summary before admitting work.</div></div><input type="checkbox"></div>
+            <div class="setting"><div>Restore interrupted downloads as paused<div class="sub">Keeps verified partial bytes across restarts.</div></div><input type="checkbox" checked></div>
+          </div>
+          <div class="card group">
+            <h2>Concurrency &amp; Bandwidth</h2>
+            <div class="setting">
+              <div>Simultaneous active transfers<div class="sub">1–3 recommended for stability.</div></div>
+              <div class="seg">${[1,2,3,4,5,6,8,10].map((n)=>`<button type="button" class="${n===concurrency?"on":""}" data-con="${n}">${n}</button>`).join("")}</div>
+            </div>
+          </div>
+          <div class="card group">
+            <h2>Complete Video &amp; Subtitle Policy</h2>
+            <div class="setting"><div>Embedded chapters &amp; artwork<div class="sub">Always on for complete video files.</div></div><span class="okpill">Always Enforced</span></div>
+            <div class="setting"><div>Default subtitles<div class="sub">Embed one track. Optional extra .srt.</div></div><span>Embed + sidecar</span></div>
+          </div>
+          <div class="card group">
+            <h2>FFmpeg Engine Integration</h2>
+            <div class="setting"><div>Executable path<div class="sub">Merging and MP3 conversion.</div></div><span class="okpill">FFmpeg 7.0.1 Ready</span></div>
+            <div class="setting"><div>Path</div><span class="mono">/opt/homebrew/bin/ffmpeg</span></div>
+          </div>
+        </div>`;
+
+      return `
+        <div class="page">
+          <div class="page-head"><div><h1>About</h1><p>A local YouTube video, Short, and playlist downloader for the desktop.</p></div></div>
+          <div class="card group">
+            <h2>VidStow</h2>
+            <div class="setting"><div>Version</div><div>beta · Apache-2.0</div></div>
+            <div class="setting"><div>Engine</div><div>ytdlp-go</div></div>
+            <div class="setting"><div>Platform</div><div>macOS arm64</div></div>
+            <div class="setting"><div>Source</div><div>github.com/vidstow/vidstow</div></div>
+          </div>
+          <div class="card group">
+            <h2>Built with</h2>
+            <div class="setting"><div>Go · Wails · Svelte · FFmpeg</div></div>
+          </div>
+        </div>`;
+    }
+
+    function fmt(id, label, rec, mid, sub) {
+      return `<button class="fmt ${format===id?"on":""}" type="button" data-fmt="${id}"><b>${label}</b>${rec?`<span class="rec">${rec}</span>`:""}<small>${mid}<br>${sub}</small></button>`;
+    }
+    function pol(id, label, rec) {
+      return `<button class="policy ${policy===id?"on":""}" type="button" data-pol="${id}"><b>${label}</b><small>${rec||"&nbsp;"}</small></button>`;
+    }
+    function bpol(id, label, rec) {
+      return `<button class="policy ${batchPolicy===id?"on":""}" type="button" data-bpol="${id}"><b>${label}</b><small>${rec}</small></button>`;
+    }
+    function pentry(n, title, dur, src) {
+      return `<div class="entry"><input type="checkbox" checked><span style="color:var(--muted);font-size:12px">#${n}</span>${thumb(src, "mini", `<span class="badge br">${dur}</span>`)}<div><div class="t">${title}</div><div class="s">TechCraft · ${dur}</div></div><span style="color:var(--muted);font-size:12px">${dur}</span></div>`;
+    }
+    function thumb(src, extra = "", badges = "") {
+      return `<div class="thumb ${extra}"><img class="frame" src="${src}" alt="" />${badges}</div>`;
+    }
+
+    function bind() {
+      main.querySelector("#url")?.addEventListener("input", (e) => url = e.target.value);
+      main.querySelector("#paste")?.addEventListener("click", () => {
+        url = "https://www.youtube.com/watch?v=dG0sys";
+        const el = main.querySelector("#url"); if (el) el.value = url;
+      });
+      main.querySelector("#analyze")?.addEventListener("click", analyze);
+      main.querySelector("#drop")?.addEventListener("click", () => go("home", "video"));
+      main.querySelectorAll("[data-demo]").forEach((b) => b.addEventListener("click", () => go("home", b.dataset.demo)));
+      main.querySelector("#to-batch")?.addEventListener("click", () => go("home", "batch"));
+      main.querySelector("#to-single")?.addEventListener("click", () => go("home", "video"));
+      main.querySelectorAll("[data-fmt]").forEach((b) => b.addEventListener("click", () => { format = b.dataset.fmt; render(); }));
+      main.querySelectorAll("[data-pol]").forEach((b) => b.addEventListener("click", () => { policy = b.dataset.pol; render(); }));
+      main.querySelectorAll("[data-bpol]").forEach((b) => b.addEventListener("click", () => { batchPolicy = b.dataset.bpol; render(); }));
+      main.querySelectorAll("[data-sw]").forEach((b) => b.addEventListener("click", () => b.classList.toggle("on")));
+      main.querySelector("#add")?.addEventListener("click", () => admit(home === "playlist" ? 24 : home === "batch" ? 4 : 1));
+      main.querySelector("#toggle-col")?.addEventListener("click", () => { collectionOpen = !collectionOpen; render(); });
+      main.querySelectorAll("[data-dl]").forEach((b) => b.addEventListener("click", () => { selectedDl = Number(b.dataset.dl); render(); }));
+      main.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", () => { dlFilter = b.dataset.filter; render(); }));
+      main.querySelectorAll("[data-con]").forEach((b) => b.addEventListener("click", () => { concurrency = Number(b.dataset.con); render(); }));
+      main.querySelector("#conflict")?.addEventListener("click", openOverlay);
+    }
+
+    function render() {
+      main.innerHTML = pages();
+      bind();
+    }
+
+    document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(b.dataset.go, b.dataset.go === "home" ? "empty" : home)));
+    document.getElementById("dismiss").onclick = closeOverlay;
+    document.getElementById("apply").onclick = closeOverlay;
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeOverlay(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeOverlay();
+      if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); go("home", "empty"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "2") { e.preventDefault(); go("queue"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "3") { e.preventDefault(); go("downloads"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") { e.preventDefault(); go("settings"); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "v" && route === "home" && home === "empty") {
+        url = "https://www.youtube.com/watch?v=dG0sys";
+        render();
+      }
+    });
+
+    const boot = new URLSearchParams(location.search);
+    if (boot.get("page") === "proposals") {
+      location.replace("proposals.html");
+    }
+    if (boot.get("page") === "p13") {
+      location.replace("p13.html" + querySuffix());
+    }
+    if (!P1 && boot.get("page") === "p1") {
+      location.replace("p1.html" + querySuffix());
+    }
+    wireSwitcher();
+    const bootPage = ["home", "queue", "downloads", "settings", "about"].includes(boot.get("page")) ? boot.get("page") : "home";
+    const bootHome = ["empty", "video", "playlist", "batch"].includes(boot.get("home")) ? boot.get("home") : undefined;
+    go(bootPage, bootHome);
+    if (boot.get("conflict") === "1") openOverlay();
+  </script>
+</body>
+</html>

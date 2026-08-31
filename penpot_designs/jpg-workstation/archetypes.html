@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VidStow — dock archetypes</title>
+<style>
+  :root {
+    --bg: #09090B; --base: #111113; --raised: #18181B; --hover: #1F1F23;
+    --border: #27272A; --border-strong: #3F3F46; --text: #FAFAFA; --secondary: #A1A1AA; --muted: #8F8F99;
+    --accent: #3B82F6; --accent-2: #2563EB; --accent-soft: rgba(59,130,246,0.12);
+    --mono: "Geist Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: Geist, ui-sans-serif, system-ui, sans-serif; padding: 40px 40px 80px; }
+  h1 { font-size: 15px; font-weight: 650; margin: 0 0 4px; }
+  .lede { color: var(--muted); font-size: 12px; margin: 0 0 32px; }
+  .wrap { width: min(860px, 100%); margin: 0 auto; }
+  .arch { margin-bottom: 48px; }
+  .arch > h2 { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-2); margin: 0 0 4px; }
+  .arch > p { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+  .card { border: 1px solid var(--border); border-radius: 12px; background: var(--raised); overflow: hidden; }
+  .btn { height: 30px; padding: 0 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--raised); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; }
+  .btn.pri { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+  .btn.sm { height: 24px; padding: 0 9px; font-size: 11px; }
+  .modeseg { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .modeseg span { height: 26px; padding: 0 13px; font-size: 11.5px; color: var(--muted); background: var(--base); display: inline-flex; align-items: center; cursor: pointer; }
+  .modeseg span.on { background: var(--accent-soft); color: #93C5FD; }
+  .modeseg span + span { border-left: 1px solid var(--border); }
+  .chips { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .chip { height: 26px; padding: 0 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--base); color: var(--muted); font-size: 11.5px; display: inline-flex; align-items: center; cursor: pointer; }
+  .chip.on { background: var(--accent-soft); border-color: rgba(59,130,246,0.55); color: #93C5FD; }
+  .chip.on::after { content: ''; width: 4px; height: 4px; border-radius: 99px; background: #93C5FD; margin-left: 6px; }
+  .dot { width: 4px; height: 4px; border-radius: 99px; background: #93C5FD; display: inline-block; margin-left: 6px; }
+  .ddisc { font-family: var(--mono); font-size: 11px; color: var(--muted); display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+  .ddisc .cov { color: var(--secondary); }
+  .ddisc .cost { color: var(--secondary); font-weight: 600; }
+  .ddisc.has { cursor: pointer; }
+  .ddisc.has:hover { color: var(--text); }
+  .meta { color: var(--secondary); font-size: 12px; }
+  .mono { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .outcome { font-family: var(--mono); font-size: 11px; color: var(--secondary); margin-top: 8px; }
+  .outcome b { color: var(--text); font-weight: 600; }
+  .divider { border: 0; border-top: 1px solid var(--border); margin: 48px 0; }
+  .vhead { font-size: 13px; font-weight: 650; color: #93C5FD; margin: 0 0 4px; }
+
+  /* the dock (C, live) */
+  .dock { padding: 14px 16px 0; }
+  .dock .top { display: grid; grid-template-columns: 96px 1fr auto; gap: 14px; align-items: start; }
+  .dock .top img { width: 96px; height: 54px; border-radius: 6px; object-fit: cover; }
+  .dock .top .cnt { width: 96px; height: 54px; border-radius: 6px; border: 1px solid var(--border); background: var(--base); color: #93C5FD; display: grid; place-items: center; font-weight: 700; font-size: 18px; }
+  .dock h3 { margin: 0; font-size: 14px; font-weight: 650; }
+  .dock .meta { margin-top: 3px; }
+  .dock .choice { display: flex; flex-direction: column; gap: 6px; justify-self: end; align-items: flex-end; padding-top: 1px; }
+  .dock .foot { display: flex; align-items: center; justify-content: space-between; margin: 12px -16px 0; padding: 10px 16px; border-top: 1px solid var(--border); background: var(--base); border-radius: 0 0 11px 11px; }
+  .dock .foot .lft { display: flex; align-items: center; gap: 8px; }
+  .dock .foot .lft .btn { height: 24px; padding: 0 9px; font-size: 11px; }
+
+  /* episode checklist */
+  .eplist { margin: 10px 0 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--base); overflow: hidden; }
+  .ephead { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); }
+  .ephead .lnk u { cursor: pointer; }
+  .eprow { display: grid; grid-template-columns: 14px 1fr auto; gap: 10px; align-items: center; padding: 6px 10px; font-size: 12px; color: var(--secondary); }
+  .eprow + .eprow { border-top: 1px solid var(--border); }
+  .eprow .chk { width: 12px; height: 12px; border: 1px solid var(--border-strong); border-radius: 3px; }
+  .eprow.sel .chk { background: var(--accent-2); border-color: var(--accent-2); }
+  .eprow.unsel b, .eprow.unsel .epd { opacity: 0.5; }
+  .eprow b { font-weight: 500; color: var(--text); font-size: 12px; }
+  .eprow .epd { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+
+  /* other archetypes (static references) */
+  .a-card { display: grid; grid-template-columns: 220px 1fr; min-height: 240px; }
+  .a-media { position: relative; background: #152033; }
+  .a-media img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .a-media::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9,9,11,0.05), rgba(9,9,11,0.45)); }
+  .a-count { position: absolute; left: 10px; bottom: 10px; z-index: 2; padding: 2px 8px; border-radius: 5px; background: rgba(0,0,0,0.75); color: #fff; font-family: var(--mono); font-size: 11px; font-weight: 600; }
+  .a-body { padding: 18px 20px 0; display: flex; flex-direction: column; }
+  .a-body h3 { margin: 0; font-size: 15.5px; font-weight: 650; }
+  .a-rows { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .a-foot { margin-top: auto; padding: 12px 20px; margin-left: -20px; margin-right: -20px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--base); }
+  .a-foot .lft { display: flex; align-items: center; gap: 8px; }
+  .b-hero { position: relative; height: 170px; background: #152033; }
+  .b-hero img { width: 100%; height: 100%; object-fit: cover; }
+  .b-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9,9,11,0.0), rgba(9,9,11,0.85)); }
+  .b-title { position: absolute; left: 20px; bottom: 12px; z-index: 2; }
+  .b-title h3 { margin: 0; font-size: 17px; font-weight: 650; text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
+  .b-title span { color: #D4D4D8; font-size: 12px; }
+  .b-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .b-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; border-top: 1px solid var(--border); margin-top: 2px; }
+  .b-foot .lft { display: flex; align-items: center; gap: 8px; }
+  .scope { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+  .scope a { color: #93C5FD; text-decoration: underline; text-underline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Dock — final layout (interactive)</h1>
+  <p class="lede">No Customize, no drawer: every option is visible from the first paint. Mode and quality pinned right, episode disclosure expands in place, commit in the footer. Both payload types below are live.</p>
+
+  <div class="vhead">PLAYLIST — Concurrency in Go</div>
+
+  <!-- A playlist -->
+  <div class="arch">
+    <h2>A · Split card — media column fills the height</h2>
+    <div class="card a-card">
+      <div class="a-media"><img src="thumbs/pl1.jpg" alt=""><span class="a-count">6 videos</span></div>
+      <div class="a-body">
+        <h3>Concurrency in Go</h3>
+        <div class="meta">Playlist · 6 videos · 2h 26m · Steve Hook</div>
+        <div class="a-rows">
+          <div><div class="modeseg"><span class="on">Video</span><span>Audio</span></div></div>
+          <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+          <div class="ddisc"><span>▸ 6 episodes</span><span>up to 1080p</span></div>
+        </div>
+      </div>
+      <div class="a-foot" style="grid-column: 2;"><div class="lft"><button class="btn sm">Change</button><span class="mono">~/Movies/VidStow/Concurrency in Go</span></div><button class="btn pri">Start 6</button></div>
+    </div>
+  </div>
+
+  <!-- B playlist -->
+  <div class="arch">
+    <h2>B · Hero banner — media on top</h2>
+    <div class="card">
+      <div class="b-hero"><img src="thumbs/pl2.jpg" alt=""><div class="b-title"><h3>Concurrency in Go</h3><span>Playlist · 6 videos · 2h 26m · Steve Hook</span></div></div>
+      <div class="b-body">
+        <div style="display:flex; align-items:center; gap:12px;"><div class="modeseg"><span class="on">Video</span><span>Audio</span></div><div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div></div>
+        <div class="ddisc"><span>▸ 6 episodes</span><span>up to 1080p</span></div>
+        <div class="b-foot"><div class="lft"><button class="btn sm">Change</button><span class="mono">~/Movies/VidStow/Concurrency in Go</span></div><button class="btn pri">Start 6</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- C playlist — LIVE -->
+  <div class="arch" data-app="pl">
+    <h2>C · The dock — everything visible, nothing gated</h2>
+    <p>Click the episode disclosure to expand the checklist; Select all / None update the commit; mode switches swap the quality list. This is the p2 dock.</p>
+    <div class="card dock" data-app="pl">
+      <div class="top">
+        <img src="thumbs/pl3.jpg" alt="">
+        <div>
+          <h3>Concurrency in Go</h3>
+          <div class="meta">Playlist · 6 videos · 2h 26m · Steve Hook</div>
+          <div class="ddisc has" data-disc><span style="font-size:9px">▸</span><span>6 episodes</span><span class="cov">up to <span data-policy style="color:var(--secondary);font-weight:600">1080p</span></span></div>
+        </div>
+        <div class="choice"><div class="modeseg"><span class="on" data-mode="video">Video</span><span data-mode="audio">Audio</span></div><div class="chips" data-chips></div></div>
+      </div>
+      <div class="eplist" data-eps style="display:none">
+        <div class="ephead"><span data-count>6 of 6 selected</span><span class="lnk"><u data-selall>Select all</u> · <u data-selnone>None</u></span></div>
+        <div data-rows></div>
+      </div>
+      <div class="foot"><div class="lft"><button class="btn">Change</button><span class="mono">~/Movies/VidStow/Concurrency in Go</span></div><button class="btn pri" data-start>Start 6</button></div>
+    </div>
+  </div>
+
+  <hr class="divider">
+  <div class="vhead">SINGLE VIDEO — Introduction to Concurrency (Concurrency in Go #1)</div>
+  <p class="lede">Sizes are real (single-video analysis carries plan data); the outcome line sits under the chips; no episode row. A Scope row appears on the bar only when the link came from a playlist.</p>
+
+  <!-- A video -->
+  <div class="arch">
+    <h2>A · Split card — video</h2>
+    <div class="card a-card">
+      <div class="a-media"><img src="thumbs/pl1.jpg" alt=""></div>
+      <div class="a-body">
+        <h3>Introduction to Concurrency (Concurrency in Go #1)</h3>
+        <div class="meta">Steve Hook · 27:54</div>
+        <div class="a-rows">
+          <div><div class="modeseg"><span class="on">Video</span><span>Audio</span></div></div>
+          <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+          <div class="outcome"><b>MP4 · H.264 + AAC · 594 MB</b></div>
+        </div>
+      </div>
+      <div class="a-foot" style="grid-column: 2;"><div class="lft"><button class="btn sm">Change</button><span class="mono">~/Movies/VidStow</span></div><button class="btn pri">Add to Queue</button></div>
+    </div>
+  </div>
+
+  <!-- B video -->
+  <div class="arch">
+    <h2>B · Hero banner — video</h2>
+    <div class="card">
+      <div class="b-hero"><img src="thumbs/pl1.jpg" alt=""><div class="b-title"><h3>Introduction to Concurrency (Concurrency in Go #1)</h3><span>Steve Hook · 27:54</span></div></div>
+      <div class="b-body">
+        <div style="display:flex; align-items:center; gap:12px;"><div class="modeseg"><span class="on">Video</span><span>Audio</span></div><div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div></div>
+        <div class="outcome"><b>MP4 · H.264 + AAC · 594 MB</b></div>
+        <div class="b-foot"><div class="lft"><button class="btn sm">Change</button><span class="mono">~/Movies/VidStow</span></div><button class="btn pri">Add to Queue</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- C video — LIVE -->
+  <div class="arch" data-app="vid">
+    <h2>C · The dock — video variant</h2>
+    <p>The outcome line (plan · codec · size) updates directly under the chips. The Scope row belongs on the bar only when the link came from a playlist.</p>
+    <div class="card dock">
+      <div class="top">
+        <img src="thumbs/pl1.jpg" alt="">
+        <div>
+          <h3>Introduction to Concurrency (Concurrency in Go #1)</h3>
+          <div class="meta">Steve Hook · 27:54</div>
+          <div class="outcome" data-outcome><b>MP4 · H.264 + AAC · 594 MB</b></div>
+        </div>
+        <div class="choice"><div class="modeseg"><span class="on" data-mode="video">Video</span><span data-mode="audio">Audio</span></div><div class="chips" data-chips></div></div>
+      </div>
+      <div class="scope" style="padding: 8px 0 0;">Part of “Concurrency in Go” · 6 videos — <a>switch to playlist</a> <span class="note">· only when the link came from a playlist</span></div>
+      <div class="foot"><div class="lft"><button class="btn">Change</button><span class="mono">~/Movies/VidStow</span></div><button class="btn pri">Add to Queue</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const CATALOG = {
+    pl: {
+      video: [{ l: '1080p', rec: true }, { l: '720p' }, { l: '480p' }],
+      audio: [{ l: 'M4A' }, { l: 'Opus' }, { l: 'MP3 128' }, { l: 'MP3 192' }, { l: 'MP3 256' }]
+    },
+    vid: {
+      video: [
+        { l: '1080p', rec: true, o: 'MP4 · H.264 + AAC', s: '594 MB' },
+        { l: '720p', o: 'MP4 · H.264 + AAC', s: '270 MB' },
+        { l: '480p', o: 'MP4 · H.264 + AAC', s: '108 MB' }
+      ],
+      audio: [
+        { l: 'M4A', o: 'Original stream · AAC', s: '59 MB' },
+        { l: 'Opus', o: 'Original stream · WebM', s: '42 MB' },
+        { l: 'MP3 128', o: 'Converted with FFmpeg', s: '27 MB' },
+        { l: 'MP3 192', o: 'Converted with FFmpeg', s: '40 MB' },
+        { l: 'MP3 256', o: 'Converted with FFmpeg', s: '53 MB' }
+      ]
+    }
+  };
+  const EPS = [
+    'Introduction to Concurrency (Concurrency in Go #1)',
+    'WaitGroups — Part 1 (Concurrency in Go #2)',
+    'WaitGroups — Part 2 (Concurrency in Go #3)',
+    'WaitGroups — Part 3 (Concurrency in Go #4)',
+    'Atomics — Part 1 (sync/atomic) (Concurrency in Go #5)',
+    'Atomics — Part 2 (Go ASM) (Concurrency in Go #6)'
+  ];
+  const DURS = ['27:54', '17:56', '14:34', '27:40', '30:57', '27:28'];
+
+  document.querySelectorAll('[data-app]').forEach(app => {
+    const kind = app.dataset.app, cat = CATALOG[kind];
+    let mode = 'video';
+    let sel = cat[mode].find(c => c.rec) || cat[mode][0];
+    let n = 6;
+    const chips = app.querySelector('[data-chips]');
+    const outcome = app.querySelector('[data-outcome]');
+    const policy = app.querySelector('[data-policy]');
+    const start = app.querySelector('[data-start]');
+    const count = app.querySelector('[data-count]');
+
+    const renderChips = () => {
+      chips.innerHTML = cat[mode].map(c =>
+        `<span class="chip ${c.l === sel.l ? 'on' : ''}" data-chip="${c.l}">${c.l}${c.rec ? '<i class="dot"></i>' : ''}</span>`).join('');
+    };
+    const renderText = () => {
+      if (kind === 'vid') {
+        outcome.innerHTML = `<b>${sel.o} · ${sel.s}</b>`;
+      } else if (mode === 'video') {
+        policy.textContent = sel.l;
+      } else {
+        policy.textContent = sel.l;
+      }
+    };
+    const renderEps = () => {
+      const rows = app.querySelector('[data-rows]');
+      if (rows) rows.innerHTML = EPS.map((t, i) =>
+        `<div class="eprow sel"><span class="chk"></span><span><b>${t}</b></span><span class="epd">${DURS[i]}</span></div>`).join('');
+      syncCount();
+    };
+    const syncCount = () => {
+      const n = app.querySelectorAll('[data-rows] .eprow.sel').length;
+      if (count) count.textContent = `${n} of 6 selected`;
+      if (start) { start.textContent = `Start ${n}`; start.disabled = n === 0; }
+    };
+
+    app.querySelectorAll('[data-mode]').forEach(m => m.addEventListener('click', () => {
+      mode = m.dataset.mode;
+      app.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('on', x === m));
+      sel = cat[mode].find(c => c.rec) || cat[mode][0];
+      renderChips(); renderText();
+    }));
+    chips.addEventListener('click', e => {
+      const c = e.target.closest('[data-chip]'); if (!c) return;
+      sel = cat[mode].find(x => x.l === c.dataset.chip);
+      renderChips(); renderText();
+    });
+    const disc = app.querySelector('[data-disc]');
+    const eps = app.querySelector('[data-eps]');
+    if (disc) disc.addEventListener('click', () => {
+      eps.style.display = eps.style.display === 'none' ? 'block' : 'none';
+    });
+    app.addEventListener('click', e => {
+      if (e.target.closest('[data-selall]')) { n = 6; renderEps(); }
+      if (e.target.closest('[data-selnone]')) { n = 0; renderEps(); }
+      const row = e.target.closest('.eprow');
+      if (row) {
+        const i = [...rows().children].indexOf(row);
+        n += row.classList.contains('sel') ? -1 : 1;
+        row.classList.toggle('sel'); row.classList.toggle('unsel');
+        if (count) count.textContent = `${n} of 6 selected`;
+        if (start) start.textContent = `Start ${n}`;
+      }
+    });
+    const rows = () => app.querySelector('[data-rows]');
+    renderChips(); renderText(); if (app.querySelector('[data-rows]')) renderEps();
+  });
+})();
+</script>
+</body>
+</html>

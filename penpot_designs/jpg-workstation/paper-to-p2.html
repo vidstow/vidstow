@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VidStow. Paper to p2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Geist+Mono:wght@450;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090B; --sidebar: #0C0C0E; --base: #111113; --raised: #18181B;
+      --border: #27272A; --text: #FAFAFA; --secondary: #A1A1AA; --muted: #71717A;
+      --accent: #3B82F6; --accent-2: #2563EB;
+      --paper: #EDE6D8; --cream: #FFFBF5; --ink: #1A1612; --rail: #1A1714;
+      --stone: #CDBFAE; --taupe: #5C544C; --navy: #1A46B5;
+      --sans: Geist, ui-sans-serif, system-ui, sans-serif;
+      --mono: "Geist Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 64px; overflow-x: clip; }
+    body {
+      margin: 0; background: #050506; color: var(--text);
+      font-family: var(--sans); font-size: 15px; line-height: 1.55;
+      -webkit-font-smoothing: antialiased; overflow-x: clip;
+    }
+    a { color: #93C5FD; }
+    .top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      min-height: 52px; padding: 8px 24px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, #0C0C0E 90%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .mark {
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border-radius: 6px; background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+    }
+    .mark svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; }
+    .top strong { font-size: 13px; font-weight: 600; }
+    .top nav { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .top nav a {
+      padding: 5px 8px; border-radius: 6px; color: var(--secondary);
+      text-decoration: none; font-size: 11.5px; font-weight: 500;
+    }
+    .top nav a:hover { color: var(--text); background: #18181B; }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 36px 0 80px; }
+    .lede h1 { margin: 0 0 14px; font-size: 28px; font-weight: 650; letter-spacing: -0.04em; }
+    .lede p { margin: 0 0 12px; max-width: 74ch; color: var(--secondary); }
+    .lede b, .why b, .keep b, .legend b, .callout b { color: var(--text); font-weight: 600; }
+    .lede code, .why code, .keep code, .legend code {
+      font-family: var(--mono); font-size: 0.86em; color: #93C5FD;
+      background: #18181B; padding: 0.08em 0.38em; border-radius: 4px;
+      vertical-align: baseline;
+    }
+    .key { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px; }
+    .key span {
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 28px; padding: 0 12px; border-radius: 99px;
+      border: 1px solid var(--border); background: var(--raised);
+      color: var(--secondary); font-size: 12.5px; font-weight: 500;
+    }
+    .key i { width: 8px; height: 8px; border-radius: 99px; display: block; }
+    .key .now i { background: #F87171; }
+    .key .next i { background: #4ADE80; }
+    .ship { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 22px; padding: 0; list-style: none; max-width: 78ch; }
+    .ship li {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--raised); color: var(--text); font-size: 12.5px; font-weight: 500;
+    }
+    .lede-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
+    .callout {
+      padding: 16px 18px 14px; border-radius: 12px;
+      border: 1px solid var(--border); background: var(--raised);
+    }
+    .callout h2 {
+      margin: 0 0 10px; font-size: 11px; font-weight: 650;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .callout p { margin: 0; font-size: 14.5px; }
+    .callout p + p { margin-top: 10px; }
+    .callout.in { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.06); }
+    .callout.in h2 { color: #86EFAC; }
+    .callout.out { border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.06); }
+    .callout.out h2 { color: #FCA5A5; }
+    .lede .note {
+      display: inline-block; padding: 3px 10px; border: 1px solid var(--border);
+      border-radius: 99px; color: var(--muted); font-size: 12px;
+    }
+    .toc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 28px 0 48px; }
+    .toc a {
+      padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--raised); color: var(--text); text-decoration: none;
+    }
+    .toc a:hover { border-color: #3F3F46; }
+    .toc b { display: block; font-size: 13px; }
+    .toc span { color: var(--muted); font-size: 11.5px; }
+    section.prop { margin-bottom: 72px; }
+    section.prop > h2 { margin: 0 0 10px; font-size: 20px; font-weight: 650; letter-spacing: -0.03em; }
+    .why { max-width: 74ch; margin: 0 0 22px; color: var(--secondary); font-size: 15px; }
+    .why p { margin: 0 0 12px; }
+    .why > p:last-child { margin-bottom: 0; }
+    .why .case {
+      margin-top: 14px; padding: 12px 14px 12px 16px;
+      border: 1px solid var(--border); border-left: 3px solid #3F3F46;
+      border-radius: 10px; background: var(--raised);
+    }
+    .why .case h3 {
+      margin: 0 0 8px; font-size: 13.5px; font-weight: 650;
+      letter-spacing: -0.02em; text-transform: none; color: var(--text);
+    }
+    .why .case p:last-child { margin-bottom: 0; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .shot-link { display: block; color: inherit; }
+    .shot-link:hover img { opacity: 0.96; }
+    .col h3 {
+      margin: 0 0 8px; font-size: 11px; font-weight: 650;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .col.now h3 { color: #FCA5A5; }
+    .col.next h3 { color: #86EFAC; }
+    .stage {
+      position: relative; min-width: 0; border: 1px solid var(--border); border-radius: 12px;
+      background: #070708; overflow: hidden;
+    }
+    .stage.shot { background: #EDE6D8; }
+    .stage.shot img { width: 100%; display: block; }
+    .cap {
+      margin: 8px 0 0; color: var(--muted); font-size: 12px;
+    }
+    .legend { margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .legend li {
+      display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; align-items: start;
+      list-style: none; color: var(--secondary); font-size: 13.5px; line-height: 1.5;
+    }
+    .legend li > span:not(.n) { min-width: 0; }
+    .n, .pin {
+      width: 18px; height: 18px; display: grid; place-items: center;
+      border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700;
+    }
+    .now .n, .pin.bad { background: #B45309; }
+    .next .n, .pin.good { background: #15803D; }
+    .pin { position: absolute; z-index: 5; box-shadow: 0 0 0 3px rgba(0,0,0,0.45); pointer-events: none; }
+    .ring-hit, .ring-ok {
+      position: absolute; z-index: 4; pointer-events: none; border-radius: 8px;
+    }
+    .ring-hit { border: 1.5px dashed rgba(245, 158, 11, 0.85); }
+    .ring-ok { border: 1.5px dashed rgba(34, 197, 94, 0.7); }
+    .mw {
+      width: 100%; min-width: 0; height: 390px;
+      display: grid; grid-template-rows: 26px 1fr 16px;
+      background: var(--bg); font-family: var(--sans); font-size: 11px; user-select: none;
+    }
+    .mw.short { height: 300px; }
+    .mw.tall { height: 440px; }
+    .mw.paper { background: var(--paper); color: var(--ink); grid-template-rows: 26px 1fr; }
+    .tb { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--border); background: var(--sidebar); }
+    .mw.paper .tb { background: #F4EEE4; border-color: var(--stone); }
+    .dots { display: flex; gap: 5px; }
+    .dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+    .dots i:nth-child(1) { background: #EF4444; }
+    .dots i:nth-child(2) { background: #F59E0B; }
+    .dots i:nth-child(3) { background: #22C55E; }
+    .crumb { color: var(--muted); font-size: 10px; }
+    .crumb b { color: var(--text); font-weight: 600; }
+    .mw.paper .crumb { color: var(--taupe); }
+    .mw.paper .crumb b { color: var(--ink); }
+    .body { display: grid; grid-template-columns: 104px 1fr; min-height: 0; }
+    .sb {
+      display: flex; flex-direction: column; gap: 2px; height: 100%;
+      padding: 8px 6px; border-right: 1px solid var(--border); background: var(--sidebar);
+    }
+    .mw.paper .sb { background: var(--rail); border-color: rgba(255,255,255,0.06); }
+    .brand { display: flex; align-items: center; gap: 6px; margin: 0 4px 8px; font-weight: 650; font-size: 11px; }
+    .brand .v {
+      width: 14px; height: 14px; display: grid; place-items: center; border-radius: 4px;
+      background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+    }
+    .brand .v svg { width: 8px; height: 8px; stroke: #fff; fill: none; stroke-width: 2.2; }
+    .mw.paper .brand { color: #F4EEE4; }
+    .mw.paper .brand .v { background: #2157D6; border-radius: 4px; }
+    .ni {
+      position: relative; display: flex; align-items: center; gap: 5px;
+      height: 22px; padding: 0 7px 0 8px; border-radius: 6px;
+      color: var(--secondary); font-size: 10px;
+    }
+    .mw.paper .ni { color: #C9BBA8; height: 24px; }
+    .ni.on { background: #18181B; color: #fff; }
+    .ni.on::before {
+      content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 1.5px;
+      border-radius: 99px; background: var(--accent);
+    }
+    .mw.paper .ni.on { background: rgba(255,251,245,0.12); color: #FFFBF5; }
+    .mw.paper .ni.on::before { background: #3C73E8; }
+    .ni .bdge {
+      margin-left: auto; min-width: 14px; height: 14px; padding: 0 4px;
+      display: grid; place-items: center; border-radius: 99px; background: #27272A; font-size: 8px;
+    }
+    .mw.paper .ni .bdge { background: #2157D6; color: #fff; }
+    .mw.paper .ni .bdge.subtle { background: rgba(255,255,255,0.12); color: #C9BBA8; }
+    .sb .gap { flex: 1; }
+    .sb .ff {
+      display: flex; align-items: center; gap: 5px;
+      margin: 4px 2px 0; padding: 6px 7px;
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+      color: #C9BBA8; font-size: 8px;
+    }
+    .sb .ff i { width: 6px; height: 6px; border-radius: 50%; background: #3FBF6F; display: block; }
+    .sb .ff b { color: #F4EEE4; font-weight: 600; }
+    .mn { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
+    .mw.paper .mn { background: var(--paper); }
+    .st {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px; border-top: 1px solid var(--border); background: #0A0A0C;
+      color: var(--muted); font-size: 8px; font-family: var(--mono);
+    }
+    .st .live { color: #60A5FA; }
+    .field {
+      display: flex; align-items: center; gap: 6px;
+      height: 26px; padding: 0 5px 0 9px;
+      border: 1px solid var(--border); border-radius: 7px; background: var(--base); color: var(--muted);
+    }
+    .field .go {
+      margin-left: auto; height: 18px; padding: 0 8px; border-radius: 5px;
+      background: var(--accent-2); color: #fff; font-size: 9px; font-weight: 600;
+    }
+    .dock { border: 1px solid var(--border); border-radius: 8px; background: var(--raised); overflow: hidden; }
+    .drow { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 8px 10px; align-items: center; }
+    .th { border-radius: 4px; background: #152033; }
+    .th.sm { width: 72px; height: 40px; }
+    .th.cnt { display: grid; place-items: center; color: #93C5FD; font-weight: 700; font-size: 14px; background: var(--base); border: 1px solid var(--border); }
+    .dtop { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .dtop b { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .seg { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; flex-shrink: 0; }
+    .seg i { height: 16px; padding: 0 7px; font-size: 8px; color: var(--muted); background: var(--base); font-style: normal; display: grid; place-items: center; }
+    .seg i + i { border-left: 1px solid var(--border); }
+    .seg i.on { background: rgba(59,130,246,0.12); color: #93C5FD; }
+    .meta { color: var(--secondary); font-size: 9px; margin-top: 2px; }
+    .chips { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; }
+    .chip {
+      height: 16px; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px;
+      background: var(--base); color: var(--secondary); font-size: 8px; display: grid; place-items: center;
+    }
+    .chip.on { border-color: rgba(59,130,246,0.55); background: rgba(59,130,246,0.12); color: #93C5FD; }
+    .disc { display: flex; gap: 6px; margin-top: 6px; font-family: var(--mono); font-size: 8px; color: var(--muted); }
+    .disc .warn { color: #FBBF24; }
+    .disc .cost { margin-left: auto; color: var(--secondary); font-weight: 600; }
+    .dfoot {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; border-top: 1px solid var(--border); background: var(--base);
+    }
+    .dwhere { display: flex; align-items: baseline; gap: 6px; min-width: 0; flex: 1; }
+    .dlab { flex-shrink: 0; color: var(--secondary); font-size: 8px; }
+    .dpath { min-width: 0; flex: 1; font-family: var(--mono); font-size: 8px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .b {
+      height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 5px;
+      background: var(--raised); color: #E4E4E7; font-size: 8px; display: inline-grid; place-items: center;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .b.pri { border-color: var(--accent-2); background: var(--accent-2); color: #fff; }
+    .b.chg { background: transparent; color: var(--secondary); }
+    .eplist { border: 1px solid var(--border); border-radius: 8px; background: var(--base); overflow: hidden; }
+    .ephead { display: flex; justify-content: space-between; padding: 5px 8px; background: var(--raised); font-size: 8px; color: var(--secondary); }
+    .eprow {
+      display: grid; grid-template-columns: 10px 1fr auto; gap: 6px; align-items: center;
+      padding: 4px 8px; font-size: 9px; color: var(--secondary); border-top: 1px solid var(--border);
+    }
+    .chk { width: 9px; height: 9px; border-radius: 2px; background: var(--accent-2); }
+    .phdr { padding: 10px 12px 4px; }
+    .phdr h4 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.03em; }
+    .phdr p { margin: 3px 0 0; font-size: 8px; color: var(--taupe); }
+    .modes {
+      display: flex; margin: 6px 12px 8px; border-radius: 8px; background: #E6DDD0; overflow: hidden;
+    }
+    .modes i { flex: 1; height: 22px; display: grid; place-items: center; font-size: 8px; font-style: normal; color: #3F3933; }
+    .modes i.on { background: var(--cream); font-weight: 650; }
+    .welcome {
+      height: calc(100% - 70px); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 0 16px;
+    }
+    .welcome .g {
+      width: 28px; height: 28px; border-radius: 8px; background: rgba(33,87,214,0.12);
+      display: grid; place-items: center; color: #2157D6;
+    }
+    .welcome b { font-size: 11px; }
+    .welcome span { font-size: 8px; color: var(--taupe); max-width: 200px; line-height: 1.45; }
+    .pbar {
+      display: flex; gap: 6px; align-items: center; margin: 0 12px;
+      height: 28px; padding: 0 6px; background: var(--cream); border: 1px solid var(--stone); border-radius: 8px;
+    }
+    .pbar span { flex: 1; font-size: 8px; color: var(--taupe); }
+    .pgo { height: 20px; padding: 0 8px; border-radius: 6px; background: var(--navy); color: #fff; font-size: 8px; font-weight: 650; }
+    .pcard {
+      margin: 8px 12px; background: var(--cream); border: 1px solid var(--stone);
+      border-radius: 10px; box-shadow: 0 8px 16px rgba(48,36,20,0.06); overflow: hidden;
+    }
+    .hinttry { margin-top: 10px; text-align: center; color: var(--muted); font-size: 8.5px; line-height: 1.65; }
+    .hinttry u { color: var(--secondary); text-decoration: underline dotted; text-underline-offset: 2px; }
+    .qrow {
+      display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 7px; align-items: center;
+      height: 28px; padding: 0 8px; border-radius: 6px; margin: 0 6px 2px;
+    }
+    .qrow.sel { background: var(--raised); }
+    .qt { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qbar { display: block; height: 2px; margin-top: 3px; border-radius: 99px; background: #26262C; overflow: hidden; }
+    .qbar i { display: block; height: 100%; width: 62%; background: var(--accent); }
+    .qtail { font-family: var(--mono); font-size: 8px; color: var(--secondary); }
+    .qwrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(88px, 150px); height: 100%; min-width: 0; }
+    .qinsp { border-left: 1px solid var(--border); background: #0D0D0F; padding: 10px; overflow: hidden; }
+    .keep {
+      padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px;
+      background: var(--raised); color: var(--secondary); max-width: 78ch;
+    }
+    .keep h2 { margin: 0 0 6px; color: var(--text); font-size: 16px; }
+    .keep p { margin: 0 0 12px; }
+    .keep ul { margin: 8px 0 0; padding-left: 18px; }
+    .keep li { margin: 0 0 6px; }
+    .err {
+      padding: 10px 12px; border: 1px solid rgba(239,68,68,0.45); border-radius: 8px;
+      background: rgba(239,68,68,0.06);
+    }
+    .err b { display: block; font-size: 11px; color: #FCA5A5; }
+    .err span { display: block; color: var(--secondary); font-size: 9px; margin-top: 3px; }
+    .ditem { display: grid; grid-template-columns: 36px 1fr auto; gap: 7px; align-items: center; height: 32px; padding: 0 8px; }
+    .ditem b { display: block; font-size: 10px; font-weight: 500; }
+    .ditem span { display: block; color: var(--muted); font-size: 8px; }
+    .sgroup { margin: 8px 10px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); }
+    .sgroup h5 { margin: 0 0 6px; font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .srow { display: flex; justify-content: space-between; padding: 5px 0; border-top: 1px solid #1F1F23; font-size: 9px; }
+    .srow:first-of-type { border-top: 0; }
+    @media (max-width: 900px) {
+      .pair, .toc, .lede-split { grid-template-columns: 1fr; }
+      .top nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>
+    <strong>Paper → p2</strong>
+    <nav>
+      <a href="home-p2.html">Home notes</a>
+      <a href="p2-suggestions.html">Old p2 notes</a>
+      <a href="#chrome">Chrome</a>
+      <a href="#empty">Empty</a>
+      <a href="#toggle">Toggle</a>
+      <a href="#video">Video</a>
+      <a href="#playlist">Playlist</a>
+      <a href="#batch">Batch</a>
+      <a href="#queue">Queue</a>
+      <a href="#downloads">Downloads</a>
+      <a href="#settings">Settings</a>
+      <a href="#recovery">Recovery</a>
+    </nav>
+  </header>
+
+  <div class="wrap">
+    <div class="lede">
+      <h1>Warm paper on main, to the new p2</h1>
+      <div class="key">
+        <span class="now"><i></i>Orange is origin/main</span>
+        <span class="next"><i></i>Green is the proposed change</span>
+      </div>
+      <p>Latest <code>main</code> is still the cream app in the README. A 160px brown rail, Inter, an Aqua title bar, and no status bar. I am comparing that shipped window to the zinc p2 I would build next, not to <a href="p2.html">p2.html</a>.</p>
+      <p>Orange is a real README shot where one exists, or a mock drawn from <code>Home.svelte</code> on <code>origin/main</code>. Green is the same dock language as <a href="home-p2.html">home-p2.html</a>, then Queue, Downloads, and Settings in that chrome.</p>
+      <ul class="ship">
+        <li>One zinc window</li>
+        <li>One paste field</li>
+        <li>Compact dock</li>
+        <li>36px queue rows</li>
+        <li>Settings colophon</li>
+        <li>Live status bar</li>
+      </ul>
+      <div class="lede-split">
+        <article class="callout in">
+          <h2>Already on main</h2>
+          <p>Analyze still happens before anything enters the queue. Backend plans, capabilities, and tokens still author the choices. Playlist range, search, and the 500 cap stay. Batch lines still name ready, duplicate, invalid, and analysis failed.</p>
+          <p><b>Change…</b> stays on every save bar. Recovery-required still replaces the workstation. The video-and-playlist modal stays.</p>
+        </article>
+        <article class="callout out">
+          <h2>Still to change</h2>
+          <p>The cream canvas, the <b>Single URL / Batch URLs</b> switch, and page titles like <b>Download from YouTube</b> go. Queue cards at 116px go. About leaves the nav. Confirm before starting downloads is not rebuilt.</p>
+          <p>There is no status bar on main. The Aqua title bar sits on a cream window above a brown rail. That split is the shell I am replacing.</p>
+        </article>
+      </div>
+      <span class="note">Now is <code>origin/main</code> at 183f0d5b. Next is a design, not a branch.</span>
+    </div>
+
+    <nav class="toc">
+      <a href="#chrome"><b>1. Chrome</b><span>Replace the 160px brown rail and cream pane with one zinc window and a status bar</span></a>
+      <a href="#empty"><b>2. Empty Home</b><span>One paste field. Drop the page title, subtitle, and Add a YouTube link</span></a>
+      <a href="#toggle"><b>3. One field</b><span>Remove the Single URL / Batch URLs switch. Paste count chooses the path</span></a>
+      <a href="#video"><b>4. Video</b><span>Replace the Choose Download form with a dock that still has Change and Add to Queue</span></a>
+      <a href="#playlist"><b>5. Playlist</b><span>Keep range, search, and the 500 cap. Collapse identity and format into the dock</span></a>
+      <a href="#batch"><b>6. Batch</b><span>Keep ready, duplicate, and failed on each line. Start N counts ready URLs only</span></a>
+      <a href="#queue"><b>7. Queue</b><span>Draw jobs as 36px rows. Put Pause and Cancel in a 300px inspector</span></a>
+      <a href="#downloads"><b>8. Downloads</b><span>Keep Open, Reveal, Remove, and Delete file. Put search on the title row</span></a>
+      <a href="#settings"><b>9. Settings</b><span>Restyle the Settings rows. Move About into a colophon</span></a>
+      <a href="#recovery"><b>10. Recovery</b><span>Keep the Queue header and the recovery card. Do not add a sidebar</span></a>
+    </nav>
+
+    <section class="prop" id="chrome">
+      <h2>1. Replace the brown rail and cream pane</h2>
+      <div class="why">
+        <p>Main splits the window. The sidebar is 160px of <code>#1A1714</code>. The rest is cream paper. There is no status bar. The macOS title bar is Aqua, so the traffic lights sit on a light strip above a cream pane. <b>Home</b> then adds a 24px <b>Download from YouTube</b> title before the field.</p>
+        <p>I would ship one zinc material. Canvas, sidebar, and status bar share the same surface. Path on the left of the status bar. Idle or live slots on the right. <b>Home</b> drops the page title. <b>About</b> leaves the nav. FFmpeg leaves the rail and lives under Engine on <b>Settings</b>.</p>
+        <p>This is not a light and dark theme. I am replacing the shipped shell.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 8px; left: 48%;">1</div>
+            <div class="pin bad" style="top: 42%; left: 22%;">2</div>
+            <div class="pin bad" style="top: 72%; left: 70%;">3</div>
+            <div class="mw paper tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow</div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v"></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads <span class="bdge subtle">1</span></div>
+                  <div class="ni">Settings</div>
+                  <div class="ni">About</div>
+                  <div class="gap"></div>
+                  <div class="ff"><i></i><b>FFmpeg</b> Ready</div>
+                </aside>
+                <div class="mn">
+                  <div class="phdr">
+                    <h4>Download from YouTube</h4>
+                    <p>Paste a public YouTube video, Short, or playlist URL to analyze it and choose your download.</p>
+                  </div>
+                  <div class="modes"><i class="on">Single URL</i><i>Batch URLs</i></div>
+                  <div class="pbar"><span>https://www.youtube.com/watch?v=…</span><span class="pgo">Analyze</span></div>
+                  <div class="welcome">
+                    <div class="g">↓</div>
+                    <b>Add a YouTube link</b>
+                    <span>VidStow reviews a public video, Short, or playlist, then shows the files you’ll get before anything downloads.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Light Aqua title bar on a cream window.</span></li>
+            <li><span class="n">2</span><span>160px brown rail, brand mark, About, FFmpeg footer.</span></li>
+            <li><span class="n">3</span><span>A page title and a paragraph before the field. No status bar.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 8px; left: 48%;">1</div>
+            <div class="pin good" style="top: 42%; left: 22%;">2</div>
+            <div class="pin good" style="top: 94%; left: 80%;">3</div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads <span class="bdge" style="background:#2563EB;color:#fff">5</span></div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 16px 12px;">
+                  <div class="field" style="width:86%"><span>Paste a YouTube URL</span><span class="go">Analyze</span></div>
+                  <div class="hinttry">One link, a playlist, or a handful. The link decides.<br>Try: <u>a video</u> · <u>a playlist</u> · <u>several links</u></div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Dark native title bar. No fake traffic lights in the real app.</span></li>
+            <li><span class="n">2</span><span>Zinc rail, tray mark, Settings only. No FFmpeg strip.</span></li>
+            <li><span class="n">3</span><span>Path and Idle. Occupancy lives here when work is running.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="empty">
+      <h2>2. Empty Home starts with a title, a mode switch, and a welcome headline</h2>
+      <div class="why">
+        <p>Main opens with <b>Download from YouTube</b>, a subtitle, a <b>Single URL / Batch URLs</b> switch, a 40px analyze bar, then a glyph and <b>Add a YouTube link</b>. The paste is the fourth thing on the page.</p>
+        <p>The new p2 has one object in the middle: the field. A single line under it names the three legal pastes. Try-chips fill the field. No page title. No <b>Add a YouTube link</b>.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 28%; left: 70%;">1</div>
+            <div class="pin bad" style="top: 68%; left: 58%;">2</div>
+            <div class="mw paper">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow</div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v"></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni">Settings</div>
+                  <div class="ni">About</div>
+                  <div class="gap"></div>
+                  <div class="ff"><i></i><b>FFmpeg</b> Ready</div>
+                </aside>
+                <div class="mn">
+                  <div class="phdr"><h4>Download from YouTube</h4><p>Paste a public YouTube video, Short, or playlist URL…</p></div>
+                  <div class="modes"><i class="on">Single URL</i><i>Batch URLs</i></div>
+                  <div class="pbar"><span>https://www.youtube.com/watch?v=…, shorts/…, or playlist?list=…</span><span class="pgo">Analyze</span></div>
+                  <div class="welcome"><div class="g">↓</div><b>Add a YouTube link</b><span>VidStow reviews a public video, Short, or playlist, then shows the files you’ll get before anything downloads.</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Title, subtitle, and a mode switch before the URL.</span></li>
+            <li><span class="n">2</span><span>A second headline in the middle of an empty pane.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 48%; left: 58%;">1</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                  <div class="field" style="width:84%"><span>Paste a YouTube URL</span><span class="go">Analyze</span></div>
+                  <div class="hinttry">One link, a playlist, or a handful. The link decides.<br>Try: <u>a video</u> · <u>a playlist</u> · <u>several links</u></div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The field is the page. The chips teach the paste.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="toggle">
+      <h2>3. Remove the Single URL / Batch URLs switch</h2>
+      <div class="why">
+        <p>Main is explicit. A sunken segment sits under the page title: <b>Single URL</b> and <b>Batch URLs</b>. Batch swaps the whole header to <b>Batch URLs</b> and opens a textarea. That was how batch shipped. It forces a mode before the paste.</p>
+        <p>The new p2 has one field. One URL goes to <code>ValidateURL</code>. Two to twenty go to <code>AnalyzeBatchURLs</code>. A playlist URL is still a playlist. The 2 to 20 cap stays. Playlist URLs still do not belong in a batch.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 38%; left: 72%;">1</div>
+            <div class="mw paper short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow</div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v"></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni">Settings</div>
+                  <div class="ni">About</div>
+                  <div class="gap"></div>
+                  <div class="ff"><i></i><b>FFmpeg</b> Ready</div>
+                </aside>
+                <div class="mn">
+                  <div class="phdr"><h4>Batch URLs</h4><p>Review 2 to 20 individual public YouTube video or Short URLs…</p></div>
+                  <div class="modes"><i>Single URL</i><i class="on">Batch URLs</i></div>
+                  <div class="pcard" style="padding:8px;">
+                    <div style="font-size:8px;font-weight:650;margin-bottom:4px;">YouTube video or Short URLs</div>
+                    <div style="height:64px;border:1px solid var(--stone);border-radius:6px;background:#FFFBF5;color:var(--taupe);font-size:8px;padding:6px;line-height:1.5;">https://www.youtube.com/watch?v=aaa<br>https://www.youtube.com/watch?v=bbb<br>https://www.youtube.com/watch?v=ccc</div>
+                    <div style="display:flex;justify-content:space-between;margin-top:6px;align-items:center;">
+                      <span style="font-size:7.5px;color:var(--taupe)">One URL per line.</span>
+                      <span class="pgo">Review URLs</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The <b>Single URL / Batch URLs</b> switch is how you reach the textarea. Paste count does not decide.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 46%; left: 58%;">1</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn" style="display:flex;align-items:center;justify-content:center;padding:0 16px;">
+                  <div class="field" style="width:90%"><span style="color:var(--text);font-size:8px;">watch?v=aaa, watch?v=bbb, watch?v=ccc</span><span class="go">Analyze</span></div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Same field. Commas or new lines are enough.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="video">
+      <h2>4. Replace the Choose Download form with a dock</h2>
+      <div class="why">
+        <p>The README shot is the truth. After Analyze, main builds a cream workspace: a large thumb, title, <b>Choose Download</b>, a radio list of every plan, then <b>Save to</b> and <b>Add to Queue</b>. It is readable. It is also a form that fills the pane for one decision.</p>
+        <p>The new p2 keeps every fact and shrinks the chrome. Identity, Video / Audio, and plan chips sit on one dock. The rest of the plans and the extras live in a disclosure. <b>Change…</b> stays. Backend plans still author the chips.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now · main screenshot</h3>
+          <div class="stage shot">
+            <div class="pin bad" style="top: 28%; left: 72%;">1</div>
+            <div class="pin bad" style="top: 58%; left: 62%;">2</div>
+            <a class="shot-link" href="paper-shots/video-options.png" target="_blank" rel="noreferrer">
+              <img src="paper-shots/video-options.png" alt="Shipped video options on origin/main">
+            </a>
+          </div>
+          <p class="cap">docs/assets/screenshots/video-options.png on origin/main</p>
+          <ol class="legend">
+            <li><span class="n">1</span><span><b>Choose Download</b> is its own column. Video and Audio sit apart from the title.</span></li>
+            <li><span class="n">2</span><span>Every plan is already listed. 4K through 144p are visible before you ask.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 36%; left: 72%;">1</div>
+            <div class="pin good" style="top: 70%; left: 48%;">2</div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn" style="display:flex;flex-direction:column;padding:8px 10px;gap:8px;">
+                  <div class="field"><span style="color:var(--text)">youtube.com/watch?v=…</span><span class="go">Analyze</span></div>
+                  <div class="dock">
+                    <div class="drow">
+                      <div class="th sm" style="background:#1e3a5f;"></div>
+                      <div>
+                        <div class="dtop"><b>Big Buck Bunny</b><div class="seg"><i class="on">Video</i><i>Audio</i></div></div>
+                        <div class="meta">Blender · 10:35 · Recommended</div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                        <div class="disc"><span>3 plans</span><span>MP4 · H.264 + AAC</span><span class="cost">~180 MB</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="dlab">Save to</span><span class="dpath">~/Movies/VidStow</span></span><span class="b chg">Change…</span><span class="b pri">Add to Queue</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Video and Audio sit on the title row. The recommended chip is already selected.</span></li>
+            <li><span class="n">2</span><span><b>Change…</b> stays next to <b>Add to Queue</b>. Extra plans live in a disclosure.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="playlist">
+      <h2>5. Keep playlist range and search, then collapse identity into the dock</h2>
+      <div class="why">
+        <p>Main already does the hard part. Search, All available, range, unavailable rows, a shared format, a playlist folder, <b>Add N Videos to Queue</b>. The README shot is a cream card that fills the pane. That fill is correct. The form around it is heavy: a page title, a mode switch, a fat identity block, and a policy column.</p>
+        <p>The new p2 pins the field, collapses identity and policy into the dock, and gives leftover height to the list. Coverage, <code>21 of 24 reach 1080p</code>, sits on the disclosure. Primary copy is <b>Start N</b>. Range and search stay in the list header.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now · main screenshot</h3>
+          <div class="stage shot">
+            <div class="pin bad" style="top: 10%; left: 28%;">1</div>
+            <div class="pin bad" style="top: 32%; left: 78%;">2</div>
+            <a class="shot-link" href="paper-shots/playlist-review.png" target="_blank" rel="noreferrer">
+              <img src="paper-shots/playlist-review.png" alt="Shipped playlist review on origin/main">
+            </a>
+          </div>
+          <p class="cap">docs/assets/screenshots/playlist-review.png on origin/main</p>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Title and Single URL stay above a finished analysis. The subtitle hides.</span></li>
+            <li><span class="n">2</span><span>Format is a side column. The list starts late.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 32px; left: 48%;">1</div>
+            <div class="pin good" style="top: 72%; left: 58%;">2</div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn" style="display:flex;flex-direction:column;padding:8px 10px;gap:8px;">
+                  <div class="field"><span style="color:var(--text)">youtube.com/playlist?list=…</span><span class="go">Analyze</span></div>
+                  <div class="dock">
+                    <div class="drow">
+                      <div class="th sm" style="background:#3d2a14;"></div>
+                      <div>
+                        <div class="dtop"><b>Blender Open Movies</b><div class="seg"><i class="on">Video</i><i>Audio</i></div></div>
+                        <div class="meta">Playlist · 16 videos · Blender</div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                        <div class="disc"><span>16 episodes</span><span>up to 1080p</span><span class="cost">~2.4 GB</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="dlab">Save to</span><span class="dpath">~/Movies/VidStow/Blender Open Movies</span></span><span class="b chg">Change…</span><span class="b pri">Start 16</span></div>
+                  </div>
+                  <div class="eplist" style="flex:1;">
+                    <div class="ephead"><span>16 of 16 selected</span><span>All · None · Range · Search</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Big Buck Bunny</b><span>9:56</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Sintel</b><span>14:48</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Tears of Steel</b><span>12:14</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The field pins to the top as soon as a playlist exists. The landing title is gone.</span></li>
+            <li><span class="n">2</span><span>Range, search, and the episode list use leftover height under the dock.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="batch">
+      <h2>6. Keep batch line status. Remove the Batch URLs mode</h2>
+      <div class="why">
+        <p>Main’s batch review is the right product: line numbers, Ready / Duplicate / Invalid / Analysis failed, a shared format, <b>Start N downloads</b>. The problem is how you get there. You flip <b>Batch URLs</b>, you fill a textarea, you press Review URLs.</p>
+        <p>The new p2 keeps that review and puts it under one field. N is the ready count. Failed lines stay visible. Edit URLs returns the text to the field. Do not ship Admit 5.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 28%; left: 70%;">1</div>
+            <div class="mw paper tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow</div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v"></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni">Settings</div>
+                  <div class="ni">About</div>
+                  <div class="gap"></div>
+                  <div class="ff"><i></i><b>FFmpeg</b> Ready</div>
+                </aside>
+                <div class="mn">
+                  <div class="phdr"><h4>Batch URLs</h4><p>4 ready · 1 could not be analyzed</p></div>
+                  <div class="modes"><i>Single URL</i><i class="on">Batch URLs</i></div>
+                  <div class="pcard">
+                    <div style="padding:8px 10px;font-size:10px;font-weight:650;">Review URLs</div>
+                    <div style="padding:6px 10px;font-size:8px;border-top:1px solid var(--stone);display:flex;justify-content:space-between;"><span>Go Concurrency in Practice</span><span style="color:#1B7A42">Ready</span></div>
+                    <div style="padding:6px 10px;font-size:8px;border-top:1px solid var(--stone);display:flex;justify-content:space-between;"><span>Consensus Systems Explained</span><span style="color:#C43B34">Analysis failed</span></div>
+                    <div style="padding:8px 10px;border-top:1px solid var(--stone);display:flex;justify-content:flex-end;"><span class="pgo">Start 4 downloads</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Each row still has a status. The review is reached by flipping <b>Batch URLs</b>, not by pasting two lines.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 48%; left: 78%;">1</div>
+            <div class="pin good" style="top: 82%; left: 82%;">2</div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn" style="display:flex;flex-direction:column;padding:8px 10px;gap:8px;">
+                  <div class="field"><span style="color:var(--text)">5 watch URLs</span><span class="go">Analyze</span></div>
+                  <div class="dock">
+                    <div class="drow">
+                      <div class="th sm cnt">5</div>
+                      <div>
+                        <div class="dtop"><b>Batch of public videos</b><div class="seg"><i class="on">Video</i><i>Audio</i></div></div>
+                        <div class="meta">4 ready · 1 could not be analyzed</div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="dlab">Save to</span><span class="dpath">~/Movies/VidStow</span></span><span class="b chg">Change…</span><span class="b pri">Start 4</span></div>
+                  </div>
+                  <div class="eplist">
+                    <div class="eprow"><span class="chk"></span><b>Go Concurrency in Practice</b><span style="color:#86EFAC">Ready</span></div>
+                    <div class="eprow"><span></span><b style="opacity:.7">Consensus Systems Explained</b><span style="color:#FCA5A5">Failed</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Failed stays visible. It does not enter the queue.</span></li>
+            <li><span class="n">2</span><span>Start 4. N is ready, not pasted.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="queue">
+      <h2>7. Draw the queue as 36px rows and a 300px inspector</h2>
+      <div class="why">
+        <p>Main queue rows are 116px cream cards with a 128px thumb, a badge, and <b>Open</b> or <b>Remove</b> on the row. Occupancy is a pill in the header. Empty copy sits in a dashed box.</p>
+        <p>I would draw 36px rows, a 3px bar, a mono tail, and a 300px inspector that holds the buttons the backend authorized. <b>Pause all</b> and <b>Clear completed</b> stay. Empty is <b>Nothing in the queue</b> plus a control that goes to <b>Home</b>.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now · main screenshot</h3>
+          <div class="stage shot">
+            <div class="pin bad" style="top: 42%; left: 48%;">1</div>
+            <div class="pin bad" style="top: 48%; left: 86%;">2</div>
+            <a class="shot-link" href="paper-shots/queue-lifecycle.png" target="_blank" rel="noreferrer">
+              <img src="paper-shots/queue-lifecycle.png" alt="Shipped queue on origin/main">
+            </a>
+          </div>
+          <p class="cap">docs/assets/screenshots/queue-lifecycle.png on origin/main</p>
+          <ol class="legend">
+            <li><span class="n">1</span><span>One job is a 116px cream card. A second job would not fit in this pane at a glance.</span></li>
+            <li><span class="n">2</span><span><b>Open</b> and <b>Remove</b> sit on the row. Occupancy is a pill in the header, not a detail pane.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 38%; left: 42%;">1</div>
+            <div class="pin good" style="top: 46%; left: 82%;">2</div>
+            <div class="ring-ok" style="top: 48px; right: 6px; width: 24%; height: 68%;"></div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Queue</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="qwrap">
+                    <div>
+                      <div style="display:flex;justify-content:space-between;padding:10px 10px 6px;align-items:center;">
+                        <b style="font-size:13px;">Queue</b>
+                        <span><span class="b">Pause all</span> <span class="b">Clear completed</span></span>
+                      </div>
+                      <div class="qrow sel">
+                        <div class="th" style="width:34px;height:20px;background:#244;"></div>
+                        <div><div class="qt">Me at the zoo</div><span class="qbar"><i></i></span></div>
+                        <span class="qtail">3.2 MB/s · ~12s</span>
+                      </div>
+                      <div class="qrow">
+                        <div class="th" style="width:34px;height:20px;background:#1e3a5f;"></div>
+                        <div><div class="qt">Big Buck Bunny</div><span class="qbar"><i style="width:20%"></i></span></div>
+                        <span class="qtail">waiting · slot</span>
+                      </div>
+                    </div>
+                    <aside class="qinsp">
+                      <div style="font-size:10px;font-weight:600;margin-bottom:6px;">Me at the zoo</div>
+                      <div class="th" style="width:100%;height:56px;background:#244;margin-bottom:8px;"></div>
+                      <div style="font-size:8px;color:var(--muted);line-height:1.6;">Speed 3.2 MB/s<br>ETA ~12s<br>Progress 62%</div>
+                      <div style="margin-top:8px;display:flex;gap:4px;"><span class="b">Pause</span><span class="b" style="color:#FCA5A5">Cancel</span></div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">3.2 MB/s · 1/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Each job is a 36px row with a 3px bar and a mono tail.</span></li>
+            <li><span class="n">2</span><span><b>Pause</b> and <b>Cancel</b> sit in the inspector. Occupancy is <code>1/2 slots</code> on the status bar.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="downloads">
+      <h2>8. Put Downloads search on the title row</h2>
+      <div class="why">
+        <p>Main already has search, Recent / All, <b>Open</b>, <b>Show in Finder</b>, expand for path, <b>Remove</b>, <b>Delete file</b>, and a missing-file chip. The shot is a cream card under a 40px search field and a page subtitle.</p>
+        <p>I would keep those actions. Drop the subtitle. Put search on the title row. Group by Today / Yesterday / Earlier on top of Recent / All. Reveal uses the platform verb. No new history features.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now · main screenshot</h3>
+          <div class="stage shot">
+            <div class="pin bad" style="top: 16%; left: 32%;">1</div>
+            <a class="shot-link" href="paper-shots/downloads.png" target="_blank" rel="noreferrer">
+              <img src="paper-shots/downloads.png" alt="Shipped Downloads on origin/main">
+            </a>
+          </div>
+          <p class="cap">docs/assets/screenshots/downloads.png on origin/main</p>
+          <ol class="legend">
+            <li><span class="n">1</span><span>A page header and a full-width search before the first row.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 34px; left: 78%;">1</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Downloads</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni on">Downloads <span class="bdge" style="background:#2563EB;color:#fff">5</span></div>
+                  <div class="gap"></div>
+                  <div class="ni">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 12px 8px;">
+                    <b style="font-size:13px;">Downloads</b>
+                    <div class="field" style="width:160px;height:22px;"><span>Search · ⌘F</span></div>
+                  </div>
+                  <div style="padding:0 8px 8px;color:var(--muted);font-size:8px;letter-spacing:0.08em;">TODAY</div>
+                  <div class="ditem">
+                    <div class="th" style="width:36px;height:20px;background:#244;"></div>
+                    <div><b>Me at the zoo</b><span>720p · mp4 · 1.8 MB · jawed</span></div>
+                    <span><span class="b">Reveal</span> <span class="b pri">Open</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Title and search share a row. Day groups do the rest.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="settings">
+      <h2>9. Restyle Settings. Move About into a colophon</h2>
+      <div class="why">
+        <p>Main’s Settings shot is cream cards, uppercase group labels, and a <b>Confirm before starting downloads</b> row that the later product already wants gone. About is a separate route with version facts and built-with chips. FFmpeg is its own group. The brown rail still shows both Settings and About.</p>
+        <p>The new p2 restyles the same rows as zinc cards and On/Off pills. Video files extras stay, even though older p2 mocks skipped them. Engine holds FFmpeg plus a read-only ytdlp-go line. About collapses to a colophon. Confirm before starting is not rebuilt.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now · main screenshot</h3>
+          <div class="stage shot">
+            <div class="pin bad" style="top: 44%; left: 78%;">1</div>
+            <a class="shot-link" href="paper-shots/settings-lifecycle.png" target="_blank" rel="noreferrer">
+              <img src="paper-shots/settings-lifecycle.png" alt="Shipped Settings on origin/main">
+            </a>
+          </div>
+          <p class="cap">docs/assets/screenshots/settings-lifecycle.png on origin/main</p>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Confirm before starting is a shipped control. The new p2 does not keep it.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 72%; left: 48%;">1</div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Settings</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="gap"></div>
+                  <div class="ni on">Settings</div>
+                </aside>
+                <div class="mn" style="overflow:auto;">
+                  <div style="padding:12px 12px 0;font-size:13px;font-weight:650;">Settings</div>
+                  <div class="sgroup">
+                    <h5>Downloads</h5>
+                    <div class="srow"><span>Default folder</span><span class="b chg">Change…</span></div>
+                    <div class="srow"><span>Subfolder per download</span><span style="color:#93C5FD">On</span></div>
+                    <div class="srow"><span>Concurrent downloads</span><span>2</span></div>
+                  </div>
+                  <div class="sgroup">
+                    <h5>Engine</h5>
+                    <div class="srow"><span>FFmpeg</span><span style="color:#86EFAC">Ready</span></div>
+                    <div class="srow"><span>ytdlp-go</span><span style="color:#86EFAC">Ready</span></div>
+                  </div>
+                  <div class="sgroup">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <div><b style="font-size:10px;">VidStow</b><div style="font-size:8px;color:var(--muted);font-family:var(--mono)">version · Apache-2.0</div></div>
+                      <span class="b">View source</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The colophon is About. There is no second route.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="recovery">
+      <h2>10. Recovery-required still replaces the workstation</h2>
+      <div class="why">
+        <p>The README shot is a cream warning: saved queue unavailable, media preserved, cleanup disabled. That shell is product law. The new p2 may restyle the type and the zinc canvas. It must not grow a sidebar, and it must not invent queue actions on a broken store.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now · main screenshot</h3>
+          <div class="stage shot">
+            <div class="pin bad" style="top: 8%; left: 18%;">1</div>
+            <a class="shot-link" href="paper-shots/recovery-required.png" target="_blank" rel="noreferrer">
+              <img src="paper-shots/recovery-required.png" alt="Shipped recovery-required on origin/main">
+            </a>
+          </div>
+          <p class="cap">docs/assets/screenshots/recovery-required.png on origin/main</p>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Queue title stays. There is no sidebar and no queue mutation.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 28%; left: 48%;">1</div>
+            <div class="mw short" style="grid-template-rows: 26px 1fr;">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow</div></div>
+              <div class="body" style="grid-template-columns: 1fr;">
+                <div class="mn" style="display:flex;flex-direction:column;padding:14px 18px 16px;">
+                  <div style="margin-bottom:10px;">
+                    <div style="font-size:13px;font-weight:650;">Queue</div>
+                    <div style="font-size:8px;color:var(--muted);">Saved queue unavailable</div>
+                  </div>
+                  <div style="flex:1;display:grid;place-items:center;text-align:center;border:1px solid var(--border);border-radius:8px;background:var(--raised);padding:14px;">
+                    <div>
+                      <div style="font-size:12px;font-weight:650;margin-bottom:6px;">Download state needs recovery</div>
+                      <div style="font-size:8px;color:var(--muted);max-width:240px;margin:0 auto 10px;">Media and recovery files are preserved. VidStow will not resume, retry, cancel, or clean up.</div>
+                      <span class="b">Copy diagnostics</span>
+                      <span class="b pri">Open data folder</span>
+                      <div style="margin-top:8px;font-size:8px;color:var(--muted);">No recovery files have been changed.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The Queue title and Saved queue unavailable stay. There is still no sidebar.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="keep" id="keep">
+      <h2>What must survive the restyle</h2>
+      <p>Paper to zinc is a lot of paint. None of it rewrites admission.</p>
+      <ul>
+        <li>Analyze before anything enters the queue.</li>
+        <li>Backend-authored plans, capabilities, and tokens.</li>
+        <li><code>Change…</code> on every save bar.</li>
+        <li>Batch line status, the 2 to 20 cap, and the 500-entry playlist cap.</li>
+        <li>The video-and-playlist modal, plus Review the playlist instead.</li>
+        <li>Subtitle, extra <code>.srt</code>, and title and channel extras.</li>
+        <li>Artwork and chapters always on for video.</li>
+        <li>FFmpeg gates on complete video and MP3.</li>
+        <li>Recovery-required replaces the workstation. No sidebar. No queue mutation.</li>
+        <li>Interrupted jobs restore as paused. Nothing auto-starts.</li>
+      </ul>
+    </section>
+  </div>
+</body>
+</html>

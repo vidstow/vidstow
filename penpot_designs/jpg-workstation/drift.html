@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VidStow — p2 vs Penpot drift</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Geist+Mono:wght@450;500&family=Inter:wght@400;500;600;650&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090B;
+      --sidebar: #0C0C0E;
+      --base: #111113;
+      --raised: #18181B;
+      --border: #27272A;
+      --text: #FAFAFA;
+      --secondary: #A1A1AA;
+      --muted: #71717A;
+      --accent: #3B82F6;
+      --accent-2: #2563EB;
+      --live: #60A5FA;
+      --green: #22C55E;
+      --amber: #F59E0B;
+      --red: #EF4444;
+      --sans: Geist, Inter, ui-sans-serif, system-ui, sans-serif;
+      --mono: "Geist Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+    body {
+      margin: 0;
+      background: #050506;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: #93C5FD; }
+    .top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 18px;
+      height: 56px; padding: 0 28px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, #0C0C0E 88%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .top .mark {
+      width: 22px; height: 22px; display: grid; place-items: center;
+      border-radius: 6px; background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+      font-size: 12px; font-weight: 700;
+    }
+    .top strong { font-size: 14px; font-weight: 600; }
+    .top nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .top nav a {
+      padding: 6px 10px; border-radius: 6px; color: var(--secondary);
+      text-decoration: none; font-size: 12px; font-weight: 500;
+    }
+    .top nav a:hover { color: var(--text); background: #18181B; }
+    .wrap { width: min(1240px, calc(100% - 48px)); margin: 0 auto; padding: 48px 0 96px; }
+    .lede h1 { margin: 0 0 12px; font-size: 32px; font-weight: 650; letter-spacing: -0.04em; }
+    .lede p { margin: 0 0 14px; max-width: 74ch; color: var(--secondary); font-size: 17px; }
+    .lede .note {
+      display: inline-block; margin-top: 8px; padding: 4px 10px;
+      border: 1px solid var(--border); border-radius: 999px;
+      color: var(--muted); font-size: 12px;
+    }
+    .strip {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      margin: 28px 0 20px;
+    }
+    .strip div {
+      padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: #111113;
+    }
+    .strip b { display: block; font-size: 22px; font-weight: 650; letter-spacing: -0.04em; }
+    .strip span { color: var(--muted); font-size: 12px; }
+    .strip .fix b { color: #FCA5A5; }
+    .strip .hygiene b { color: #FCD34D; }
+    .strip .skip b { color: #86EFAC; }
+    .strip .absent b { color: #93C5FD; }
+    .toc {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+      margin: 16px 0 56px;
+    }
+    .toc a {
+      padding: 14px 14px 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--raised); color: var(--text); text-decoration: none;
+    }
+    .toc a:hover { border-color: #3F3F46; }
+    .toc b { display: block; font-size: 13px; }
+    .toc span { color: var(--muted); font-size: 12px; }
+    section.prop { margin-bottom: 88px; }
+    section.prop > h2 {
+      margin: 0 0 10px; font-size: 22px; font-weight: 650; letter-spacing: -0.03em;
+    }
+    section.prop > .why { max-width: 78ch; margin: 0 0 28px; color: var(--secondary); }
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .col h3 {
+      margin: 0 0 10px; font-size: 12px; font-weight: 650;
+      letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .col.now h3 { color: #FCA5A5; }
+    .col.next h3 { color: #86EFAC; }
+    .stage {
+      position: relative;
+      border: 1px solid var(--border); border-radius: 12px;
+      background: #070708; overflow: hidden;
+    }
+    .legend { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; padding: 0; }
+    .legend li {
+      display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;
+      list-style: none; margin: 0; color: var(--secondary); font-size: 13px; line-height: 1.45;
+    }
+    .n {
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700;
+    }
+    .now .n { background: #B45309; }
+    .next .n { background: #15803D; }
+    .pin {
+      position: absolute; z-index: 5;
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border-radius: 50%; color: #fff; font-size: 11px; font-weight: 700;
+      box-shadow: 0 0 0 3px rgba(0,0,0,0.45);
+      pointer-events: none;
+    }
+    .pin.bad { background: #B45309; }
+    .pin.good { background: #15803D; }
+    .mark {
+      position: relative;
+      outline: 1.5px dashed rgba(245, 158, 11, 0.85);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    .mark.ok {
+      outline-color: rgba(34, 197, 94, 0.7);
+    }
+    .st .mark { display: inline-block; padding-right: 4px; }
+    .mark > .pin {
+      top: 50%;
+      right: 2px;
+      left: auto;
+      transform: translateY(-50%);
+    }
+
+    .mw {
+      width: 100%; height: 440px;
+      display: grid; grid-template-rows: 28px 1fr 18px;
+      background: var(--bg); font-family: Inter, var(--sans); font-size: 11px;
+      user-select: none;
+    }
+    .mw.short { height: 380px; }
+    .mw.tall { height: 500px; }
+    .tb {
+      display: flex; align-items: center; gap: 8px; padding: 0 10px;
+      border-bottom: 1px solid var(--border); background: var(--sidebar);
+      color: var(--secondary); font-size: 10px; font-weight: 600;
+    }
+    .dots { display: flex; gap: 5px; }
+    .dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+    .dots i:nth-child(1) { background: #EF4444; }
+    .dots i:nth-child(2) { background: #F59E0B; }
+    .dots i:nth-child(3) { background: #22C55E; }
+    .body { display: grid; grid-template-columns: 108px 1fr; min-height: 0; }
+    .sb {
+      display: flex; flex-direction: column; gap: 2px;
+      padding: 8px 6px; border-right: 1px solid var(--border); background: var(--sidebar);
+    }
+    .brand { display: flex; align-items: center; gap: 6px; margin: 0 4px 8px; font-weight: 650; font-size: 11px; }
+    .brand .v {
+      width: 16px; height: 16px; display: grid; place-items: center; border-radius: 4px;
+      background: #2563EB; font-size: 9px; font-weight: 700;
+    }
+    .ni {
+      display: flex; align-items: center; gap: 6px;
+      height: 24px; padding: 0 7px; border-radius: 6px;
+      color: var(--secondary); font-size: 10px;
+    }
+    .ni.on { background: #18181B; color: #fff; }
+    .ni .bdge {
+      margin-left: auto; min-width: 14px; height: 14px; padding: 0 4px;
+      display: grid; place-items: center; border-radius: 99px; background: #27272A; color: #E4E4E7; font-size: 8px;
+    }
+    .ni .bdge.new { background: #2563EB; color: #fff; }
+    .ni.set { margin-top: auto; }
+    .mn { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
+    .st {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 10px; border-top: 1px solid var(--border); background: #0A0A0C;
+      color: var(--muted); font-size: 9px; font-family: var(--mono);
+    }
+    .st .live { color: var(--live); }
+
+    .tx {
+      height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 10px 14px; gap: 8px;
+    }
+    .tx.topish { justify-content: flex-start; padding-top: 18px; }
+    .field {
+      display: flex; align-items: center; gap: 6px;
+      width: 92%; height: 28px; padding: 0 6px 0 10px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--base); color: var(--muted);
+    }
+    .field b { color: var(--text); font-weight: 500; font-size: 10px; }
+    .kbd {
+      margin-left: auto; height: 16px; padding: 0 5px; border: 1px solid var(--border);
+      border-radius: 4px; color: var(--muted); font-size: 8px; font-family: var(--mono);
+    }
+    .an {
+      height: 20px; padding: 0 8px; border: 0; border-radius: 5px;
+      background: var(--accent-2); color: #fff; font-size: 9px; font-weight: 600;
+    }
+    .hint { color: var(--muted); font-size: 9px; text-align: center; line-height: 1.45; }
+    .hint u { color: #93C5FD; text-decoration: underline dotted; }
+
+    .card {
+      width: 92%; border: 1px solid var(--border); border-radius: 10px; background: var(--raised);
+    }
+    .drow { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 8px; }
+    .th {
+      width: 52px; height: 30px; border-radius: 4px; background: #1a2838;
+    }
+    .th.cnt {
+      display: grid; place-items: center; font-size: 12px; font-weight: 650; background: #1F2937;
+    }
+    .dtop { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .dtop b { font-size: 10px; }
+    .seg2 { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+    .seg2 i {
+      height: 14px; padding: 0 6px; display: grid; place-items: center;
+      font-size: 8px; font-style: normal; color: var(--muted);
+    }
+    .seg2 i.on { background: var(--accent-2); color: #fff; }
+    .meta { color: var(--muted); font-size: 8px; margin: 2px 0 4px; }
+    .chips { display: flex; gap: 4px; }
+    .chip {
+      height: 14px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px;
+      background: var(--base); color: var(--secondary); font-size: 8px; display: grid; place-items: center;
+    }
+    .chip.on { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+    .ghostline { color: var(--muted); font-size: 8px; margin-top: 5px; }
+    .disc {
+      display: flex; align-items: center; gap: 6px; margin-top: 5px;
+      color: var(--secondary); font-size: 8px;
+    }
+    .disc .lnk { color: #93C5FD; }
+    .disc .cov { color: #FBBF24; }
+    .disc .cost { margin-left: auto; color: var(--text); font-weight: 600; }
+    .foot {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 8px; border-top: 1px solid var(--border); color: var(--muted); font-size: 8px;
+    }
+    .foot .pri {
+      height: 18px; padding: 0 8px; border: 0; border-radius: 5px;
+      background: var(--accent-2); color: #fff; font-size: 8px; font-weight: 600;
+      display: grid; place-items: center;
+    }
+    .done {
+      width: 92%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised);
+      display: flex; align-items: center; justify-content: space-between; font-size: 10px;
+    }
+    .done a { font-size: 9px; }
+
+    .qwrap { display: grid; grid-template-columns: 1fr 150px; height: 100%; }
+    .qhead {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px 6px; font-size: 12px; font-weight: 650;
+    }
+    .qhead .acts { display: flex; gap: 4px; font-size: 8px; font-weight: 500; color: var(--secondary); }
+    .qrow {
+      display: grid; grid-template-columns: 36px 1fr auto; gap: 6px; align-items: center;
+      margin: 0 8px 5px; padding: 5px; border-radius: 6px; background: #141416;
+    }
+    .qrow.on { outline: 1px solid var(--accent); }
+    .qth { width: 36px; height: 22px; border-radius: 3px; background: #1a2838; position: relative; }
+    .qth .n {
+      position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px;
+      background: #27272A; border-radius: 99px; font-size: 7px;
+    }
+    .qt { display: block; font-size: 9px; font-weight: 600; }
+    .qbar { height: 3px; margin-top: 3px; border-radius: 99px; background: #27272A; overflow: hidden; }
+    .qbar i { display: block; height: 100%; width: 40%; background: var(--accent); }
+    .qtail { color: var(--muted); font-size: 8px; }
+    .insp { padding: 8px; border-left: 1px solid var(--border); background: #101012; font-size: 8px; }
+    .insp h5 { margin: 0 0 6px; font-size: 10px; }
+    .insp dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 6px 0; color: var(--muted); }
+    .insp dd { margin: 0; color: var(--text); }
+    .insp .path { color: var(--muted); font-size: 7px; word-break: break-all; margin: 6px 0; }
+    .kids { display: flex; flex-direction: column; gap: 3px; margin: 6px 0; }
+    .kid { display: flex; justify-content: space-between; color: var(--secondary); }
+    .ibtns { display: flex; gap: 4px; margin-top: 6px; }
+    .ibtns span {
+      height: 16px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px;
+      display: grid; place-items: center; font-size: 7px;
+    }
+    .ibtns .pri { background: var(--accent-2); border-color: var(--accent-2); }
+    .ibtns .dang { border-color: var(--red); color: var(--red); }
+
+    .ep { width: 92%; border: 1px solid var(--border); border-radius: 8px; background: #141416; overflow: hidden; }
+    .eph {
+      display: flex; justify-content: space-between; padding: 5px 8px;
+      color: var(--muted); font-size: 8px; border-bottom: 1px solid var(--border);
+    }
+    .epr {
+      display: grid; grid-template-columns: 10px 1fr auto auto; gap: 6px; align-items: center;
+      padding: 3px 8px; font-size: 8px;
+    }
+    .epr .sz { color: var(--muted); }
+    .chk { width: 8px; height: 8px; border-radius: 2px; background: var(--accent-2); }
+
+    .srow {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 10px; font-size: 9px;
+    }
+    .srow small { display: block; color: var(--muted); font-size: 8px; }
+    .missing {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .missing div {
+      padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised);
+    }
+    .missing b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .missing span { color: var(--secondary); font-size: 13px; }
+    .okbox {
+      margin: 0 0 20px; padding: 12px 16px;
+      border: 1px solid rgba(34,197,94,0.28); border-radius: 10px;
+      background: rgba(34,197,94,0.08); color: var(--secondary); font-size: 14px;
+    }
+    .okbox strong { color: #86EFAC; }
+    @media (max-width: 980px) {
+      .pair, .toc, .strip, .missing { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="mark">V</div>
+    <strong>p2 vs Penpot</strong>
+    <nav>
+      <a href="p2.html">p2.html</a>
+      <a href="proposals.html">Proposals</a>
+      <a href="#leftover">Plan detail</a>
+      <a href="#playlist">Playlist / batch</a>
+      <a href="#added">Added</a>
+      <a href="#collection">Collection</a>
+      <a href="#chrome">Chrome</a>
+      <a href="#episodes">Episodes</a>
+      <a href="#settings">Settings</a>
+      <a href="#object">p2 bug</a>
+      <a href="#absent">Not drawn</a>
+    </nav>
+  </header>
+
+  <div class="wrap">
+    <div class="lede">
+      <h1>Penpot still differs from p2.html in a few places</h1>
+      <p>
+        I reloaded <a href="p2.html">p2.html</a> on 30 Aug 2026, clicked through Home, Queue, Downloads, and Settings, and compared the copy to the boards on <strong>VidStow Workstation Redesign (Cursor)</strong>.
+        Most of p2 is already drawn: disclosures, Start 24, 905 MB, 1.5 GB, Settings rows, collection, failed job, finish toast.
+        This page is only the mismatches. Left is Penpot. Right is p2.
+      </p>
+      <span class="note">Source: /p2.html · Boards: Penpot page VidStow Workstation Redesign (Cursor) · This review: /drift.html</span>
+    </div>
+
+    <div class="strip">
+      <div class="fix"><b>4</b><span>Wrong copy still on the boards. Delete it.</span></div>
+      <div class="hygiene"><b>3</b><span>Small mismatches. Chrome, episode count, Settings wording.</span></div>
+      <div class="absent"><b>5</b><span>p2 states that were never drawn. Optional.</span></div>
+      <div class="skip"><b>1</b><span>p2 bug. Penpot Downloads is already correct. Leave it.</span></div>
+    </div>
+
+    <div class="toc">
+      <a href="#leftover"><b>1. Extra codec line</b><span>Home · video</span></a>
+      <a href="#playlist"><b>2. Extra summary line</b><span>Playlist and batch</span></a>
+      <a href="#added"><b>3. Try hint on Added</b><span>Home · added</span></a>
+      <a href="#collection"><b>4. Wrong inspector</b><span>Queue · collection</span></a>
+      <a href="#chrome"><b>5. Idle instead of live</b><span>Home result boards</span></a>
+      <a href="#episodes"><b>6. Nine episodes, not 24</b><span>Home · playlist · episodes</span></a>
+      <a href="#settings"><b>7. Two Settings strings</b><span>Minus sign, diagnostics copy</span></a>
+      <a href="#object"><b>8. p2 size bug</b><span>Do not copy onto Penpot</span></a>
+      <a href="#absent"><b>9. Never drawn</b><span>Started N, FFmpeg, toasts</span></a>
+    </div>
+
+    <section class="prop" id="leftover">
+      <h2>1. Home · video prints the codec twice</h2>
+      <p class="why">
+        p2 shows quality chips, then one disclosure row: ▸, 4 plans, WEBM · VP9 + Opus, 1.2 GB.
+        Home · video and Home · video · plans also keep an older line, <code>WEBM · VP9 + Opus · 1.2 GB</code>, under the chips.
+        Remove that line. The disclosure and the plan sizes (1.2 GB, 396 MB, 180 MB, 72 MB) already match p2.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Penpot now</h3>
+          <div class="stage">
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx topish">
+                    <div class="field"><b>https://youtube.com/watch?v=rust</b><span class="kbd">⌘L</span><span class="an">Analyze</span></div>
+                    <div class="card">
+                      <div class="drow">
+                        <div class="th"></div>
+                        <div>
+                          <div class="dtop"><b>Rust vs Go Architecture 2026</b><span class="seg2"><i class="on">Video</i><i>Audio</i></span></div>
+                          <div class="meta">Systems Weekly · 18:41 · Recommended</div>
+                          <div class="chips"><span class="chip on">2160p</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                          <div class="ghostline mark">WEBM · VP9 + Opus · 1.2 GB<span class="pin bad">1</span></div>
+                          <div class="disc"><span>▸</span><span class="lnk">4 plans</span><span>WEBM · VP9 + Opus</span><span class="cost">1.2 GB</span></div>
+                        </div>
+                      </div>
+                      <div class="foot">Save to ~/Movies/VidStow<span class="pri">Add to Queue</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>This line is not in p2. Delete it.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>p2.html</h3>
+          <div class="stage">
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads <span class="bdge new">5</span></div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx topish">
+                    <div class="field"><b>https://youtube.com/watch?v=rust</b><span class="kbd">⌘L</span><span class="an">Analyze</span></div>
+                    <div class="card">
+                      <div class="drow">
+                        <div class="th"></div>
+                        <div>
+                          <div class="dtop"><b>Rust vs Go Architecture 2026</b><span class="seg2"><i class="on">Video</i><i>Audio</i></span></div>
+                          <div class="meta">Systems Weekly · 18:41 · Recommended</div>
+                          <div class="chips"><span class="chip on">2160p</span><span class="chip">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                          <div class="disc mark ok"><span>▸</span><span class="lnk">4 plans</span><span>WEBM · VP9 + Opus</span><span class="cost">1.2 GB</span><span class="pin good">1</span></div>
+                        </div>
+                      </div>
+                      <div class="foot">Save to ~/Movies/VidStow<span class="pri">Add to Queue</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">3.2 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>p2 only has this disclosure under the chips.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="playlist">
+      <h2>2. Playlist and batch do the same thing</h2>
+      <p class="why">
+        p2 playlist is one disclosure: ▸ 24 episodes, up to 1080p, 21 of 24 reach it, 8.5 GB.
+        Penpot still also shows <code>Best available up to 1080p · 21 of 24 reach it · 8.5 GB total</code>.
+        Playlist audio still has <code>M4A originals · 24 files · 905 MB total</code> as well as the disclosure (905 MB is correct).
+        Batch still has <code>Best up to 1080p each · 4 of 5 reach it · 1.5 GB total</code> as well as ▸ 5 titles.
+        Delete the extra sentences. Start 24, Admit 5, the playlist folder path, 8.5 GB, 905 MB, and 1.5 GB already match.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Penpot now</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx topish">
+                    <div class="field"><b>https://youtube.com/playlist?list=PLgo24</b><span class="an">Analyze</span></div>
+                    <div class="card">
+                      <div class="drow">
+                        <div class="th"></div>
+                        <div>
+                          <div class="dtop"><b>Go Distributed Systems Masterclass</b><span class="seg2"><i class="on">Video</i><i>Audio</i></span></div>
+                          <div class="meta">Playlist · 24 videos · 6h 45m · TechCraft</div>
+                          <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                          <div class="ghostline mark">Best available up to 1080p · 21 of 24 reach it · 8.5 GB total<span class="pin bad">1</span></div>
+                          <div class="disc"><span>▸</span><span class="lnk">24 episodes</span><span>up to 1080p</span><span class="cov">21 of 24 reach it</span><span class="cost">8.5 GB</span></div>
+                        </div>
+                      </div>
+                      <div class="foot">…/Go Distributed Systems Masterclass<span class="pri">Start 24</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Extra summary. Same on playlist audio and batch.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>p2.html</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads <span class="bdge new">5</span></div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx topish">
+                    <div class="field"><b>https://youtube.com/playlist?list=PLgo24</b><span class="an">Analyze</span></div>
+                    <div class="card">
+                      <div class="drow">
+                        <div class="th"></div>
+                        <div>
+                          <div class="dtop"><b>Go Distributed Systems Masterclass</b><span class="seg2"><i class="on">Video</i><i>Audio</i></span></div>
+                          <div class="meta">Playlist · 24 videos · 6h 45m · TechCraft</div>
+                          <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                          <div class="disc mark ok"><span>▸</span><span class="lnk">24 episodes</span><span>up to 1080p</span><span class="cov">21 of 24 reach it</span><span class="cost">8.5 GB</span><span class="pin good">1</span></div>
+                        </div>
+                      </div>
+                      <div class="foot">…/Go Distributed Systems Masterclass<span class="pri">Start 24</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">3.2 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>p2 only has the disclosure. Audio total 905 MB. Batch total 1.5 GB.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="added">
+      <h2>3. Home · added still shows the Try line</h2>
+      <p class="why">
+        After Add to Queue, p2 clears the field and shows only <code>✓ Added · N in queue</code> plus View Queue · ⌘2.
+        After three seconds it goes back to empty Home, and the Try line comes back then.
+        Home · added shows both the check line and the empty-Home Try copy. Remove the Try copy. Queue badge 3 and live status can stay.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Penpot now</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">3</span></div>
+                  <div class="ni">Downloads <span class="bdge new">5</span></div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx">
+                    <div class="field">Paste a YouTube URL<span class="kbd">⌘L</span><span class="an">Analyze</span></div>
+                    <div class="done">✓ Added · 3 in queue<a>View Queue · ⌘2</a></div>
+                    <div class="hint mark">One link, a playlist, or a handful.<br>Try: <u>a video</u> · <u>a playlist</u> · <u>several links</u><span class="pin bad">1</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">3.2 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The Try line should not be on this board.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>p2.html</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">3</span></div>
+                  <div class="ni">Downloads <span class="bdge new">5</span></div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx">
+                    <div class="field">Paste a YouTube URL<span class="kbd">⌘L</span><span class="an">Analyze</span></div>
+                    <div class="done mark ok">✓ Added · 3 in queue<a>View Queue · ⌘2</a><span class="pin good">1</span></div>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="collection">
+      <h2>4. Queue · collection still has a single-job inspector</h2>
+      <p class="why">
+        p2's collection inspector is the playlist: <code>0/24 finished · 7.2 MB/s</code>, a bar, two live children, three waiting, Pause collection, Cancel.
+        It does not show Speed, ETA, Progress, Size, or <code>go_concurrency_in_practice.mp4</code>.
+        Those fields are still on the Penpot board, copied from Queue · active. The child rows are already there. Delete the job stats.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Penpot now</h3>
+          <div class="stage">
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Queue</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on">Queue <span class="bdge">24</span></div>
+                  <div class="ni">Downloads <span class="bdge new">5</span></div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="qwrap">
+                    <div>
+                      <div class="qhead">Queue<span class="acts">Pause all · Resume all</span></div>
+                      <div class="qrow on">
+                        <div class="qth"><span class="n">24</span></div>
+                        <div><span class="qt">Go Distributed Systems Masterclass</span><div class="qbar"><i></i></div></div>
+                        <span class="qtail">0/24 · 7.2</span>
+                      </div>
+                      <div class="qrow">
+                        <div class="qth"></div>
+                        <div><span class="qt">Rust vs Go Architecture 2026</span><div class="qbar"><i style="width:0"></i></div></div>
+                        <span class="qtail">waiting</span>
+                      </div>
+                    </div>
+                    <aside class="insp">
+                      <h5>Go Distributed Systems Masterclass</h5>
+                      <div>0/24 finished · 7.2 MB/s</div>
+                      <dl class="mark">
+                        <div><dt>Speed</dt><dd>3.2 MB/s</dd></div>
+                        <div><dt>ETA</dt><dd>~8s</dd></div>
+                        <div><dt>Progress</dt><dd>55%</dd></div>
+                        <div><dt>Size</dt><dd>264 MB</dd></div>
+                        <span class="pin bad">1</span>
+                      </dl>
+                      <div class="path">~/Movies/VidStow/go_concurrency_in_practice.mp4</div>
+                      <div class="kids">
+                        <div class="kid"><span>01 Introduction</span><span>9.6</span></div>
+                        <div class="kid"><span>02 Clocks…</span><span>7.9</span></div>
+                      </div>
+                      <div class="ibtns"><span class="pri">Pause</span><span class="dang">Cancel</span></div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">7.2 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>These stats belong to a single job, not the collection.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>p2.html</h3>
+          <div class="stage">
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Queue</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on">Queue <span class="bdge">24</span></div>
+                  <div class="ni">Downloads <span class="bdge new">5</span></div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="qwrap">
+                    <div>
+                      <div class="qhead">Queue<span class="acts">Pause all · Resume all</span></div>
+                      <div class="qrow on">
+                        <div class="qth"><span class="n">24</span></div>
+                        <div><span class="qt">Go Distributed Systems Masterclass</span><div class="qbar"><i></i></div></div>
+                        <span class="qtail">0/24 · 7.2</span>
+                      </div>
+                      <div class="qrow">
+                        <div class="qth"></div>
+                        <div><span class="qt">Rust vs Go Architecture 2026</span><div class="qbar"><i style="width:0"></i></div></div>
+                        <span class="qtail">waiting</span>
+                      </div>
+                    </div>
+                    <aside class="insp">
+                      <h5>Go Distributed Systems Masterclass</h5>
+                      <div>0/24 finished · 7.2 MB/s</div>
+                      <div class="qbar" style="margin:8px 0"><i></i></div>
+                      <div class="kids mark ok">
+                        <div class="kid"><span>01 Introduction</span><span>9.6 MB/s</span></div>
+                        <div class="kid"><span>02 Clocks and heartbeats</span><span>7.9 MB/s</span></div>
+                        <div class="kid"><span>03 Consensus</span><span>waiting</span></div>
+                        <div class="kid"><span>04 Gossip protocols</span><span>waiting</span></div>
+                        <div class="kid"><span>05 Leader election</span><span>waiting</span></div>
+                        <span class="pin good">1</span>
+                      </div>
+                      <div class="ibtns"><span>Pause collection</span><span class="dang">Cancel</span></div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">7.2 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>p2 inspector: children, Pause collection, Cancel.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="chrome">
+      <h2>5. Home result boards say Idle</h2>
+      <p class="why">
+        p2 starts with two jobs, so the status bar is live on every screen: speed, slots, Queue 2, Downloads 5.
+        Home · empty already shows that. Home · video, playlist, and batch show Idle and no badges.
+        If you want those boards to match the same moment as empty Home, copy the live chrome onto them. The real app already shares one status bar, so skipping this does not change implementation.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Home · video (Penpot)</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="mark">
+                    <div class="ni">Queue</div>
+                    <div class="ni">Downloads</div>
+                    <span class="pin bad">1</span>
+                  </div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn"><div class="tx"><div class="field"><b>watch?v=rust</b><span class="an">Analyze</span></div></div></div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="mark">Idle<span class="pin bad">2</span></span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Home · empty has Queue 2 and Downloads 5. This board does not.</span></li>
+            <li><span class="n">2</span><span>p2 would show a live speed here while the seed jobs run.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>p2 at init, any Home result</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="mark ok">
+                    <div class="ni">Queue <span class="bdge">2</span></div>
+                    <div class="ni">Downloads <span class="bdge new">5</span></div>
+                    <span class="pin good">1</span>
+                  </div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn"><div class="tx"><div class="field"><b>watch?v=rust</b><span class="an">Analyze</span></div></div></div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live mark ok">3.2 MB/s · 2/2 slots<span class="pin good">2</span></span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Queue and Downloads counts are the same on every screen.</span></li>
+            <li><span class="n">2</span><span>Status is live while a job is downloading or merging.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="episodes">
+      <h2>6. Episode list stops at nine</h2>
+      <p class="why">
+        p2 lists all 24 episodes. Episodes 07 and 15 say caps at 720p. Episode 19 says caps at 480p.
+        Home · playlist · episodes has Select all / None and the 07 note, then ends at Episode 9.
+        Either crop the list and say so, or add the rest. Do not treat nine as the full picker.
+      </p>
+      <div class="pair">
+        <div class="col now">
+          <h3>Penpot now</h3>
+          <div class="stage">
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni">Downloads</div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx topish">
+                    <div class="card" style="width:92%">
+                      <div class="drow"><div class="th"></div><div><b>Go Distributed Systems Masterclass</b><div class="disc"><span>▸</span><span class="lnk">24 episodes</span></div></div></div>
+                    </div>
+                    <div class="ep">
+                      <div class="eph"><span>24 of 24 selected</span><span>Select all · None</span></div>
+                      <div class="epr"><span class="chk"></span><span>01 Introduction</span><span>8:00</span><span class="sz">176 MB</span></div>
+                      <div class="epr"><span class="chk"></span><span>07 Log compaction · caps at 720p</span><span>28:18</span><span class="sz">280 MB</span></div>
+                      <div class="epr mark"><span class="chk"></span><span>Episode 9</span><span>20:44</span><span class="sz">440 MB</span><span class="pin bad">1</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Stops at Episode 9. Missing the second 720p cap and the 480p cap.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>p2.html</h3>
+          <div class="stage">
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div>Home</div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v">V</span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads <span class="bdge new">5</span></div>
+                  <div class="ni set">Settings</div>
+                </aside>
+                <div class="mn">
+                  <div class="tx topish">
+                    <div class="card" style="width:92%">
+                      <div class="drow"><div class="th"></div><div><b>Go Distributed Systems Masterclass</b><div class="disc"><span>▸</span><span class="lnk">24 episodes</span></div></div></div>
+                    </div>
+                    <div class="ep">
+                      <div class="eph"><span>24 of 24 selected</span><span>Select all · None</span></div>
+                      <div class="epr"><span class="chk"></span><span>01 Introduction</span><span>8:00</span><span class="sz">176 MB</span></div>
+                      <div class="epr"><span class="chk"></span><span>07 Log compaction · caps at 720p</span><span>28:18</span><span class="sz">280 MB</span></div>
+                      <div class="epr"><span class="chk"></span><span>15 … · caps at 720p</span><span></span><span class="sz"></span></div>
+                      <div class="epr"><span class="chk"></span><span>19 … · caps at 480p</span><span></span><span class="sz"></span></div>
+                      <div class="epr mark ok"><span class="chk"></span><span>Episode 24</span><span></span><span class="sz"></span><span class="pin good">1</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">3.2 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>p2 scrolls through 24 rows.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="settings">
+      <h2>7. Settings copy</h2>
+      <p class="why">
+        The Settings board already has the rows p2 has: Show in Finder, Change…, confirm Off, Recheck, FFmpeg path, Engine ytdlp-go v0.3.0, privacy notice, Don't send, Clear history, Copy diagnostics, middot colophon.
+        Two strings differ. p2 uses a minus (−) on the slot stepper. Penpot uses a hyphen. p2's diagnostics sentence includes "in the background." Penpot does not.
+      </p>
+    </section>
+
+    <section class="prop" id="object">
+      <h2>8. p2 Downloads sizes are broken. Penpot is not.</h2>
+      <p class="why">
+        p2 seeds history with <code>sizeMB: POLICY['2160p'](26)</code>. That stores an object, so the list prints <code>[object Object] MB</code>.
+        Penpot shows 1.7 GB, 220 MB, 101 MB, 242 MB, and 150 MB, which is what those calls were supposed to compute. Today rows 264 MB and 396 MB also match.
+        Do not change the Penpot sizes to match the bug. Fix p2 if you want the prototype to display them.
+      </p>
+      <div class="okbox">
+        <strong>Not a Penpot miss.</strong>
+        The boards already have the intended numbers.
+      </div>
+    </section>
+
+    <section class="prop" id="absent">
+      <h2>9. In p2, not on a board</h2>
+      <p class="why">
+        These states exist in p2. There is no Penpot frame for them. Draw them only if you need them documented.
+      </p>
+      <div class="missing">
+        <div><b>✓ Started · N episodes</b><span>Shown after starting a playlist. Home · added is the video/batch line only.</span></div>
+        <div><b>requires FFmpeg</b><span>Shown next to MP3 sizes. There is no board with MP3 selected.</span></div>
+        <div><b>saved as slug-N</b><span>Toast when the filename already exists. Downloads · today is the normal finish toast.</span></div>
+        <div><b>merging / paused</b><span>Queue row tails and inspector actions. Not on Queue · active or Queue · failed.</span></div>
+        <div><b>Nothing matches "…"</b><span>Downloads search with no hits. The search field is already on the Downloads board.</span></div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

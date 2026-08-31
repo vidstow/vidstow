@@ -1,0 +1,1543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VidStow — p2 suggestions (second pass)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Geist+Mono:wght@450;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090B; --sidebar: #0C0C0E; --base: #111113; --raised: #18181B;
+      --hover: #1F1F23; --border: #27272A; --text: #FAFAFA; --secondary: #A1A1AA;
+      --muted: #71717A; --accent: #3B82F6; --accent-2: #2563EB; --green: #22C55E;
+      --amber: #F59E0B; --red: #EF4444;
+      --sans: Geist, ui-sans-serif, system-ui, sans-serif;
+      --mono: "Geist Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 64px; overflow-x: clip; }
+    body {
+      margin: 0; background: #050506; color: var(--text);
+      font-family: var(--sans); font-size: 15px; line-height: 1.55;
+      -webkit-font-smoothing: antialiased; overflow-x: clip;
+    }
+    a { color: #93C5FD; }
+    .top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      min-height: 52px; padding: 8px 24px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, #0C0C0E 90%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .mark {
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border-radius: 6px; background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+    }
+    .mark svg {
+      width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .top strong { font-size: 13px; font-weight: 600; }
+    .top nav { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .top nav a {
+      padding: 5px 8px; border-radius: 6px; color: var(--secondary);
+      text-decoration: none; font-size: 11.5px; font-weight: 500;
+    }
+    .top nav a:hover { color: var(--text); background: #18181B; }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 36px 0 80px; }
+    .lede h1 { margin: 0 0 14px; font-size: 28px; font-weight: 650; letter-spacing: -0.04em; }
+    .lede p { margin: 0 0 12px; max-width: 74ch; color: var(--secondary); }
+    .lede b, .why b, .keep b, .legend b, .ask b, .callout b { color: var(--text); font-weight: 600; }
+    .lede code, .why code, .keep code, .ask code, .legend code {
+      font-family: var(--mono); font-size: 0.86em; color: #93C5FD;
+      background: #18181B; padding: 0.08em 0.38em; border-radius: 4px;
+      vertical-align: baseline;
+    }
+    .key { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px; }
+    .key span {
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 28px; padding: 0 12px; border-radius: 99px;
+      border: 1px solid var(--border); background: var(--raised);
+      color: var(--secondary); font-size: 12.5px; font-weight: 500;
+    }
+    .key i { width: 8px; height: 8px; border-radius: 99px; display: block; }
+    .key .now i { background: #F87171; }
+    .key .next i { background: #4ADE80; }
+    .ship { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 22px; padding: 0; list-style: none; max-width: 74ch; }
+    .ship li {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--raised); color: var(--text); font-size: 12.5px; font-weight: 500;
+    }
+    .lede-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
+    .callout { padding: 16px 18px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--raised); }
+    .callout h2 { margin: 0 0 10px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+    .callout p { margin: 0; max-width: none; font-size: 14.5px; line-height: 1.55; }
+    .callout p + p { margin-top: 10px; }
+    .callout.in { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.06); }
+    .callout.in h2 { color: #86EFAC; }
+    .callout.out { border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.06); }
+    .callout.out h2 { color: #FCA5A5; }
+    .lede .note { display: inline-block; padding: 3px 10px; border: 1px solid var(--border); border-radius: 99px; color: var(--muted); font-size: 12px; }
+    .toc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 28px 0 48px; }
+    .toc a {
+      padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--raised); color: var(--text); text-decoration: none;
+    }
+    .toc a:hover { border-color: #3F3F46; }
+    .toc b { display: block; font-size: 13px; }
+    .toc span { color: var(--muted); font-size: 11.5px; }
+    section.prop { margin-bottom: 72px; }
+    section.prop > h2 { margin: 0 0 10px; font-size: 20px; font-weight: 650; letter-spacing: -0.03em; }
+    .why { max-width: 74ch; margin: 0 0 22px; color: var(--secondary); font-size: 15px; }
+    .why p { margin: 0 0 12px; }
+    .why > p:last-child { margin-bottom: 0; }
+    .why .case {
+      margin-top: 14px; padding: 12px 14px 12px 16px;
+      border: 1px solid var(--border); border-left: 3px solid #3F3F46;
+      border-radius: 10px; background: var(--raised);
+    }
+    .why .case h3 { margin: 0 0 8px; font-size: 13.5px; font-weight: 650; letter-spacing: -0.02em; color: var(--text); }
+    .why .case p:last-child { margin-bottom: 0; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .col h3 { margin: 0 0 8px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+    .col.now h3 { color: #FCA5A5; }
+    .col.next h3 { color: #86EFAC; }
+    .stage { position: relative; min-width: 0; border: 1px solid var(--border); border-radius: 12px; background: #070708; overflow: hidden; }
+    .legend { margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .legend li {
+      display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; align-items: start;
+      list-style: none; color: var(--secondary); font-size: 13.5px; line-height: 1.5;
+    }
+    .legend li > span:not(.n) { min-width: 0; }
+    .n, .pin { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700; }
+    .now .n, .pin.bad { background: #B45309; }
+    .next .n, .pin.good { background: #15803D; }
+    .pin { position: absolute; z-index: 5; box-shadow: 0 0 0 3px rgba(0,0,0,0.45); pointer-events: none; }
+    .ring-hit, .ring-ok { position: absolute; z-index: 4; pointer-events: none; border-radius: 8px; }
+    .ring-hit { border: 1.5px dashed rgba(245, 158, 11, 0.85); }
+    .ring-ok { border: 1.5px dashed rgba(34, 197, 94, 0.7); }
+    .mw {
+      width: 100%; min-width: 0; height: 390px;
+      display: grid; grid-template-rows: 26px 1fr 16px;
+      background: var(--bg); font-family: var(--sans); font-size: 11px;
+      user-select: none;
+    }
+    .mw.short { height: 300px; }
+    .mw.tall { height: 460px; }
+    .tb { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--border); background: var(--sidebar); }
+    .dots { display: flex; gap: 5px; }
+    .dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+    .dots i:nth-child(1) { background: #EF4444; }
+    .dots i:nth-child(2) { background: #F59E0B; }
+    .dots i:nth-child(3) { background: #22C55E; }
+    .crumb { color: var(--muted); font-size: 10px; }
+    .crumb b { color: var(--text); font-weight: 600; }
+    .body { display: grid; grid-template-columns: 104px 1fr; min-height: 0; }
+    .sb { display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--border); background: var(--sidebar); }
+    .brand { display: flex; align-items: center; gap: 6px; margin: 0 4px 8px; font-weight: 650; font-size: 11px; }
+    .brand .v { width: 14px; height: 14px; display: grid; place-items: center; border-radius: 4px; background: linear-gradient(180deg, #3B82F6, #1D4ED8); }
+    .brand .v svg { width: 8px; height: 8px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ni { position: relative; display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px 0 8px; border-radius: 6px; color: var(--secondary); font-size: 10px; }
+    .ni svg { width: 10px; height: 10px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .ni.on { background: #18181B; color: #fff; }
+    .ni.on::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 1.5px; border-radius: 99px; background: var(--accent); }
+    .ni .bdge { margin-left: auto; min-width: 14px; height: 14px; padding: 0 4px; display: grid; place-items: center; border-radius: 99px; background: #27272A; font-size: 8px; }
+    .ni .bdge.loud { background: var(--accent-2); color: #fff; }
+    .mn { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
+    .st { display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-top: 1px solid var(--border); background: #0A0A0C; color: var(--muted); font-size: 9px; font-family: var(--mono); line-height: 1; }
+    .st .live { color: #60A5FA; }
+    .field { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 5px 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--base); color: var(--muted); }
+    .field .url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+    .field .go { margin-left: auto; height: 18px; padding: 0 8px; border: 0; border-radius: 5px; background: var(--accent-2); color: #fff; font-size: 9px; font-weight: 600; white-space: nowrap; }
+    .field .go.query { background: #FAFAFA; color: #09090B; }
+    .field .go.query.dim { opacity: 0.45; }
+    .field .url .selhl { background: rgba(59,130,246,0.4); color: var(--text); border-radius: 3px; padding: 1px 2px; }
+    /* v2 dock */
+    .dock2m { border: 1px solid var(--border); border-radius: 10px; background: var(--raised); padding: 10px; }
+    .drow2 { display: grid; grid-template-columns: 84px minmax(0,1fr) auto; gap: 10px; align-items: stretch; }
+    .th.md { width: 84px; height: 48px; }
+    .dmain2 { min-width: 0; }
+    .dtop2 { display: flex; align-items: center; gap: 8px; }
+    .dtop2 b { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dmeta2 { display: block; color: var(--secondary); font-size: 9px; margin-top: 2px; }
+    .dout { font-family: var(--mono); font-size: 9px; color: var(--secondary); margin-top: 6px; }
+    .dout b { color: var(--text); font-weight: 600; }
+    .dph { font-size: 8.5px; color: var(--muted); margin-top: 3px; }
+    .dph u { color: #93C5FD; }
+    .dchoice2 { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; justify-content: space-between; }
+    .modeseg { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+    .modeseg i { height: 15px; padding: 0 7px; font-size: 8px; color: var(--muted); background: var(--base); font-style: normal; display: grid; place-items: center; }
+    .modeseg i + i { border-left: 1px solid var(--border); }
+    .modeseg i.on { background: rgba(59,130,246,0.12); color: #93C5FD; }
+    .chips { display: flex; gap: 3px; }
+    .chip { height: 15px; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--base); color: var(--secondary); font-size: 8px; display: grid; place-items: center; }
+    .chip.on { border-color: rgba(59,130,246,0.55); background: rgba(59,130,246,0.12); color: #93C5FD; }
+    .dfoot { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--border); background: var(--base); margin: 10px -10px -10px; border-radius: 0 0 9px 9px; }
+    .dwhere { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; height: 18px; }
+    .dpath { min-width: 0; flex: 1; font-family: var(--mono); font-size: 8px; line-height: 18px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .b { height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--raised); color: #E4E4E7; font-size: 8px; display: inline-grid; place-items: center; white-space: nowrap; flex-shrink: 0; }
+    .b.pri { border-color: var(--accent-2); background: var(--accent-2); color: #fff; }
+    .b.ghost { background: transparent; }
+    .b.chg { background: transparent; color: var(--secondary); }
+    .b.danger { color: #FCA5A5; }
+    .b.off { opacity: 0.4; }
+    .th { border-radius: 4px; background: #152033; overflow: hidden; }
+    .th.xs { width: 34px; height: 20px; }
+    .th.cnt { display: grid; place-items: center; color: #93C5FD; font-weight: 700; font-size: 14px; background: var(--base); border: 1px solid var(--border); }
+    /* episode list v2 */
+    .eplist { border: 1px solid var(--border); border-radius: 8px; background: var(--base); overflow: hidden; }
+    .ephead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; background: var(--raised); border-bottom: 1px solid var(--border); font-size: 9px; color: var(--secondary); flex-wrap: wrap; }
+    .ephead .lnk { color: #93C5FD; font-size: 9px; }
+    .ephead .rng { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+    .ephead .rng input { width: 22px; height: 14px; padding: 0 3px; border: 1px solid var(--border); border-radius: 4px; background: var(--base); color: var(--text); font-family: var(--mono); font-size: 8px; }
+    .ephead .rng .apl { color: #93C5FD; }
+    .eprow { display: grid; grid-template-columns: 10px 1fr auto auto; gap: 6px; align-items: center; padding: 4px 8px; font-size: 9px; color: var(--secondary); border-top: 1px solid var(--border); }
+    .eprow:first-of-type { border-top: 0; }
+    .chk { width: 9px; height: 9px; border: 1px solid #3F3F46; border-radius: 2px; background: var(--accent-2); border-color: var(--accent-2); }
+    .eprow.unsel .chk { background: transparent; border-color: #3F3F46; }
+    .eprow .epsz { font-family: var(--mono); font-size: 8px; color: var(--muted); }
+    .eprow .epcap { font-size: 8px; color: #FBBF24; }
+    .eplist.tiny { max-height: 72px; overflow: hidden; }
+    .epscroll { max-height: 150px; overflow: hidden; }
+    .err { padding: 10px 12px; border: 1px solid rgba(239,68,68,0.45); border-radius: 8px; background: rgba(239,68,68,0.06); }
+    .err b { display: block; font-size: 11px; color: #FCA5A5; }
+    .err span { display: block; color: var(--secondary); font-size: 9px; margin-top: 3px; }
+    .qwrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(72px, 150px); height: 100%; min-width: 0; }
+    .qhead { display: flex; justify-content: space-between; padding: 8px 10px 6px; }
+    .qhead h4 { margin: 0; font-size: 13px; font-weight: 650; }
+    .qrow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 7px; align-items: center; height: 28px; padding: 0 8px; border-radius: 6px; margin: 0 6px 2px; min-width: 0; }
+    .qrow.sel { background: var(--raised); }
+    .qt { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qbar { display: block; height: 2px; margin-top: 3px; border-radius: 99px; background: #26262C; overflow: hidden; }
+    .qbar i { display: block; height: 100%; background: var(--accent); }
+    .qtail { font-family: var(--mono); font-size: 8px; color: var(--secondary); white-space: nowrap; }
+    .qinsp { border-left: 1px solid var(--border); background: #0D0D0F; padding: 10px; overflow: hidden; }
+    .qinsp h5 { margin: 0 0 6px; font-size: 10px; font-weight: 600; line-height: 1.3; }
+    .istats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 6px 0; }
+    .istats dt { color: var(--muted); font-size: 8px; }
+    .istats dd { margin: 1px 0 0; font-size: 9px; font-family: var(--mono); }
+    .ibtns { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .modal { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,0.55); z-index: 6; }
+    .dlg { width: 78%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); }
+    .dlg h5 { margin: 0 0 6px; font-size: 11px; }
+    .dlg p { margin: 0 0 8px; color: var(--secondary); font-size: 9px; }
+    .dlg .dbtns { display: flex; gap: 5px; justify-content: flex-end; }
+    .sdlg { border: 1px solid var(--border); border-radius: 10px; background: var(--raised); padding: 12px; }
+    .sdlg b.h { display: block; font-size: 11px; margin-bottom: 2px; }
+    .sdlg .dsub { display: block; color: var(--secondary); font-size: 9px; margin-bottom: 8px; }
+    .scard { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--base); margin-bottom: 5px; }
+    .scard.pri { border-color: rgba(59,130,246,0.6); }
+    .scard .k { font-size: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .scard .t { display: block; font-size: 10px; font-weight: 600; }
+    .scard .m { display: block; font-size: 8px; color: var(--muted); margin-top: 1px; }
+    .scard .m b { color: var(--secondary); font-weight: 600; }
+    .scard .go2 { font-size: 8px; color: var(--muted); }
+    .scard.pri .go2 { color: #93C5FD; }
+    .dlist { padding: 8px 10px; }
+    .dgroup { padding: 6px 2px 4px; color: var(--muted); font-size: 8px; font-weight: 650; letter-spacing: 0.08em; }
+    .ditem { display: grid; grid-template-columns: 36px 1fr auto; gap: 7px; align-items: center; height: 28px; padding: 0 4px; border-radius: 6px; }
+    .ditem b { display: block; font-size: 10px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ditem span { display: block; color: var(--muted); font-size: 8px; }
+    .search { width: 140px; height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--base); color: var(--muted); font-size: 9px; display: grid; align-items: center; }
+    .search.hit { border-color: var(--amber); color: var(--text); }
+    .keep { padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--raised); color: var(--secondary); max-width: 78ch; }
+    .keep h2 { margin: 0 0 6px; color: var(--text); font-size: 16px; }
+    .keep p { margin: 0 0 12px; }
+    .keep ul { margin: 8px 0 0; padding-left: 18px; }
+    .keep li { margin: 0 0 6px; }
+    .ask { margin-top: 28px; padding: 20px 20px 18px; border: 1px solid var(--border); border-radius: 12px; background: #0C0C0E; }
+    .ask h3 { margin: 0 0 8px; font-size: 16px; font-weight: 650; letter-spacing: -0.02em; }
+    .ask > p { margin: 0 0 16px; max-width: 74ch; color: var(--secondary); font-size: 14.5px; }
+    .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .choices > .choice:nth-child(3) { grid-column: 1 / -1; }
+    .choices.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .choice { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised); cursor: pointer; text-align: left; color: inherit; }
+    .choice:hover { border-color: #3F3F46; }
+    .choice:has(input:checked) { border-color: rgba(59,130,246,0.75); box-shadow: 0 0 0 1px rgba(59,130,246,0.35); background: #12141A; }
+    .choice .pick { display: flex; align-items: flex-start; gap: 8px; }
+    .choice .pick input { margin: 3px 0 0; accent-color: var(--accent); }
+    .choice .pick b { display: block; font-size: 13px; font-weight: 650; }
+    .choice .pick span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 400; }
+    .choice .blurb { margin: 0; color: var(--secondary); font-size: 12.5px; line-height: 1.45; }
+    .choice .note { width: 100%; min-height: 64px; padding: 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--base); color: var(--text); font: inherit; font-size: 12px; resize: vertical; }
+    .mw.choice-h { height: 250px; }
+    .mw.no-sb .body { display: block; min-width: 0; }
+    .mw.no-sb .sb { display: none; }
+    .mw.no-sb .mn { height: 100%; }
+    .qwrap.insp-heavy { grid-template-columns: minmax(0, 42%) minmax(0, 1fr); }
+    .qkid { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px; align-items: center; padding: 4px 6px; border-radius: 5px; font-size: 8px; color: var(--secondary); }
+    .qkid.sel { background: var(--raised); color: var(--text); }
+    .qkid .kt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qkid .kd { font-family: var(--mono); font-size: 7.5px; color: var(--muted); }
+    .qrow.child { margin-left: 18px; height: 24px; background: #101012; }
+    .wide-now { max-width: 720px; }
+    .wide-now h3 { margin: 0 0 8px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: #FCA5A5; }
+    .stale { display: inline-flex; align-items: center; gap: 5px; height: 16px; padding: 0 7px; border: 1px solid rgba(245,158,11,0.5); border-radius: 99px; background: rgba(245,158,11,0.08); color: #FBBF24; font-size: 8px; }
+    @media (max-width: 1040px) { .choices, .choices.two { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .pair, .toc, .lede-split { grid-template-columns: 1fr; } .top nav { display: none; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>
+    <strong>p2 suggestions · second pass</strong>
+    <nav>
+      <a href="p2.html">Open p2</a>
+      <a href="#inspector">1 · Inspector</a>
+      <a href="#cancel">2 · Cancel confirm</a>
+      <a href="#commit">3 · Commit</a>
+      <a href="#fragile">4 · Fragile analysis</a>
+      <a href="#home">5 · Layout</a>
+      <a href="#sizes">6 · Numbers</a>
+      <a href="#thumbs">7 · Thumbnails</a>
+      <a href="#batch">8 · Batch</a>
+      <a href="#downloads">9 · Downloads</a>
+      <a href="#ask-children">Surface</a>
+      <a href="#ask-badge">Badge</a>
+    </nav>
+  </header>
+
+  <div class="wrap">
+    <div class="lede">
+      <h1>Review of the p2 prototype — second pass</h1>
+      <div class="key">
+        <span class="now"><i></i>Orange marks the current prototype</span>
+        <span class="next"><i></i>Green marks the proposed change</span>
+      </div>
+      <p>This pass is written against <a href="p2.html">p2.html</a> as it stands after the dock v2 rework. Since the first review, p2 landed the scope fork for watch URLs with a list id, the reversible <b>swap</b> line, <b>Change</b> plus a folder popover on the dock, per-episode selection with All / None / Range, and the batch coverage line inline. Those are off the list. What is left is ordered by user harm, not by screen: trust bugs first, then the commit path, then honesty of numbers, then polish.</p>
+      <ul class="ship">
+        <li>Scope fork + swap line</li>
+        <li>Change… and folder picker on the dock</li>
+        <li>Per-episode selection · All / None / Range</li>
+        <li>Batch coverage, 4 of 5 reach it</li>
+        <li>Remaining-work queue · live status bar</li>
+      </ul>
+      <div class="lede-split">
+        <article class="callout in">
+          <h2>Landed since the first review</h2>
+          <p>A watch URL with a list id now stops at <b>This link includes a playlist</b> before anything is committed, with keyboard nav, and the dock carries a swap line so the choice stays reversible. The dock footer has <b>Change</b> next to the path, with a real folder popover. Playlist episodes are individually selectable, and a range form picks runs like 5–11. The batch dock shows total size and coverage inline. The <code>[object Object] MB</code> history row is fixed.</p>
+          <p>The v2 dock also moved the primary action into the right column for videos and batches, next to the format chips. That part created the problem in section 3.</p>
+        </article>
+        <article class="callout out">
+          <h2>Still open</h2>
+          <p>Two trust bugs: the inspector can still describe a finished standalone job with <b>Pause</b> armed, and <b>Cancel</b> on a collection still deletes every remaining episode with one click and no confirm. On the commit path, the playlist <b>Download</b> button disappears entirely while the episode list is open, and the field's <b>Analyze</b> button still commits while labeled <b>Analyze</b>. The analysis itself is fragile: one keystroke destroys it.</p>
+          <p>Then honesty of numbers — playlist total, per-episode sizes and caps, the video plan list that v2 dropped — recognition support for episode selection, and the two product asks from the first pass, which nothing in the update previews: which surface owns per-item control, and what the badge counts.</p>
+        </article>
+      </div>
+      <span class="note">Static mockups of <a href="p2.html">p2.html</a> as it stands now. Not wired to the app.</span>
+    </div>
+
+    <nav class="toc">
+      <a href="#inspector"><b>1. Inspector ghost</b><span>Finished standalone jobs keep Pause armed</span></a>
+      <a href="#cancel"><b>2. Cancel confirm</b><span>One click deletes a collection's remaining work</span></a>
+      <a href="#commit"><b>3. The commit</b><span>Download vanishes while you choose; Analyze mislabeled</span></a>
+      <a href="#fragile"><b>4. Fragile analysis</b><span>One keystroke destroys the result; Esc takes the URL too</span></a>
+      <a href="#home"><b>5. Pin the composer</b><span>Still centered after Analyze; list capped at 268px</span></a>
+      <a href="#sizes"><b>6. Numbers on the dock</b><span>Playlist total, per-episode caps, video plan list</span></a>
+      <a href="#thumbs"><b>7. Thumbnails</b><span>Recognition for episode selection, in two stages</span></a>
+      <a href="#batch"><b>8. Batch review</b><span>Status per line before start; still Admit</span></a>
+      <a href="#downloads"><b>9. Downloads</b><span>Token search, group by collection, quiet badge</span></a>
+    </nav>
+
+    <section class="prop" id="inspector">
+      <h2>1. The inspector still haunts finished standalone jobs</h2>
+      <div class="why">
+        <p>The first review filed this as a trust bug: the inspector must never describe a row that has left the list. The fix landed for collections — when the last child finishes, the collection is removed and selection falls through to the next row. Standalone jobs did not get the same treatment.</p>
+        <p>A finished standalone job keeps <code>phase: 'done'</code> in <code>state.jobs</code> forever. The queue renders rows without it, but the selection validator only checks that the job still exists — and it does. So the row disappears, the inspector keeps the job at 100%, and <b>Pause</b> stays armed as the primary button on a file that already moved to <b>Downloads</b>. Same bug, different path.</p>
+        <p>The rule is unchanged: <b>done is a departure.</b> Either the validator rejects done jobs when choosing what to keep selected, or finishing removes the job the way cancelling a collection removes its children. One line either way.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 40%; left: 88%;">1</div>
+            <div class="pin bad" style="top: 34%; left: 40%;">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Queue</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on">Queue <span class="bdge">1</span></div>
+                  <div class="ni">Downloads <span class="bdge">6</span></div>
+                </aside>
+                <div class="mn">
+                  <div class="qwrap">
+                    <div>
+                      <div class="qhead"><h4>Queue</h4><span class="b ghost">Pause all</span></div>
+                      <div class="qrow sel">
+                        <div class="th xs" style="background:#425;"></div>
+                        <div><div class="qt">Rust vs Go Architecture 2026</div><span class="qbar"><i style="width:60%"></i></span></div>
+                        <span class="qtail">10.6 MB/s · ~40s</span>
+                      </div>
+                    </div>
+                    <aside class="qinsp">
+                      <h5>Go Concurrency in Practice</h5>
+                      <div class="meta" style="color:var(--muted);font-size:9px;">1080p · TechCraft · 12:04</div>
+                      <dl class="istats">
+                        <div><dt>Speed</dt><dd>—</dd></div>
+                        <div><dt>ETA</dt><dd>—</dd></div>
+                        <div><dt>Progress</dt><dd>100%</dd></div>
+                        <div><dt>Size</dt><dd>198 MB</dd></div>
+                      </dl>
+                      <div class="ibtns"><span class="b pri">Pause</span><span class="b ghost danger">Cancel</span></div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">10.6 MB/s · 1/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The list has one row. Go Concurrency finished — no row, but the inspector kept it, with <b>Pause</b> armed.</span></li>
+            <li><span class="n">2</span><span>The selected row is Rust vs Go. The detail pane describes a file in <b>Downloads</b>.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 40%; left: 88%;">1</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Queue</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on">Queue <span class="bdge">1</span></div>
+                  <div class="ni">Downloads <span class="bdge">6</span></div>
+                </aside>
+                <div class="mn">
+                  <div class="qwrap">
+                    <div>
+                      <div class="qhead"><h4>Queue</h4><span class="b ghost">Pause all</span></div>
+                      <div class="qrow sel">
+                        <div class="th xs" style="background:#425;"></div>
+                        <div><div class="qt">Rust vs Go Architecture 2026</div><span class="qbar"><i style="width:60%"></i></span></div>
+                        <span class="qtail">10.6 MB/s · ~40s</span>
+                      </div>
+                    </div>
+                    <aside class="qinsp">
+                      <h5>Rust vs Go Architecture 2026</h5>
+                      <div class="meta" style="color:var(--muted);font-size:9px;">1080p · Systems Weekly · 18:41</div>
+                      <dl class="istats">
+                        <div><dt>Speed</dt><dd>10.6 MB/s</dd></div>
+                        <div><dt>ETA</dt><dd>~40s</dd></div>
+                        <div><dt>Progress</dt><dd>60%</dd></div>
+                        <div><dt>Size</dt><dd>325 MB</dd></div>
+                      </dl>
+                      <div class="ibtns"><span class="b pri">Pause</span><span class="b ghost danger">Cancel</span></div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">10.6 MB/s · 1/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>When the selected job finishes, it leaves the queue, and the inspector takes the next remaining row. The pane never describes a file that is already in <b>Downloads</b>.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="cancel">
+      <h2>2. Cancel collection deletes work with one click</h2>
+      <div class="why">
+        <p><b>Cancel</b> on a collection removes every unfinished child immediately. A 24-episode playlist at 12/24 loses twelve queued jobs on one click, with no confirm and no undo. The single-job <b>Cancel</b> is the same one click, but the stakes are one file; the collection case is where the confirm earns its keep.</p>
+        <p>This was a bullet in the first review's keep list. It is a section now because everything else around collections got more capable — per-episode selection, ranges, pause collection — while the destruction path stayed weightless. The more a collection holds, the more the confirm matters.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 66%; left: 88%;">1</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Queue</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on">Queue <span class="bdge">12</span></div>
+                  <div class="ni">Downloads</div>
+                </aside>
+                <div class="mn">
+                  <div class="qwrap">
+                    <div>
+                      <div class="qhead"><h4>Queue</h4><span class="b ghost">Resume all</span></div>
+                      <div class="qrow sel">
+                        <div class="th xs cnt" style="width:28px;height:18px;font-size:8px;">24</div>
+                        <div><div class="qt">Concurrency in Go</div><span class="qbar"><i style="width:50%"></i></span></div>
+                        <span class="qtail">12/24 · paused</span>
+                      </div>
+                    </div>
+                    <aside class="qinsp">
+                      <h5>Concurrency in Go</h5>
+                      <div class="meta" style="color:var(--muted);font-size:9px;">12/24 finished · paused</div>
+                      <div class="qbar" style="margin:10px 0;height:4px;"><i style="width:50%"></i></div>
+                      <div class="ibtns"><span class="b pri">Resume collection</span><span class="b ghost danger">Cancel</span></div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>One click removes twelve unfinished jobs. No confirm, no undo.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 46%; left: 58%;">1</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Queue</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni on">Queue <span class="bdge">12</span></div>
+                  <div class="ni">Downloads</div>
+                </aside>
+                <div class="mn">
+                  <div class="modal" style="position:absolute;inset:0;">
+                    <div class="dlg">
+                      <h5>Cancel Concurrency in Go?</h5>
+                      <p>12 unfinished episodes will be removed from the queue. 12 finished files stay in Downloads.</p>
+                      <div class="dbtns"><span class="b pri">Keep going</span><span class="b ghost danger">Cancel playlist</span></div>
+                    </div>
+                  </div>
+                  <div class="qwrap" style="filter:blur(1px);">
+                    <div>
+                      <div class="qhead"><h4>Queue</h4><span class="b ghost">Resume all</span></div>
+                      <div class="qrow sel">
+                        <div class="th xs cnt" style="width:28px;height:18px;font-size:8px;">24</div>
+                        <div><div class="qt">Concurrency in Go</div><span class="qbar"><i style="width:50%"></i></span></div>
+                        <span class="qtail">12/24 · paused</span>
+                      </div>
+                    </div>
+                    <aside class="qinsp">
+                      <h5>Concurrency in Go</h5>
+                      <div class="meta" style="color:var(--muted);font-size:9px;">12/24 finished · paused</div>
+                      <div class="ibtns"><span class="b pri">Resume collection</span><span class="b ghost danger">Cancel</span></div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>State the loss in numbers, say what survives, and make the destructive verb the secondary button. The finished files are not at risk — say so, so the confirm reads as protection, not friction.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="commit">
+      <h2>3. The commit must exist while you are choosing</h2>
+      <div class="why">
+        <p>Three problems on the commit path, one per dock shape.</p>
+        <div class="case">
+          <h3>The playlist commit blinks out</h3>
+          <p>When the episode list is open, the playlist dock renders no <b>Download</b> button at all — the footer holds only <b>Change</b> and the path, and the right column has no action. The one moment you need the button, while you are picking episodes, is the one moment it does not exist. You select a range, look for the commit, and have to collapse the list to get it back. The button should live where the count is: in the episode header, with the live selection total.</p>
+        </div>
+        <div class="case">
+          <h3>Analyze that is not Analyze</h3>
+          <p>In the result phase, the field's white <b>Analyze</b> button is dimmed but still fires the commit. Dimmed reads as disabled; it is not. Someone who pastes, waits, and clicks <b>Analyze</b> again — a reasonable "re-check this" — starts a download instead. In the result phase the button should either say what it does or be inert.</p>
+        </div>
+        <div class="case">
+          <h3>Three verbs for one act</h3>
+          <p>A single video says <b>Add to Queue</b>. A playlist says <b>Download 24</b>. A batch says <b>Admit 5</b>. <b>Admit</b> is still engine language. One verb: <b>Download</b> for a single video, <b>Download N</b> for playlists and batches.</p>
+        </div>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 17%; left: 90%;">1</div>
+            <div class="pin bad" style="top: 62%; left: 88%;">2</div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                </aside>
+                <div class="mn" style="padding:10px;">
+                  <div class="field"><span class="url">youtube.com/playlist?list=PLgo24</span><span class="go query dim">Analyze</span></div>
+                  <div class="dock2m" style="margin-top:8px;">
+                    <div class="drow2">
+                      <div class="th md" style="background:#1e3a5f;"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Concurrency in Go</b></div>
+                        <span class="dmeta2">Playlist · 24 videos · 6h 45m · Steve Hook</span>
+                        <div class="dph" style="margin-top:6px;"><span style="color:var(--secondary);">▸</span> 24 episodes · up to 1080p</div>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow/Concurrency in Go</span></span></div>
+                  </div>
+                  <div class="eplist" style="margin-top:8px;">
+                    <div class="ephead"><span>24 of 24 selected</span>
+                      <span class="rng"><span class="lnk">All</span><span class="lnk">None</span>Range <input value="1">–<input value="24"> <span class="apl">Apply</span></span></div>
+                    <div class="epscroll">
+                      <div class="eprow"><span class="chk"></span><b>01 Introduction</b><span></span><span class="epsz">27:54</span></div>
+                      <div class="eprow"><span class="chk"></span><b>02 Channels</b><span></span><span class="epsz">24:12</span></div>
+                      <div class="eprow"><span class="chk"></span><b>03 Mutexes</b><span></span><span class="epsz">31:08</span></div>
+                      <div class="eprow"><span class="chk"></span><b>04 Wait groups</b><span></span><span class="epsz">22:47</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Dimmed, still labeled <b>Analyze</b>, and it commits the download if you click it.</span></li>
+            <li><span class="n">2</span><span>The list is open, so the <b>Download</b> button does not exist. Select episodes, then hunt for the commit.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 17%; left: 90%;">1</div>
+            <div class="pin good" style="top: 36%; left: 84%;">2</div>
+            <div class="mw tall">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                </aside>
+                <div class="mn" style="padding:10px;">
+                  <div class="field"><span class="url">youtube.com/playlist?list=PLgo24</span><span class="go query off">Analyze</span></div>
+                  <div class="dock2m" style="margin-top:8px;">
+                    <div class="drow2">
+                      <div class="th md" style="background:#1e3a5f;"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Concurrency in Go</b></div>
+                        <span class="dmeta2">Playlist · 24 videos · 6h 45m · Steve Hook</span>
+                        <div class="dph" style="margin-top:6px;"><span style="color:var(--secondary);">▾</span> 24 episodes · up to 1080p · 7.9 GB</div>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow/Concurrency in Go</span></span></div>
+                  </div>
+                  <div class="eplist" style="margin-top:8px;">
+                    <div class="ephead"><span>24 of 24 selected · 7.9 GB</span>
+                      <span class="rng"><span class="lnk">All</span><span class="lnk">None</span>Range <input value="1">–<input value="24"> <span class="apl">Apply</span><span class="b pri" style="margin-left:8px;">Download 24</span></span></div>
+                    <div class="epscroll">
+                      <div class="eprow"><span class="chk"></span><b>01 Introduction</b><span></span><span class="epsz">27:54</span></div>
+                      <div class="eprow"><span class="chk"></span><b>02 Channels</b><span></span><span class="epsz">24:12</span></div>
+                      <div class="eprow"><span class="chk"></span><b>03 Mutexes</b><span></span><span class="epsz">31:08</span></div>
+                      <div class="eprow"><span class="chk"></span><b>04 Wait groups</b><span></span><span class="epsz">22:47</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>In the result phase the field button is inert, not dimmed-but-live. The commit lives in the dock, where the decision is.</span></li>
+            <li><span class="n">2</span><span>The commit sits in the episode header beside the count it commits: <b>24 of 24 selected · 7.9 GB · Download 24</b>. It updates as checkboxes and ranges change, and it never leaves the screen.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="fragile">
+      <h2>4. The analysis should survive a keystroke</h2>
+      <div class="why">
+        <p>Right now the analysis result is the most fragile object in the app. The field's <code>input</code> handler resets the phase to empty on <b>any</b> edit — one stray character and a 24-episode analysis is gone, no undo. <b>Escape</b> clears the result and the URL in a single press. And the error card still ends with <i>"Paste another link to continue"</i> while paste appends to the dead URL, because nothing selects it.</p>
+        <p>The recovery primitives already exist. ⌘L focuses the field and selects the text — the paste-replaces rule is built, it is just invisible. What is missing is wiring them to the moments that need them.</p>
+        <div class="case">
+          <h3>Three rules</h3>
+          <p><b>Editing marks stale, it does not destroy.</b> When the field changes and a result is showing, dim the dock and badge it <i>Link changed — Analyze again</i>. The old analysis stays readable until the new one replaces it. <b>Escape is two-stage.</b> First press dismisses the result and keeps the URL; second press clears the field. <b>Error cards select the field.</b> When a red card is showing, the URL text is selected, so the next paste replaces it — and the card's suggested action becomes a real button that does exactly that.</p>
+        </div>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 55%; left: 45%;">1</div>
+            <div class="pin bad" style="top: 30%; left: 55%;">2</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:14px 12px;">
+                  <div class="field"><span class="url">youtube.com/watch?v=private</span><span class="go query">Analyze</span></div>
+                  <div class="err" style="margin-top:10px;">
+                    <b>Private video — nothing to download</b>
+                    <span>Sign-in is required for this source. Paste another link to continue.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The card names the recovery. Nothing on screen performs it. Paste appends to the dead URL; ⌘L would select it, but only if you already know.</span></li>
+            <li><span class="n">2</span><span>Meanwhile, one keystroke anywhere in this field destroys a live result with no undo, and <b>Escape</b> takes the result and the URL together.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 30%; left: 62%;">1</div>
+            <div class="pin good" style="top: 62%; left: 50%;">2</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:14px 12px;">
+                  <div class="field" style="border-color:var(--accent);"><span class="url"><span class="selhl">youtube.com/watch?v=private</span></span><span class="go query">Analyze</span></div>
+                  <div class="err" style="margin-top:10px;">
+                    <b>Private video — nothing to download</b>
+                    <span>Sign-in is required for this source.</span>
+                    <div style="margin-top:8px;"><span class="b pri">Paste another link</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>While an error card is showing, the URL is selected. The next paste replaces the dead link instead of appending.</span></li>
+            <li><span class="n">2</span><span>The copy's verb is a button that focuses and selects the field. The card and the chrome finally say the same thing.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="home">
+      <h2>5. Pin the composer when Analyze returns</h2>
+      <div class="why">
+        <p>Carried over from the first pass, and the v2 dock made it worse. The empty <b>Home</b> state earns its centered landing — that is correct for the first paste. But the composer keeps its 168px top margin after a result exists, the v2 dock is taller than before, and the episode scroller is still capped at 268px. More content than ever is being displayed in the leftover air of an empty state.</p>
+        <p>Main already solves this with <code>.page.fill</code>: the composer pins to the top of the pane once there is a result, and the review list takes the remaining height. Keep the landing for the empty state. Drop it the moment a dock exists, so a 24-row playlist is a review surface instead of a peek.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 16%; left: 48%;">1</div>
+            <div class="pin bad" style="top: 80%; left: 60%;">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                </aside>
+                <div class="mn" style="display:flex;flex-direction:column;align-items:center;padding-top:56px;">
+                  <div class="field" style="width:84%"><span class="url">youtube.com/playlist?list=PLgo24</span><span class="go query dim">Analyze</span></div>
+                  <div class="dock2m" style="width:84%;margin-top:8px;">
+                    <div class="drow2">
+                      <div class="th md" style="background:#1e3a5f;"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Concurrency in Go</b></div>
+                        <span class="dmeta2">Playlist · 24 videos · 6h 45m · Steve Hook</span>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow/Concurrency in Go</span></span><span class="b pri">Download 24</span></div>
+                  </div>
+                  <div class="eplist tiny" style="width:84%;margin-top:6px;">
+                    <div class="eprow"><span class="chk"></span><b>01 Introduction</b><span></span><span class="epsz">27:54</span></div>
+                    <div class="eprow"><span class="chk"></span><b>02 Channels</b><span></span><span class="epsz">24:12</span></div>
+                    <div class="eprow"><span class="chk"></span><b>03 Mutexes</b><span></span><span class="epsz">31:08</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">10.7 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The field is still laid out as if Home were empty. The v2 dock is taller, so there is less room than in the first review.</span></li>
+            <li><span class="n">2</span><span>Twenty-four episodes reviewed through a 268px window.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 12%; left: 48%;">1</div>
+            <div class="pin good" style="top: 72%; left: 58%;">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue <span class="bdge">2</span></div>
+                  <div class="ni">Downloads</div>
+                </aside>
+                <div class="mn" style="display:flex;flex-direction:column;padding:8px 10px;gap:8px;">
+                  <div class="field"><span class="url">youtube.com/playlist?list=PLgo24</span><span class="go query off">Analyze</span></div>
+                  <div class="dock2m">
+                    <div class="drow2">
+                      <div class="th md" style="background:#1e3a5f;"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Concurrency in Go</b></div>
+                        <span class="dmeta2">Playlist · 24 videos · 6h 45m · Steve Hook</span>
+                        <div class="dout" style="margin-top:6px;"><b>up to 1080p · 7.9 GB</b></div>
+                        <div class="dph">23 of 24 reach 1080p</div>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow/Concurrency in Go</span></span></div>
+                  </div>
+                  <div class="eplist" style="flex:1;display:flex;flex-direction:column;">
+                    <div class="ephead"><span>24 of 24 selected · 7.9 GB</span>
+                      <span class="rng"><span class="lnk">All</span><span class="lnk">None</span>Range <input value="1">–<input value="24"> <span class="apl">Apply</span><span class="b pri" style="margin-left:8px;">Download 24</span></span></div>
+                    <div class="epscroll" style="flex:1;max-height:none;">
+                      <div class="eprow"><span class="chk"></span><b>01 Introduction</b><span></span><span class="epsz">27:54</span></div>
+                      <div class="eprow"><span class="chk"></span><b>02 Channels</b><span></span><span class="epsz">24:12</span></div>
+                      <div class="eprow"><span class="chk"></span><b>03 Mutexes</b><span></span><span class="epsz">31:08</span></div>
+                      <div class="eprow"><span class="chk"></span><b>04 Wait groups</b><span></span><span class="epsz">22:47</span></div>
+                      <div class="eprow"><span class="chk"></span><b>07 Context</b><span class="epcap">caps at 720p</span><span class="epsz">19:03</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span class="live">10.7 MB/s · 2/2 slots</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The field pins to the top of the pane as soon as a result exists. The empty-state landing survives only for the empty state.</span></li>
+            <li><span class="n">2</span><span>The episode list takes the leftover height, with sizes and caps on each row, the selection total beside the commit, and the coverage line on the dock.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="sizes">
+      <h2>6. Numbers on the dock: sizes, caps, and the plan list</h2>
+      <div class="why">
+        <p>The batch dock is now the honest one — total size and <i>4 of 5 reach it</i>, inline. The playlist and video docks are not.</p>
+        <div class="case">
+          <h3>Playlist: committed blind</h3>
+          <p>The playlist dock says <i>24 episodes · up to 1080p</i>. No total, no coverage, and episode rows carry only a duration. You are committing to gigabytes with no number anywhere. The batch code already computes exactly this; the playlist needs the same outcome line, and the episode rows need size and caps so deselecting episode 19 is a decision about 800 MB, not a guess.</p>
+        </div>
+        <div class="case">
+          <h3>Video: the plan comparison went away</h3>
+          <p>V2 replaced the expandable plans list with one outcome line — <i>MP4 · H.264 + AAC · 198 MB / Best available up to 1080p</i>. Cleaner, but the size tradeoff between 1080p and 720p now costs one click per format, and the comparison that used to be visible is gone. Keep the compact default; restore the list behind the same disclosure that the playlist uses for episodes.</p>
+        </div>
+        <div class="case">
+          <h3>Scope dialog: the number is computed and never shown</h3>
+          <p>The playlist card in <b>This link includes a playlist</b> shows 24 videos and a duration. The code computes the playlist's total size and does not render it. The video card shows its size. One side of the trade has a number; the other does not.</p>
+        </div>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now · playlist rows</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 45%; left: 70%;">1</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:10px;">
+                  <div class="eplist">
+                    <div class="ephead"><span>24 of 24 selected</span>
+                      <span class="rng"><span class="lnk">All</span><span class="lnk">None</span>Range <input value="1">–<input value="24"> <span class="apl">Apply</span></span></div>
+                    <div class="epscroll" style="max-height:110px;">
+                      <div class="eprow"><span class="chk"></span><b>01 Introduction</b><span></span><span class="epsz">27:54</span></div>
+                      <div class="eprow"><span class="chk"></span><b>02 Channels</b><span></span><span class="epsz">24:12</span></div>
+                      <div class="eprow"><span class="chk"></span><b>03 Mutexes</b><span></span><span class="epsz">31:08</span></div>
+                      <div class="eprow"><span class="chk"></span><b>07 Context</b><span></span><span class="epsz">19:03</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Duration is the only number. No size, no caps, no total — 24 files committed blind.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next · playlist rows</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 38%; left: 70%;">1</div>
+            <div class="pin good" style="top: 20%; left: 80%;">2</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:10px;">
+                  <div class="eplist">
+                    <div class="ephead"><span>23 of 24 selected · 7.5 GB</span>
+                      <span class="rng"><span class="lnk">All</span><span class="lnk">None</span>Range <input value="1">–<input value="24"> <span class="apl">Apply</span><span class="b pri" style="margin-left:8px;">Download 23</span></span></div>
+                    <div class="epscroll" style="max-height:110px;">
+                      <div class="eprow"><span class="chk"></span><b>01 Introduction</b><span></span><span class="epsz">402 MB</span><span class="epsz">27:54</span></div>
+                      <div class="eprow"><span class="chk"></span><b>02 Channels</b><span></span><span class="epsz">351 MB</span><span class="epsz">24:12</span></div>
+                      <div class="eprow"><span class="chk"></span><b>03 Mutexes</b><span></span><span class="epsz">478 MB</span><span class="epsz">31:08</span></div>
+                      <div class="eprow unsel"><span class="chk"></span><b>07 Context</b><span class="epcap">caps at 720p</span><span class="epsz">212 MB</span><span class="epsz">19:03</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Size and caps on every row. Episode 07 caps at 720p — visible, deselectable, priced.</span></li>
+            <li><span class="n">2</span><span>The header total follows the selection, and the commit button carries the count. The same total goes on the dock's outcome line, and on the playlist card in the scope dialog.</span></li>
+          </ol>
+        </div>
+      </div>
+      <div class="pair" style="margin-top:16px;">
+        <div class="col now">
+          <h3>Now · video plans</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 52%; left: 30%;">1</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:12px;">
+                  <div class="dock2m">
+                    <div class="drow2">
+                      <div class="th md" style="background:#425;"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Rust vs Go Architecture 2026</b></div>
+                        <span class="dmeta2">Systems Weekly · 18:41</span>
+                        <div class="dout">MP4 · H.264 + AAC · 325 MB</div>
+                        <div class="dph">Best available up to 1080p</div>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip">2160p</span><span class="chip on">1080p</span><span class="chip">720p</span></div>
+                        <span class="b pri">Add to Queue</span>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow</span></span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>One outcome line. Comparing 1080p to 720p means clicking each chip and reading the line twice; the old plan list is gone.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next · video plans</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 62%; left: 70%;">1</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:12px;">
+                  <div class="dock2m">
+                    <div class="drow2">
+                      <div class="th md" style="background:#425;"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Rust vs Go Architecture 2026</b></div>
+                        <span class="dmeta2">Systems Weekly · 18:41</span>
+                        <div class="dph" style="margin-top:6px;"><span style="color:var(--secondary);">▾</span> 3 plans</div>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <span class="b pri">Download</span>
+                      </div>
+                    </div>
+                    <div class="eplist" style="margin-top:8px;border-radius:7px;">
+                      <div class="eprow" style="grid-template-columns:1fr auto;"><b>2160p · WEBM · VP9 + Opus</b><span class="epsz">1.1 GB</span></div>
+                      <div class="eprow" style="grid-template-columns:1fr auto;background:rgba(59,130,246,0.08);"><b>1080p · MP4 · H.264 + AAC</b><span class="epsz">325 MB</span></div>
+                      <div class="eprow" style="grid-template-columns:1fr auto;"><b>720p · MP4 · H.264 + AAC</b><span class="epsz">148 MB</span></div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow</span></span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>The compact default stays, but the disclosure restores the side-by-side list: every plan, its container, and its size on one screen. Selecting a row updates the chips and the outcome. Same pattern the playlist already uses for episodes.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="thumbs">
+      <h2>7. Thumbnails in the playlist review list</h2>
+      <div class="why">
+        <p>The episode list's one job is selection, and selection runs on recognition. Real playlist titles are often positional — <b>03 Mutexes</b>, <b>Lecture 7</b> — while the user's memory of that playlist is visual, built on YouTube, where thumbnails dominate. Twenty-four similar title strings are a parsing task. Thumbnails turn it into a recognition task. Every other list in the app already shows them — queue child rows, Downloads rows, the dock — and the review list, where the choices are actually made, is the only one without.</p>
+        <div class="case">
+          <h3>Two selection modes, one staging plan</h3>
+          <p><b>Positional</b> selection — take 5 through 11 — is served by the range form and wants dense rows. <b>Recognition</b> selection — skip what I have already watched — wants pictures. Row thumbnails cost roughly 10px of height each, a cost both modes pay, so they land only once the list has height to spend (section 5). The hover preview costs nothing and ships first.</p>
+        </div>
+        <div class="case">
+          <h3>Stage 1 — the dock previews the inspected episode</h3>
+          <p>Hover or focus any row and the dock's 200px thumbnail swaps to that episode, with its title and numbers underneath. No layout change, works for a 500-item playlist, and it makes an existing element do new work instead of adding a new one.</p>
+        </div>
+        <div class="case">
+          <h3>Stage 2 — thumbnails on rows, with the pinned composer</h3>
+          <p>Once the composer pins and the episode list takes the pane's height, rows gain thumbnails at the queue's child-row size — 34×20px — desaturated until the row is selected, so two dozen colorful tiles do not turn the pane into noise. The checkbox state becomes a visual layer.</p>
+        </div>
+        <div class="case">
+          <h3>Details that decide quality</h3>
+          <p>Shorts carry 9:16 thumbnails: letterbox them or give verticals a narrower slot — a 16:9 crop is mush. Fetch progressively, so titles render first and thumbnails pop into fixed-size placeholders without shifting the list. A toggleable YouTube-style grid mode is rejected: it duplicates a layout for a benefit these two stages already cover, and it is hostile to range selection.</p>
+        </div>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 66%; left: 30%;">1</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:12px;">
+                  <div class="field"><span class="url">youtube.com/playlist?list=PLgo24</span><span class="go query dim">Analyze</span></div>
+                  <div class="dock2m" style="margin-top:8px;">
+                    <div class="drow2">
+                      <div class="th md" style="background:#1e3a5f;"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Concurrency in Go</b></div>
+                        <span class="dmeta2">Playlist · 24 videos · 6h 45m · Steve Hook</span>
+                        <div class="dph" style="margin-top:6px;"><span style="color:var(--secondary);">▸</span> 24 episodes · up to 1080p</div>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow/Concurrency in Go</span></span></div>
+                  </div>
+                  <div class="eplist" style="margin-top:8px;">
+                    <div class="ephead"><span>24 of 24 selected</span>
+                      <span class="rng"><span class="lnk">All</span><span class="lnk">None</span>Range <input value="1">–<input value="24"> <span class="apl">Apply</span></span></div>
+                    <div class="epscroll" style="max-height:130px;">
+                      <div class="eprow"><span class="chk"></span><b>01 Introduction</b><span></span><span class="epsz">27:54</span></div>
+                      <div class="eprow"><span class="chk"></span><b>02 Channels</b><span></span><span class="epsz">24:12</span></div>
+                      <div class="eprow"><span class="chk"></span><b>03 Mutexes</b><span></span><span class="epsz">31:08</span></div>
+                      <div class="eprow"><span class="chk"></span><b>04 Wait groups</b><span></span><span class="epsz">22:47</span></div>
+                      <div class="eprow"><span class="chk"></span><b>07 Context</b><span></span><span class="epsz">19:03</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Positional titles and a duration. Picking <i>the ones I have already seen</i> is a memory test without pictures.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 24%; left: 22%;">1</div>
+            <div class="pin good" style="top: 62%; left: 26%;">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:12px;">
+                  <div class="field"><span class="url">youtube.com/playlist?list=PLgo24</span><span class="go query off">Analyze</span></div>
+                  <div class="dock2m" style="margin-top:8px;">
+                    <div class="drow2">
+                      <div class="th md" style="background:#2a3d2a;outline:1.5px dashed rgba(34,197,94,.7);"></div>
+                      <div class="dmain2">
+                        <div class="dtop2"><b>Concurrency in Go</b></div>
+                        <span class="dmeta2">Playlist · 24 videos · 6h 45m · Steve Hook</span>
+                        <div class="dph" style="margin-top:6px;color:#93C5FD;">Inspecting · 03 Mutexes · 478 MB · 1080p</div>
+                      </div>
+                      <div class="dchoice2">
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow/Concurrency in Go</span></span></div>
+                  </div>
+                  <div class="eplist" style="margin-top:8px;">
+                    <div class="ephead"><span>23 of 24 selected · 7.5 GB</span>
+                      <span class="rng"><span class="lnk">All</span><span class="lnk">None</span>Range <input value="1">–<input value="24"> <span class="apl">Apply</span><span class="b pri" style="margin-left:8px;">Download 23</span></span></div>
+                    <div class="epscroll" style="max-height:130px;">
+                      <div class="eprow" style="grid-template-columns:10px 34px 1fr auto auto;"><span class="chk"></span><span class="th" style="width:34px;height:20px;background:#1e3a5f;"></span><b>01 Introduction</b><span class="epsz">402 MB</span><span class="epsz">27:54</span></div>
+                      <div class="eprow" style="grid-template-columns:10px 34px 1fr auto auto;"><span class="chk"></span><span class="th" style="width:34px;height:20px;background:#244;"></span><b>02 Channels</b><span class="epsz">351 MB</span><span class="epsz">24:12</span></div>
+                      <div class="eprow" style="grid-template-columns:10px 34px 1fr auto auto;background:var(--raised);outline:1.5px dashed rgba(59,130,246,.6);"><span class="chk"></span><span class="th" style="width:34px;height:20px;background:#2a3d2a;"></span><b>03 Mutexes</b><span class="epsz">478 MB</span><span class="epsz">31:08</span></div>
+                      <div class="eprow unsel" style="grid-template-columns:10px 34px 1fr auto auto;"><span class="chk"></span><span class="th" style="width:34px;height:20px;background:#333;opacity:.45;"></span><b style="opacity:.6;">04 Wait groups</b><span class="epsz">22:47</span></div>
+                      <div class="eprow" style="grid-template-columns:10px 34px 1fr auto auto;"><span class="chk"></span><span class="th" style="width:34px;height:20px;background:#425;"></span><b>07 Context</b><span class="epsz">212 MB</span><span class="epsz">19:03</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span><b>Stage 1, ships now.</b> Hover or focus a row and the dock thumbnail becomes that episode, with its numbers. No layout change; works at any playlist size.</span></li>
+            <li><span class="n">2</span><span><b>Stage 2, with section 5.</b> Rows carry thumbnails at the queue's child-row size — full color when selected, desaturated when not. Sizes and caps from section 6 compose on the same row.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="batch">
+      <h2>8. Review each batch line before it starts</h2>
+      <div class="why">
+        <p>Carried over, updated. The batch review disclosure now exists — titles with <i>up to 1080p</i> per line — but every line still looks ready, there is still no way to drop one, and the 2–20 cap is still not said anywhere. The button still reads <b>Admit 5</b>.</p>
+        <p>The coverage line, 4 of 5 reach it, is on the dock now, inline. Keep it. What is missing is per-line status — ready, duplicate, invalid, analysis failed — plus the remove control, so the batch can be honest about which lines will actually start before it enters the queue. Do not bring back the Single URL / Batch URLs toggle; the paste can keep deciding that.</p>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 58%; left: 70%;">1</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:10px;">
+                  <div class="eplist">
+                    <div class="ephead"><span>5 titles</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Go Concurrency in Practice</b><span></span><span class="epsz">up to 1080p</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Rust vs Go Architecture 2026</b><span></span><span class="epsz">up to 2160p</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Building Modern Distributed Systems</b><span></span><span class="epsz">up to 1080p</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Consensus Systems Explained</b><span></span><span class="epsz">up to 720p</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Distributed Tracing in 2026</b><span></span><span class="epsz">up to 1080p</span></div>
+                  </div>
+                  <div class="dfoot" style="margin-top:8px;border:1px solid var(--border);border-radius:8px;"><span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow</span></span><span class="b pri">Admit 5</span></div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Every row looks ready. No status, no way to drop a line, and the commit is still <b>Admit</b>.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 42%; left: 86%;">1</div>
+            <div class="pin good" style="top: 72%; left: 91%;">2</div>
+            <div class="mw short">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Home</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn" style="padding:10px;">
+                  <div style="color:var(--muted);font-size:9px;margin-bottom:6px;">4 ready · 1 invalid · 2–20 URLs</div>
+                  <div class="eplist">
+                    <div class="eprow"><span class="chk"></span><b>Go Concurrency in Practice</b><span style="color:#4ADE80;">Ready</span><span class="epsz">up to 1080p</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Rust vs Go Architecture 2026</b><span style="color:#4ADE80;">Ready</span><span class="epsz">up to 2160p</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Building Modern Distributed Systems</b><span style="color:#4ADE80;">Ready</span><span class="epsz">up to 1080p</span></div>
+                    <div class="eprow unsel"><span class="chk"></span><b style="opacity:.55">not-a-url</b><span style="color:#FCA5A5;">Invalid</span><span class="epsz">✕</span></div>
+                    <div class="eprow"><span class="chk"></span><b>Distributed Tracing in 2026</b><span style="color:#4ADE80;">Ready</span><span class="epsz">up to 1080p</span></div>
+                  </div>
+                  <div class="dfoot" style="margin-top:8px;border:1px solid var(--border);border-radius:8px;">
+                    <span class="dwhere"><span class="b chg">Change</span><span class="dpath">~/Movies/VidStow</span></span>
+                    <span class="b pri">Download 4</span>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Invalid, duplicate, and failed-analyze sit on the row, with a drop control. The cap is stated where the paste happens.</span></li>
+            <li><span class="n">2</span><span><b>Download 4</b> counts ready lines only, and uses the same verb as every other dock.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="downloads">
+      <h2>9. Search, grouping, and the Downloads badge</h2>
+      <div class="why">
+        <p>Carried over unchanged, minus one fixed bug. The <code>[object Object] MB</code> history row is gone.</p>
+        <div class="case">
+          <h3>Search</h3>
+          <p>Search is still substring over title plus channel. Typing <code>raft</code> still matches most of a TechCraft library because <i>raft</i> sits inside <i>TechCraft</i>. Title and channel need token or word-boundary matching, with ranking, so a three-letter needle cannot empty the meaning of a channel name.</p>
+        </div>
+        <div class="case">
+          <h3>Playlist files</h3>
+          <p>Playlist episodes still land as a flat pile next to one-off files, with no parent. The date groups — Today / Yesterday / Earlier — are right. Group the collection as one row that expands, the same way the queue groups it, whatever surface you pick below.</p>
+        </div>
+        <div class="case">
+          <h3>Badge</h3>
+          <p>The <b>Downloads</b> badge still uses the accent "new" pill. A library count is not news; the quiet style with the pulse-on-increment that <b>Queue</b> already has is the right pattern. Remove and Delete file stay behind a click, not on the row.</p>
+        </div>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Now</h3>
+          <div class="stage">
+            <div class="pin bad" style="top: 42px; left: 78%;">1</div>
+            <div class="pin bad" style="top: 58%; left: 48%;">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Downloads</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni on">Downloads <span class="bdge loud">24</span></div>
+                </aside>
+                <div class="mn">
+                  <div class="qhead"><h4>Downloads</h4><div class="search hit">raft</div></div>
+                  <div class="dlist">
+                    <div class="dgroup">TODAY</div>
+                    <div class="ditem"><div class="th xs" style="background:#234;"></div><div><b>Building Modern Distributed Systems</b><span>1080p · TechCraft</span></div><span class="b pri">Open</span></div>
+                    <div class="ditem"><div class="th xs" style="background:#1e3a5f;"></div><div><b>03 Mutexes</b><span>1080p · Steve Hook</span></div><span class="b pri">Open</span></div>
+                    <div class="ditem"><div class="th xs" style="background:#244;"></div><div><b>Go Concurrency in Practice</b><span>1080p · TechCraft</span></div><span class="b pri">Open</span></div>
+                    <div class="dgroup">YESTERDAY</div>
+                    <div class="ditem"><div class="th xs" style="background:#245;"></div><div><b>Distributed Tracing in 2026</b><span>1080p · TechCraft · 198 MB</span></div><span class="b pri">Open</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span><code>raft</code> matches TechCraft. The whole library is the result.</span></li>
+            <li><span class="n">2</span><span>Playlist children are indistinguishable from one-off files, and the badge uses the loud "new" style.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Next</h3>
+          <div class="stage">
+            <div class="pin good" style="top: 42px; left: 78%;">1</div>
+            <div class="pin good" style="top: 48%; left: 48%;">2</div>
+            <div class="mw">
+              <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">VidStow · <b>Downloads</b></div></div>
+              <div class="body">
+                <aside class="sb">
+                  <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                  <div class="ni">Home</div>
+                  <div class="ni">Queue</div>
+                  <div class="ni on">Downloads <span class="bdge">24</span></div>
+                </aside>
+                <div class="mn">
+                  <div class="qhead"><h4>Downloads</h4><div class="search" style="border-color:var(--accent);color:var(--text);">raft</div></div>
+                  <div class="dlist">
+                    <div class="dgroup">MATCHES</div>
+                    <div class="ditem"><div class="th xs" style="background:#425;"></div><div><b>Raft in 100 Lines</b><span>1080p · 198 MB · Papers Club</span></div><span class="b pri">Open</span></div>
+                    <div class="dgroup" style="margin-top:10px;">TODAY · PLAYLIST</div>
+                    <div class="ditem" style="background:var(--raised);">
+                      <div class="th xs cnt" style="width:36px;font-size:8px;">12</div>
+                      <div><b>Concurrency in Go</b><span>12 files · Steve Hook · Show</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span>Token search on title and channel. <code>raft</code> does not match TechCraft.</span></li>
+            <li><span class="n">2</span><span>Group by collection, then expand. Quiet badge. Remove and Delete file stay behind a click.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="playlist">
+      <h2>10. Per-item control for playlist episodes — still the product fork</h2>
+      <div class="why">
+        <p>Nothing in the latest update previews an answer, so the fork from the first review stands. The prototype still shows one collection row with a 24 badge; the inspector still shows two live children and three waiting as a summary. You cannot pause episode 7, retry one failure, or see which of the remaining twelve will 429. The <b>Queue</b> badge still counts unfinished children while the list shows parents, and standalone jobs still wait at <code>waiting · slot</code> behind a collection that occupies both slots.</p>
+        <p>That last part is engine policy, not surface. Whatever surface you pick, fairness needs a scheduling rule — round-robin across collections, or a per-collection concurrency cap. The two asks below are the UI decisions; the slot rule is the engine decision that makes either UI honest.</p>
+      </div>
+      <div class="ask" id="ask-children">
+        <h3>Which surface should own per-item pause, retry, and cancel?</h3>
+        <p>Unchanged from the first pass. Expanding children in the list makes episodes first-class rows. Treating the inspector as a child queue keeps the list dense and puts the work in the detail pane. Pick one, or describe a third.</p>
+        <div class="choices">
+          <label class="choice">
+            <span class="pick">
+              <input type="radio" name="children-surface" value="expand-in-list">
+              <span><b>Expand children in the list</b><span>The parent discloses. Children are ordinary queue rows.</span></span>
+            </span>
+            <div class="stage">
+              <div class="mw choice-h no-sb">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+                <div class="body">
+                  <aside class="sb"></aside>
+                  <div class="mn">
+                    <div class="qwrap">
+                      <div>
+                        <div class="qrow">
+                          <div class="th xs" style="background:#244;"></div>
+                          <div><div class="qt">Go Concurrency in Practice</div></div>
+                          <span class="qtail">#2 in line</span>
+                        </div>
+                        <div class="qrow">
+                          <div class="th xs cnt" style="width:28px;height:18px;font-size:8px;">▾24</div>
+                          <div><div class="qt">Concurrency in Go</div><span class="qbar"><i style="width:18%"></i></span></div>
+                          <span class="qtail">2/24</span>
+                        </div>
+                        <div class="qrow child sel">
+                          <div class="th xs" style="background:#1e3a5f;"></div>
+                          <div><div class="qt">03 Mutexes</div><span class="qbar"><i style="width:40%"></i></span></div>
+                          <span class="qtail">3.3 MB/s</span>
+                        </div>
+                        <div class="qrow child">
+                          <div class="th xs" style="background:#2a3d2a;"></div>
+                          <div><div class="qt">04 Wait groups</div><span class="qbar"><i style="width:22%"></i></span></div>
+                          <span class="qtail">7.3 MB/s</span>
+                        </div>
+                        <div class="qrow child">
+                          <div class="th xs" style="background:#333;"></div>
+                          <div><div class="qt">05 Context</div></div>
+                          <span class="qtail">Waiting</span>
+                        </div>
+                      </div>
+                      <aside class="qinsp">
+                        <h5>03 Mutexes</h5>
+                        <div class="meta" style="color:var(--muted);font-size:9px;">in playlist</div>
+                        <div class="ibtns"><span class="b">Pause</span><span class="b ghost danger">Cancel</span></div>
+                      </aside>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span><span class="live">10.6 MB/s · 2/2</span></div>
+              </div>
+            </div>
+            <p class="blurb">Click the parent to disclose, a child to select it. Pause, Retry, and Cancel live on that child, with the inspector repeating them plus format and path. Standalone jobs stay visible, so a playlist cannot starve them in silence. This is what main already does with <code>CollectionRow</code>. The cost is height; a 24-item expand is a long list, and a 500-item expand needs virtualization, which main already accepted.</p>
+          </label>
+
+          <label class="choice">
+            <span class="pick">
+              <input type="radio" name="children-surface" value="inspector-children">
+              <span><b>One parent row. Inspector is the child queue</b><span>The list stays dense. The detail pane does the work.</span></span>
+            </span>
+            <div class="stage">
+              <div class="mw choice-h no-sb">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+                <div class="body">
+                  <aside class="sb"></aside>
+                  <div class="mn">
+                    <div class="qwrap insp-heavy">
+                      <div>
+                        <div class="qrow">
+                          <div class="th xs" style="background:#244;"></div>
+                          <div><div class="qt">Go Concurrency…</div></div>
+                          <span class="qtail">#2</span>
+                        </div>
+                        <div class="qrow sel">
+                          <div class="th xs cnt" style="width:28px;height:18px;font-size:8px;">24</div>
+                          <div><div class="qt">Concurrency in Go</div><span class="qbar"><i style="width:18%"></i></span></div>
+                          <span class="qtail">2/24</span>
+                        </div>
+                      </div>
+                      <aside class="qinsp">
+                        <h5>Concurrency in Go</h5>
+                        <div class="meta" style="color:var(--muted);font-size:9px;">2/24 · Pause collection</div>
+                        <div class="qkid sel"><span class="kt">03 Mutexes</span><span class="b">Pause</span></div>
+                        <div class="qkid"><span class="kt">04 Wait groups</span><span class="b">Pause</span></div>
+                        <div class="qkid"><span class="kt">05 Context</span><span class="kd">waiting</span></div>
+                        <div class="qkid"><span class="kt">06 Generics</span><span class="kd">waiting</span></div>
+                        <div class="qkid"><span class="kt">07 Channels II</span><span class="kd">waiting</span></div>
+                        <div class="ibtns"><span class="b ghost danger">Cancel playlist</span></div>
+                      </aside>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span><span class="live">10.6 MB/s · 2/2</span></div>
+              </div>
+            </div>
+            <p class="blurb">The list keeps one row per collection, which is what p2 already wants. Selecting that row turns the inspector into a full child queue, not a two-plus-three snippet. Collection Pause and Cancel stay on the parent. This only works if the inspector is tall enough to scroll all remaining children, and it must reconcile with section 1's rule — the inspector describes the selected row, so a selected child needs its own selection semantics. A 429 stays invisible until the parent is opened.</p>
+          </label>
+
+          <label class="choice">
+            <span class="pick">
+              <input type="radio" name="children-surface" value="other">
+              <span><b>Neither. I will explain</b><span>A third surface, or collection-only control.</span></span>
+            </span>
+            <div class="stage">
+              <div class="mw choice-h no-sb">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+                <div class="body">
+                  <aside class="sb"></aside>
+                  <div class="mn" style="display:grid;place-items:center;padding:16px;color:var(--muted);font-size:10px;text-align:center;">
+                    <div>
+                      <div style="margin-bottom:8px;color:var(--text);font-weight:650;">Not drawn</div>
+                      Possible thirds. A sheet over the queue. Collection-only control, with no per-item actions. A dedicated playlist route. Double-click opens a child workspace.
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span><span>Idle</span></div>
+              </div>
+            </div>
+            <p class="blurb">If neither of the first two is the product, say what owns per-item control. Collection-only is coherent; it just means a user cannot pause episode 7 without pausing the other 23. Type it below so I do not invent a fourth layout.</p>
+            <textarea class="note" name="children-other" placeholder="Describe the surface. Who owns pause, retry, and cancel for one episode?"></textarea>
+          </label>
+        </div>
+      </div>
+
+      <div class="ask" id="ask-badge">
+        <h3>What should the Queue badge count?</h3>
+        <p>Still open, unchanged. After starting the playlist, the sidebar counts unfinished children while the list shows parents. Those two numbers cannot both be the user's model. Pick the count that matches the surface you chose above.</p>
+        <div class="choices two">
+          <label class="choice">
+            <span class="pick">
+              <input type="radio" name="queue-badge" value="parents">
+              <span><b>Count what the list shows</b><span>One collection is 1, plus any standalone jobs.</span></span>
+            </span>
+            <div class="stage">
+              <div class="mw choice-h">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+                <div class="body">
+                  <aside class="sb">
+                    <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                    <div class="ni">Home</div>
+                    <div class="ni on">Queue <span class="bdge">2</span></div>
+                    <div class="ni">Downloads</div>
+                  </aside>
+                  <div class="mn" style="padding:10px;">
+                    <div class="qrow">
+                      <div class="th xs" style="background:#244;"></div>
+                      <div><div class="qt">Go Concurrency in Practice</div></div>
+                      <span class="qtail">#2 in line</span>
+                    </div>
+                    <div class="qrow sel">
+                      <div class="th xs cnt" style="width:28px;height:18px;font-size:8px;">24</div>
+                      <div><div class="qt">Concurrency in Go</div></div>
+                      <span class="qtail">2/24</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span><span class="live">2/2 slots</span></div>
+              </div>
+            </div>
+            <p class="blurb">Badge 2, because the list has two rows. The 24 lives on the collection chip. This matches a one-parent-row inspector, and works with expand-in-list if the badge counts the parent as one regardless of disclosure.</p>
+          </label>
+          <label class="choice">
+            <span class="pick">
+              <input type="radio" name="queue-badge" value="children">
+              <span><b>Count remaining work</b><span>Every unfinished job, including playlist children.</span></span>
+            </span>
+            <div class="stage">
+              <div class="mw choice-h">
+                <div class="tb"><div class="dots"><i></i><i></i><i></i></div><div class="crumb">Queue</div></div>
+                <div class="body">
+                  <aside class="sb">
+                    <div class="brand"><span class="v" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+                    <div class="ni">Home</div>
+                    <div class="ni on">Queue <span class="bdge">23</span></div>
+                    <div class="ni">Downloads</div>
+                  </aside>
+                  <div class="mn" style="padding:10px;">
+                    <div class="qrow">
+                      <div class="th xs" style="background:#244;"></div>
+                      <div><div class="qt">Go Concurrency in Practice</div></div>
+                      <span class="qtail">#2 in line</span>
+                    </div>
+                    <div class="qrow sel">
+                      <div class="th xs cnt" style="width:28px;height:18px;font-size:8px;">▾24</div>
+                      <div><div class="qt">Concurrency in Go</div></div>
+                      <span class="qtail">2/24</span>
+                    </div>
+                    <div class="qrow child"><div class="th xs" style="background:#1e3a5f;"></div><div><div class="qt">03 Mutexes</div></div><span class="qtail">3.3 MB/s</span></div>
+                    <div class="qrow child"><div class="th xs" style="background:#2a3d2a;"></div><div><div class="qt">04 Wait groups</div></div><span class="qtail">7.3 MB/s</span></div>
+                  </div>
+                </div>
+                <div class="st"><span>~/Movies/VidStow</span><span class="live">2/2 slots</span></div>
+              </div>
+            </div>
+            <p class="blurb">Badge 23: 22 unfinished children plus one standalone job. This only reads as honest if the children are visible in the list. Counting 23 against a one-row list is what p2 does today, which is why the sidebar feels like it is lying.</p>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section class="keep" id="keep">
+      <h2>What to keep</h2>
+      <p>The empty Home landing, the paste that decides the mode, the scope fork with the swap line, the folder popover on the dock, per-episode selection with All / None / Range, and the batch coverage line are the product. Remaining-work queue, live status bar, Settings colophon, and folding About into Settings are the chrome to keep. The 429 inspector with Retry, Cancel, and Copy details is still the right pattern for a single failed job.</p>
+      <p>One dead control survives from the first review: <b>Confirm before starting downloads</b> exists in Settings and <code>commitAdd()</code> still never reads it. Wire it or delete it. A dead control is worse than omitting the preference.</p>
+      <ul>
+        <li>The scope fork and the swap line stay. Enter defaulting to <b>Video</b> is right — the URL names a video. Show the total on the playlist card, and make Esc keep the URL.</li>
+        <li>The current sidebar set stays, with the queue badge pulse. Keyboard shortcuts stay: ⌘L, ⌘1–3, ⌘,, ⌘F, Escape, and the scope-dialog arrows. Extend the same treatment to episode rows, which still have no keyboard path.</li>
+        <li>FFmpeg stays out of the sidebar. The quiet status-bar note on first merge is enough.</li>
+        <li>The range form's validation copy is good — inline, specific, no modal. Keep that pattern.</li>
+        <li>Episode thumbnails land in two stages: the dock hover preview first, row thumbnails when the composer pins. Desaturate until selected; letterbox Shorts.</li>
+        <li>Cancel collection gets the confirm from section 2 in whatever surface you pick above.</li>
+        <li>Cross-platform: VidStow ships on macOS, Linux, and Windows. The dock path, ⌘ hints, and Finder copy need Ctrl and Windows counterparts before this chrome is real.</li>
+      </ul>
+    </section>
+  </div>
+  <script>
+  (() => {
+    const icons = {
+      Home: '<svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4Z"/></svg>',
+      Queue: '<svg viewBox="0 0 24 24"><path d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"/></svg>',
+      Downloads: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 1.5"/></svg>',
+      Settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+    };
+    document.querySelectorAll('.ni').forEach(el => {
+      const key = Object.keys(icons).find(k => el.textContent.includes(k));
+      if (!key || el.querySelector('svg')) return;
+      el.insertAdjacentHTML('afterbegin', icons[key]);
+    });
+  })();
+  </script>
+</body>
+</html>

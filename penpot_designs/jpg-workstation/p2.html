@@ -1,0 +1,1371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VidStow — prototype 2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Geist+Mono:wght@450;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090B; --sidebar: #0C0C0E; --base: #111113; --raised: #18181B;
+      --hover: #1F1F23; --border: #27272A; --border-strong: #3F3F46;
+      --text: #FAFAFA; --secondary: #A1A1AA; --muted: #8F8F99;
+      --accent: #3B82F6; --accent-2: #2563EB; --accent-soft: rgba(59,130,246,0.12);
+      --green: #22C55E; --red: #EF4444;
+      --sans: Geist, ui-sans-serif, system-ui, sans-serif;
+      --mono: "Geist Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; background: radial-gradient(1200px 700px at 50% 30%, #0D0D11, #050506);
+      color: var(--text); font-family: var(--sans); font-size: 13px;
+      -webkit-font-smoothing: antialiased; overflow: hidden;
+    }
+    button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+    :focus { outline: none; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+    .desktop { height: 100vh; display: grid; place-items: center; }
+    .app {
+      position: relative; width: min(1180px, calc(100vw - 48px)); height: min(760px, calc(100vh - 40px));
+      display: grid; grid-template-rows: 40px 1fr 24px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    }
+    .titlebar {
+      display: flex; align-items: center; gap: 12px; padding: 0 14px;
+      border-bottom: 1px solid var(--border); background: var(--sidebar);
+      user-select: none;
+    }
+    .lights { display: flex; gap: 7px; }
+    .lights i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+    .lights i:nth-child(1) { background: #EF4444; }
+    .lights i:nth-child(2) { background: #F59E0B; }
+    .lights i:nth-child(3) { background: #22C55E; }
+    .wtitle { font-size: 12px; font-weight: 600; color: var(--text); }
+
+    .shell { display: grid; grid-template-columns: 200px 1fr; min-height: 0; }
+    .sidebar {
+      display: flex; flex-direction: column; gap: 2px; padding: 10px 8px;
+      border-right: 1px solid var(--border); background: var(--sidebar);
+    }
+    .brand { display: flex; align-items: center; gap: 8px; margin: 2px 6px 12px; font-weight: 650; font-size: 13px; }
+    .brand .mark {
+      width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px;
+      background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+    }
+    .brand .mark svg {
+      width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2.2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .nav-item {
+      position: relative; display: flex; align-items: center; gap: 9px;
+      height: 30px; padding: 0 9px 0 11px; border-radius: 7px;
+      color: var(--secondary); font-size: 13px; text-align: left; width: 100%;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+    .nav-item:hover { background: var(--raised); color: var(--text); }
+    .nav-item.active { background: var(--raised); color: var(--text); }
+    .nav-item.active:hover { background: var(--raised); color: var(--text); }
+    .nav-item.active::before {
+      content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 2px;
+      border-radius: 99px; background: var(--accent);
+    }
+    .nav-item svg {
+      width: 16px; height: 16px; flex-shrink: 0; stroke: currentColor; fill: none;
+      stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+    }
+    .nav-item .badge {
+      margin-left: auto; min-width: 17px; height: 17px; padding: 0 5px;
+      display: grid; place-items: center; border-radius: 99px;
+      background: #27272A; font-size: 10px; color: var(--secondary);
+    }
+    .nav-item .badge.new { background: var(--accent-2); color: #fff; }
+    .nav-item .badge.pulse { animation: badgepulse 700ms ease; }
+    @keyframes badgepulse { 0% { transform: scale(1); } 35% { transform: scale(1.45); background: #22C55E; color: #fff; } 100% { transform: scale(1); } }
+    .nav-item[data-tip]:hover::after {
+      content: attr(data-tip); position: absolute; left: calc(100% + 12px); top: 50%;
+      transform: translateY(-50%); padding: 4px 9px; border-radius: 6px;
+      background: #101012; border: 1px solid var(--border-strong);
+      color: var(--secondary); font-size: 11px; white-space: nowrap; z-index: 60;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.55); pointer-events: none;
+    }
+    .nav-gap { flex: 1; }
+    #nav-utility { padding-top: 8px; border-top: 1px solid var(--border); }
+
+    main { position: relative; min-width: 0; min-height: 0; background: var(--bg); }
+    .screen { position: absolute; inset: 0; display: none; opacity: 0; }
+    .screen.active { display: block; opacity: 1; transition: opacity 140ms ease; }
+
+    .statusbar {
+      display: flex; align-items: center; justify-content: space-between; padding: 0 14px;
+      border-top: 1px solid var(--border); background: #0A0A0C;
+      color: var(--muted); font-size: 10px; font-family: var(--mono);
+    }
+    .statusbar .live { color: #60A5FA; }
+
+    /* Buttons */
+    .btn {
+      height: 28px; padding: 0 12px; border-radius: 7px;
+      border: 1px solid var(--border); background: var(--raised); color: var(--text);
+      font-size: 12px; font-weight: 500;
+      transition: background-color 120ms ease, border-color 120ms ease;
+    }
+    .btn:hover:not(:disabled) { background: var(--hover); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn.pri { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+    .btn.pri:hover:not(:disabled) { background: #1D4ED8; }
+    .btn.query { background: #FAFAFA; border-color: #FAFAFA; color: #09090B; font-weight: 600; }
+    .btn.query:hover:not(:disabled) { background: #E4E4E7; border-color: #E4E4E7; }
+    .btn.query.dim { opacity: 0.45; }
+    .btn.ghost { background: transparent; }
+    .btn.sm { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+    .btn.danger { color: #FCA5A5; }
+
+    /* ============ HOME ============ */
+    .tx { width: min(780px, 84%); margin: 168px auto 0; }
+    .fieldwrap {
+      display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px 0 14px;
+      border: 1px solid var(--border); border-radius: 10px; background: var(--base);
+      transition: border-color 120ms ease;
+    }
+    .fieldwrap:focus-within { border-color: var(--accent); }
+    .fieldwrap input {
+      flex: 1; min-width: 0; background: none; border: 0; color: var(--text);
+      font-family: inherit; font-size: 14px;
+    }
+    .fieldwrap input::placeholder { color: var(--muted); }
+    .fieldwrap .kbd {
+      padding: 2px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px;
+      border-radius: 5px; background: var(--raised); color: var(--secondary);
+      font-family: var(--mono); font-size: 10px;
+    }
+    .slot { min-height: 84px; margin-top: 12px; }
+    .hint { padding: 14px 4px 0; color: var(--muted); font-size: 13px; text-align: center; line-height: 1.7; }
+    .hint .try { color: var(--secondary); text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+    .hint .try:hover { color: var(--text); }
+
+    .skel { padding: 12px 14px; border: 1px dashed #2A2A30; border-radius: 10px; }
+    .sklab { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+    .skrow { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: center; }
+    .skth { width: 84px; height: 47px; border-radius: 6px; background: #1B1B1F; }
+    .skbar { height: 8px; border-radius: 99px; background: #1B1B1F; overflow: hidden; }
+    .skbar.short { width: 46%; margin-top: 7px; }
+    .skbar i { display: block; height: 100%; width: 100%; background: #26262C; animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+
+    .dock {
+      display: grid; grid-template-columns: 96px minmax(0,1fr) auto auto; gap: 14px; align-items: center;
+      padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised);
+      animation: fadein 150ms ease;
+    }
+    .dth { width: 160px; height: 90px; border-radius: 8px; object-fit: cover; display: block; }
+    .dock2.v2 .dth { width: 200px; height: 100%; min-height: 150px; }
+    .dock2.v2 .dth.cnt2 { font-size: 28px; }
+    .dth.cnt2 { display: grid; place-items: center; background: var(--base); border: 1px solid var(--border); color: #93C5FD; font-weight: 700; font-size: 26px; }
+    .dock .dmain { min-width: 0; }
+    .dock .dmain b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dock .dmain span { display: block; color: var(--secondary); font-size: 12px; margin-top: 3px; }
+    .segs { display: flex; gap: 4px; }
+    .seg {
+      height: 26px; padding: 0 11px; display: inline-flex; align-items: justify-content: center;
+      align-items: center; border: 1px solid var(--border); border-radius: 7px;
+      background: var(--base); color: var(--secondary); font-size: 12px;
+      transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+    }
+    .seg:hover { border-color: var(--border-strong); color: var(--text); }
+    .seg.on { border-color: rgba(59,130,246,0.55); background: var(--accent-soft); color: #93C5FD; }
+
+    .dock2 { display: flex; flex-direction: column; padding: 16px 16px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--raised); animation: fadein 150ms ease; position: relative; }
+    .drow2 { display: grid; grid-template-columns: 160px minmax(0,1fr) auto; gap: 16px; align-items: stretch; }
+    .dchoice { display: flex; flex-direction: column; gap: 6px; justify-self: end; align-items: flex-end; padding-top: 1px; }
+    .dchoice .segs { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+    .dock2.v2 { padding: 16px; }
+    .dock2.v2 .drow2 { grid-template-columns: 200px minmax(0,1fr) auto; align-items: stretch; }
+    .dock2.v2 .dchoice { gap: 12px; justify-content: space-between; }
+    .dock2.v2 .dchoice .col { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+    .dock2.v2 .dchoice .chips { flex-direction: column; align-items: flex-end; gap: 4px; }
+    .dock2.v2 .dchoice .btn { width: 100%; }
+    .dmain2 { min-width: 0; display: flex; flex-direction: column; }
+    .doutcome { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .doutcome .dcost { color: var(--secondary); font-weight: 600; }
+    .dpolhint { font-size: 10.5px; color: var(--muted); margin-top: 4px; }
+    .dtop { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .dtop b { font-size: 15px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .modeseg { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex-shrink: 0; }
+    .modeseg button { height: 24px; padding: 0 11px; font-size: 11.5px; color: var(--muted); background: var(--base); }
+    .modeseg button + button { border-left: 1px solid var(--border); }
+    .modeseg button.on { background: var(--accent-soft); color: #93C5FD; }
+    .dmain2 .dmeta { display: block; color: var(--secondary); font-size: 12px; margin-top: 3px; }
+    .seg.rec::after { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 99px; background: var(--accent-2); margin-left: 5px; vertical-align: 1px; }
+    .ddisc { display: flex; align-items: baseline; gap: 10px; margin: auto -8px 0; border: 0; background: none; padding: 5px 8px; border-radius: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); width: 100%; text-align: left; flex-wrap: wrap; row-gap: 2px; }
+    .ddisc.has { cursor: pointer; }
+    .ddisc.has:hover { background: var(--base); }
+    .ddisc .cov { color: var(--secondary); }
+    .ddisc .cov.part { color: #FBBF24; }
+    .ddisc .cost { color: var(--secondary); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .ddisc .dlnk { color: #93C5FD; white-space: nowrap; }
+    .ddisc.has:hover .dlnk { text-decoration: underline; }
+    .ddisc.has:hover .cov, .ddisc.has:hover .cost { color: var(--text); }
+    .ddisc.has:hover .dp { color: var(--secondary); }
+    .ddisc.has:hover .cov.part { color: #FCD34D; }
+    .ddisc .chev { font-size: 9px; color: var(--muted); transition: transform 120ms ease; align-self: center; }
+    .ddisc.has[aria-expanded="true"] .chev { transform: rotate(90deg); }
+    .dfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px -16px 0; padding: 10px 16px; border-top: 1px solid var(--border); border-radius: 0 0 9px 9px; background: var(--base); }
+    .dock2.v2 .dfoot { margin: 14px -16px -16px; }
+    .dfoot .btn { flex-shrink: 0; }
+    .dpath { font-family: var(--mono); font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dleft { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .flink { border: 0; background: none; padding: 0; font-size: 11px; color: #93C5FD; cursor: pointer; flex-shrink: 0; }
+    .flink:hover { text-decoration: underline; }
+    .fpop { position: absolute; left: 16px; bottom: 48px; width: 300px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 10px; background: #141416; box-shadow: 0 12px 32px rgba(0,0,0,0.55); z-index: 60; animation: fadein 150ms ease; }
+    .fcrumbs { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 2px 9px 8px; font-family: var(--mono); font-size: 11px; }
+    .fcrumb { border: 0; background: none; padding: 0; font: inherit; color: #93C5FD; cursor: pointer; }
+    .fcrumb:hover { text-decoration: underline; }
+    .fcrumb:last-child { color: var(--text); cursor: default; }
+    .fcrumb:last-child:hover { text-decoration: none; }
+    .fsep { color: var(--muted); }
+    .flist { display: flex; flex-direction: column; max-height: 168px; overflow-y: auto; border-top: 1px solid var(--border); }
+    .fitem { display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 9px; border: 0; background: none; font-family: var(--mono); font-size: 11px; color: var(--secondary); cursor: pointer; }
+    .fitem:hover { background: var(--base); color: var(--text); }
+    .fempty { padding: 12px 9px; color: var(--muted); font-size: 11px; }
+    .fnew { display: flex; padding: 6px 9px 0; border-top: 1px solid var(--border); }
+    .fbtns { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 9px 2px; }
+    .prow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 9px 12px; cursor: pointer; }
+    .prow:hover { background: #131316; }
+    .prow.sel { background: rgba(37,99,235,0.12); }
+    .prow b { font-size: 12.5px; font-weight: 600; }
+    .prow b em { font-style: normal; color: #93C5FD; font-size: 10px; margin-left: 7px; font-weight: 500; }
+    .prow span { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .prow .psize { font-family: var(--mono); font-size: 11px; color: var(--secondary); }
+
+    .blist { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--base); overflow: hidden; animation: fadein 150ms ease; }
+    .brow { display: grid; grid-template-columns: 48px minmax(0,1fr); gap: 12px; align-items: center; padding: 8px 12px; }
+    .brow + .brow { border-top: 1px solid var(--border); }
+    .brow img { width: 48px; height: 28px; border-radius: 4px; object-fit: cover; display: block; }
+    .brow b { display: block; font-size: 12.5px; font-weight: 500; }
+    .brow span { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .eplist { margin-top: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--base); overflow: hidden; animation: fadein 150ms ease; }
+    .ephead { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; background: var(--raised); border-bottom: 1px solid var(--border); font-size: 11.5px; color: var(--secondary); flex-wrap: wrap; }
+    .ephead .lnk { display: flex; gap: 12px; }
+    .ephead .lnk button { border: 0; background: none; padding: 0; font-size: 11.5px; color: #93C5FD; cursor: pointer; }
+    .ephead .lnk button:hover { text-decoration: underline; }
+    .ephead .rng { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    .ephead .rng input { width: 46px; height: 22px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--base); color: var(--text); font-family: var(--mono); font-size: 11px; }
+    .ephead .rng input:focus { border-color: var(--accent); outline: none; }
+    .ephead .rng .warn { color: #FBBF24; font-size: 10.5px; }
+    .epscroll { max-height: 268px; overflow-y: auto; }
+    .eprow { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 6px 12px; font-size: 12px; color: var(--secondary); cursor: pointer; }
+    .eprow:hover { background: var(--raised); }
+    .eprow + .eprow { border-top: 1px solid var(--border); }
+    .eprow .chk { width: 12px; height: 12px; border: 1px solid var(--border-strong); border-radius: 3px; }
+    .eprow.sel .chk { background: var(--accent-2); border-color: var(--accent-2); }
+    .eprow b { font-weight: 500; color: var(--text); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .eprow .epd { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+    .eprow.unsel b, .eprow.unsel .epd { opacity: 0.5; }
+
+    .errslot { padding: 14px 16px; border: 1px solid rgba(239,68,68,0.45); border-radius: 10px; background: rgba(239,68,68,0.06); animation: fadein 150ms ease; }
+    .errslot b { display: block; font-size: 13px; font-weight: 600; color: #FCA5A5; }
+    .errslot span { display: block; color: var(--secondary); font-size: 12px; margin-top: 3px; }
+    .sdialog { padding: 16px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised); animation: fadein 150ms ease; }
+    .sdialog b { display: block; font-size: 13px; font-weight: 600; }
+    .sdialog .dsub { display: block; color: var(--secondary); font-size: 12px; margin-top: 3px; }
+    .scard { display: grid; grid-template-columns: 96px minmax(0,1fr); gap: 14px; align-items: center; width: 100%; text-align: left; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--base); cursor: pointer; font: inherit; }
+    .scard:hover { background: var(--raised); border-color: var(--border-strong); }
+    .scard img { width: 96px; height: 54px; border-radius: 6px; object-fit: cover; display: block; }
+    .scard .sc-t { display: block; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scard .sc-m { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; font-family: var(--mono); }
+    .scard .sc-k { display: block; font-size: 9.5px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+    .scard .sthumb { position: relative; display: block; width: 96px; height: 54px; }
+    .scard .sthumb img { position: relative; z-index: 1; }
+    .scard .sthumb::before, .scard .sthumb::after { content: ''; position: absolute; inset: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--base); }
+    .scard .sthumb::before { transform: translate(5px, 5px); }
+    .scard .sthumb::after { transform: translate(2.5px, 2.5px); }
+    .scard .scnt { position: absolute; z-index: 2; right: 3px; bottom: 3px; padding: 1px 5px; border-radius: 4px; background: rgba(0,0,0,0.78); color: #fff; font-size: 10px; font-weight: 600; font-family: var(--mono); }
+    .scard.pri { border-color: var(--accent); }
+    .scard.pri:hover { border-color: #60A5FA; }
+    .sdlg-foot { display: flex; justify-content: flex-end; margin-top: 10px; color: var(--muted); font-size: 10.5px; }
+    .swapline { display: flex; align-items: center; gap: 6px; margin: 7px -8px 0; padding: 4px 8px; border: 0; background: none; border-radius: 6px; font: inherit; font-size: 11px; color: var(--muted); text-align: left; cursor: pointer; min-width: 0; }
+    .swapline:hover { background: var(--base); }
+    .swapline b { font-weight: 500; color: #93C5FD; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .swapline:hover b { text-decoration: underline; }
+    .swapline .arr { color: var(--muted); font-size: 10px; flex-shrink: 0; }
+    .doneline { padding: 16px 4px 0; color: #86EFAC; font-size: 13px; text-align: center; animation: fadein 150ms ease; }
+    .dolink { border: 0; background: none; padding: 0; margin-left: 8px; font: inherit; font-size: 12.5px; color: #93C5FD; cursor: pointer; }
+    .dolink:hover { text-decoration: underline; }
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+    /* ============ QUEUE ============ */
+    .qwrap { display: grid; grid-template-columns: minmax(0,1fr) 300px; height: 100%; }
+    .qmaster { display: flex; flex-direction: column; min-width: 0; }
+    .qhead { display: flex; align-items: center; justify-content: space-between; padding: 18px 18px 10px; }
+    .qhead h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+    .qhead .acts { display: flex; gap: 6px; }
+    .qlist { flex: 1; overflow-y: auto; padding: 0 10px 14px; }
+    .qrow {
+      display: grid; grid-template-columns: 34px minmax(0,1fr) 150px; gap: 12px; align-items: center;
+      height: 36px; padding: 0 8px; border-radius: 7px; cursor: pointer;
+      transition: background-color 120ms ease;
+    }
+    .qrow:hover { background: #131316; }
+    .qrow.sel { background: var(--raised); }
+    .qrow.fail { box-shadow: inset 2px 0 0 var(--red); }
+    .qrow .qth { width: 34px; height: 22px; border-radius: 3px; overflow: hidden; background: #152033; display: grid; place-items: center; }
+    .qrow .qth img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .qrow .qth .cnt { color: #93C5FD; font-size: 10px; font-weight: 700; }
+    .qmid { min-width: 0; }
+    .qt { display: block; font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qbar { display: block; height: 3px; margin-top: 4px; border-radius: 99px; background: #26262C; overflow: hidden; }
+    .qbar i { display: block; height: 100%; background: var(--accent); }
+    .qtail { text-align: right; font-family: var(--mono); font-size: 11px; color: var(--secondary); white-space: nowrap; }
+    .qtail.err { color: #FCA5A5; }
+
+    .qempty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+    .qempty .t { font-size: 14px; font-weight: 600; }
+    .qempty .s { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+
+    .qinsp { border-left: 1px solid var(--border); background: #0D0D0F; padding: 18px 16px; overflow-y: auto; }
+    .qinsp h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; }
+    .qinsp .ibig { width: 100%; aspect-ratio: 16/9; border-radius: 8px; object-fit: cover; display: block; margin: 12px 0; }
+    .imeta { color: var(--secondary); font-size: 12px; margin-bottom: 12px; }
+    .istats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 0 0 12px; }
+    .istats dt { color: var(--muted); font-size: 11px; }
+    .istats dd { margin: 2px 0 0; font-size: 12.5px; font-family: var(--mono); }
+    .ibar { height: 5px; border-radius: 99px; background: #26262C; overflow: hidden; margin-bottom: 12px; }
+    .ibar i { display: block; height: 100%; background: var(--accent); }
+    .ipath { font-family: var(--mono); font-size: 11px; color: var(--secondary); padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ierr { margin: 12px 0; padding: 10px 12px; border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; background: rgba(239,68,68,0.05); font-family: var(--mono); font-size: 11px; color: #FCA5A5; line-height: 1.7; }
+    .ibtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .kids { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 4px; }
+    .kid { display: grid; grid-template-columns: 14px minmax(0,1fr) auto; gap: 9px; align-items: center; padding: 5px 8px; border-radius: 6px; font-size: 12px; color: var(--secondary); cursor: pointer; }
+    .kid:hover { background: var(--base); }
+    .kid .chk { width: 12px; height: 12px; border: 1px solid var(--border-strong); border-radius: 3px; }
+    .kid .chk.on { background: var(--accent-2); border-color: var(--accent-2); }
+    .kid .kt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kid .kd { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+    .kid.done { color: #52525B; cursor: default; }
+    .kid.done:hover { background: none; }
+    .kid.more { color: #52525B; cursor: default; }
+    .kid.live { background: var(--raised); color: var(--text); cursor: default; }
+    .kid.live:hover { background: var(--raised); }
+    .kbar { display: block; height: 3px; margin-top: 4px; border-radius: 99px; background: #26262C; overflow: hidden; }
+    .kbar i { display: block; height: 100%; background: var(--accent); }
+
+    /* ============ DOWNLOADS ============ */
+    .dhead { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 18px 10px; }
+    .dhead h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+    .dsearch {
+      width: 240px; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px;
+      background: var(--base); color: var(--text); font-family: inherit; font-size: 12px;
+    }
+    .dsearch::placeholder { color: var(--muted); }
+    .dsearch:focus { border-color: var(--accent); outline: none; }
+    .dlist { flex: 1; overflow-y: auto; padding: 0 10px 14px; }
+    .dgroup { padding: 14px 8px 6px; color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+    .drow { display: grid; grid-template-columns: 48px minmax(0,1fr) auto; gap: 12px; align-items: center; height: 46px; padding: 0 8px; border-radius: 7px; }
+    .drow:hover { background: #131316; }
+    .drow img { width: 48px; height: 28px; border-radius: 4px; object-fit: cover; display: block; }
+    .drow b { display: block; font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .drow span { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .drow .dact { display: flex; gap: 6px; }
+    .drow.grp { grid-template-columns: 16px 48px minmax(0,1fr) auto; cursor: pointer; }
+    .drow.grp .chev { color: var(--muted); font-size: 10px; width: 16px; text-align: center; margin: 0; }
+    .drow.sub { grid-template-columns: 34px 48px minmax(0,1fr) auto; padding-left: 14px; }
+    .drow.sub .epx { color: #6b6b74; font-family: var(--mono); font-size: 10px; margin: 0; }
+    .drow.sub b { font-weight: 450; font-size: 12px; }
+
+    /* ============ SETTINGS (merged with About) ============ */
+    .spage { padding: 18px 18px 28px; overflow-y: auto; height: 100%; }
+    .spage h1 { margin: 0 0 16px; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+    .scol { max-width: 680px; display: flex; flex-direction: column; gap: 16px; }
+    .sgroup { border: 1px solid var(--border); border-radius: 10px; background: var(--raised); padding: 4px 18px 6px; }
+    .sgroup h2 { margin: 0; padding: 12px 0 4px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .srow { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 11px 0; border-top: 1px solid #1F1F23; min-height: 48px; }
+    .sgroup h2 + .srow, .sgroup h2 + .swarn + .srow { border-top: 0; }
+    .scopy { min-width: 0; flex: 1; }
+    .scopy strong { display: block; font-size: 13px; font-weight: 600; }
+    .scopy span { display: block; color: var(--secondary); font-size: 11.5px; margin-top: 3px; line-height: 1.45; }
+    .scopy small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; line-height: 1.45; }
+    .scopy .mono { font-family: var(--mono); font-size: 11px; }
+    .sact { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .sact b { font-family: var(--mono); font-size: 13px; min-width: 16px; text-align: center; }
+    .sbadge { padding: 3px 10px; border-radius: 99px; background: rgba(34,197,94,0.12); color: #4ADE80; font-style: normal; font-size: 11px; font-weight: 650; }
+    .swarn { margin: 0; padding: 2px 0 10px; color: #FBBF24; font-size: 11.5px; line-height: 1.45; }
+    .rseg { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+    .rseg button { height: 26px; padding: 0 12px; font-size: 11.5px; color: var(--muted); background: var(--base); }
+    .rseg button + button { border-left: 1px solid var(--border); }
+    .rseg button.on { background: var(--accent-soft); color: #93C5FD; }
+    .slink { color: #93C5FD; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+    .toggle { height: 24px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--border); font-size: 11px; color: var(--secondary); background: var(--base); }
+    .toggle.on { background: var(--accent-soft); border-color: rgba(59,130,246,0.55); color: #93C5FD; }
+    .colophon { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: center; padding: 16px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised); }
+    .cleft { display: flex; align-items: center; gap: 13px; }
+    .cmark { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 9px; background: linear-gradient(180deg, #3B82F6, #1D4ED8); font-weight: 700; font-size: 15px; }
+    .cleft b { display: block; font-size: 13.5px; font-weight: 650; }
+    .cleft span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; font-family: var(--mono); }
+    .cact { display: flex; gap: 6px; }
+    .cbuilt { grid-column: 1 / -1; padding-top: 10px; border-top: 1px solid #1F1F23; color: var(--muted); font-size: 11px; }
+
+    /* ============ TOASTS ============ */
+    #toasts { position: absolute; right: 14px; bottom: 34px; z-index: 80; display: flex; flex-direction: column; gap: 8px; }
+    .toast {
+      width: 280px; padding: 12px 13px; border: 1px solid var(--border-strong); border-radius: 10px;
+      background: #141416; box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+      animation: toastin 160ms ease;
+    }
+    .toast.out { opacity: 0; transform: translateX(8px); transition: opacity 200ms ease, transform 200ms ease; }
+    .toast b { display: block; font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+    .toast span { display: block; color: var(--muted); font-size: 11px; margin: 3px 0 9px; }
+    .toast .tact { display: flex; gap: 6px; }
+    @keyframes toastin { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-thumb { background: #26262C; border-radius: 99px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="desktop">
+    <div class="app" id="app">
+      <header class="titlebar">
+        <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="wtitle" id="wtitle">Home</div>
+      </header>
+      <div class="shell">
+        <aside class="sidebar">
+          <div class="brand"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>VidStow</div>
+          <nav id="nav"></nav>
+          <div class="nav-gap"></div>
+          <nav id="nav-utility"></nav>
+        </aside>
+        <main id="main">
+          <div class="screen" id="scr-home"></div>
+          <div class="screen" id="scr-queue"></div>
+          <div class="screen" id="scr-downloads"></div>
+          <div class="screen" id="scr-settings"></div>
+        </main>
+      </div>
+      <footer class="statusbar">
+        <span>~/Movies/VidStow</span>
+        <span id="sb-right" class="live">Idle</span>
+      </footer>
+      <div id="toasts"></div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const ICONS = {
+    home: '<svg viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4Z"/></svg>',
+    queue: '<svg viewBox="0 0 24 24"><path d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z"/></svg>',
+    downloads: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 1.5"/></svg>',
+    settings: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>'
+  };
+
+  const CAT = [
+    { id: 'cog1', title: 'Introduction to Concurrency (Concurrency in Go #1)', channel: 'Steve Hook', dur: '27:54', thumb: 'thumbs/pl1.jpg', heights: [1080, 720, 480] },
+    { id: 'concurrency', title: 'Go Concurrency in Practice', channel: 'TechCraft', dur: '12:04', thumb: 'thumbs/concurrency.jpg', heights: [1080, 720, 480] },
+    { id: 'rust', title: 'Rust vs Go Architecture 2026', channel: 'Systems Weekly', dur: '18:41', thumb: 'thumbs/rust.jpg', heights: [2160, 1080, 720, 480] },
+    { id: 'code', title: 'Building Modern Distributed Systems in Go', channel: 'TechCraft', dur: '21:17', thumb: 'thumbs/code.jpg', heights: [1080, 720, 480], sixty: true },
+    { id: 'tracing', title: 'Distributed Tracing in 2026', channel: 'TechCraft', dur: '9:58', thumb: 'thumbs/tracing.jpg', heights: [1080, 720, 480] },
+    { id: 'clocks', title: 'Clock Synchronization, Again', channel: 'Papers Club', dur: '15:33', thumb: 'thumbs/clocks.jpg', heights: [1080, 720, 480] },
+    { id: 'servers', title: 'Consensus Systems Explained', channel: 'Systems Weekly', dur: '14:26', thumb: 'thumbs/servers.jpg', heights: [720, 480], failAt: 38 },
+    { id: 'podcast', title: 'Systems Chat #212: Queues', channel: 'Systems Chat', dur: '48:12', thumb: 'thumbs/podcast.jpg', heights: [720, 480] },
+    { id: 'chaos', title: 'Chaos Engineering at Home', channel: 'DevOps Daily', dur: '11:05', thumb: 'thumbs/chaos.jpg', heights: [720, 480] },
+    { id: 'consensus', title: 'Raft in 100 Lines', channel: 'Papers Club', dur: '13:44', thumb: 'thumbs/consensus.jpg', heights: [1080, 720, 480] },
+    { id: 'go', title: 'Go 2026: State of the Union', channel: 'Gopher Talks', dur: '26:19', thumb: 'thumbs/go.jpg', heights: [2160, 1080, 720, 480] }
+  ];
+  const byId = id => CAT.find(c => c.id === id);
+  const EP = ['Introduction', 'Clocks and heartbeats', 'Consensus', 'Gossip protocols', 'Leader election', 'Membership', 'Log compaction', 'Snapshots'];
+  const THUMBS = ['go', 'clocks', 'consensus', 'tracing', 'code', 'servers', 'chaos', 'podcast', 'rust', 'concurrency'];
+  const mins = item => parseInt(item.dur) || 12;
+  const POLICY = {
+    '2160p': m => ({ label: '2160p', detail: 'WEBM · VP9 + Opus', sizeMB: Math.round(m * 65) }),
+    '1080p': m => ({ label: '1080p', detail: 'MP4 · H.264 + AAC', sizeMB: Math.round(m * 22) }),
+    '720p': m => ({ label: '720p', detail: 'MP4 · H.264 + AAC', sizeMB: Math.round(m * 10) }),
+    '480p': m => ({ label: '480p', detail: 'MP4 · H.264 + AAC', sizeMB: Math.round(m * 4) }),
+    'Audio': m => ({ label: 'M4A', detail: 'Original stream · AAC', sizeMB: Math.round(m * 2.1) })
+  };
+  const plansFor = item => {
+    const m = mins(item);
+    const H = { 2160: 65, 1440: 40, 1080: 22, 720: 10, 480: 4 };
+    const out = [];
+    (item.heights || [1080, 720, 480]).forEach(h => {
+      if (item.sixty && h === 1080) {
+        out.push({ label: '1080p60', detail: 'MP4 · H.264 + AAC', sizeMB: Math.round(m * H[1080] * 1.35) });
+        out.push({ label: '1080p', detail: 'WEBM · VP9 + Opus — smaller', sizeMB: Math.round(m * H[1080]) });
+      } else {
+        out.push({ label: h + 'p', detail: h >= 1440 ? 'WEBM · VP9 + Opus' : 'MP4 · H.264 + AAC', sizeMB: Math.round(m * H[h]) });
+      }
+    });
+    if (out.length) out[0].rec = true;
+    return out;
+  };
+  const audioPlans = item => {
+    const m = mins(item);
+    return [
+      { label: 'M4A', detail: 'Original stream · AAC', sizeMB: Math.round(m * 2.1) },
+      { label: 'Opus', detail: 'Original stream · WebM', sizeMB: Math.round(m * 1.5) },
+      { label: 'MP3 128', detail: 'Converted with FFmpeg', sizeMB: Math.round(m * 0.96) },
+      { label: 'MP3 192', detail: 'Converted with FFmpeg', sizeMB: Math.round(m * 1.44) },
+      { label: 'MP3 256', detail: 'Converted with FFmpeg', sizeMB: Math.round(m * 1.92) }
+    ];
+  };
+  const fmtSize = mb => mb >= 1000 ? (mb / 1000).toFixed(1) + ' GB' : mb + ' MB';
+  const plDur = () => {
+    if (PLAYLIST_EPS.some(ep => !ep.d)) return null;
+    const t = PLAYLIST_EPS.reduce((s, ep) => { const [m, sec] = ep.d.split(':').map(Number); return s + m * 60 + (sec || 0); }, 0);
+    const h = Math.floor(t / 3600), m = Math.round((t % 3600) / 60);
+    return h ? `${h}h ${m}m` : `${m}m`;
+  };
+  const PLAYLIST_EPS = [
+    { t: 'Introduction to Concurrency (Concurrency in Go #1)', d: '27:54', thumb: 'thumbs/pl1.jpg', max: 1080 },
+    { t: 'WaitGroups — Part 1 (Concurrency in Go #2)', d: '17:56', thumb: 'thumbs/pl2.jpg', max: 1080 },
+    { t: 'WaitGroups — Part 2 (Concurrency in Go #3)', d: '14:34', thumb: 'thumbs/pl3.jpg', max: 720 },
+    { t: 'WaitGroups — Part 3 (Concurrency in Go #4)', d: '27:40', thumb: 'thumbs/pl4.jpg', max: 1080 },
+    { t: 'Atomics — Part 1 (sync/atomic) (Concurrency in Go #5)', d: '30:57', thumb: 'thumbs/pl5.jpg', max: 480 },
+    { t: 'Atomics — Part 2 (Go ASM) (Concurrency in Go #6)', d: '27:28', thumb: 'thumbs/pl6.jpg', max: 1080 }
+  ];
+  const epPlan = (ep, mode, fmt) => {
+    const m = parseInt(ep.d) || 12;
+    if (mode === 'audio') {
+      if (fmt === 'M4A') return { label: 'M4A', detail: 'Original stream · AAC', sizeMB: Math.round(m * 2.1) };
+      if (fmt === 'Opus') return { label: 'Opus', detail: 'Original stream · WebM', sizeMB: Math.round(m * 1.5) };
+      return { label: fmt, detail: 'Converted with FFmpeg', sizeMB: Math.round(m * parseInt(fmt.slice(4)) / 133) };
+    }
+    const H = { 2160: 65, 1440: 40, 1080: 22, 720: 10, 480: 4 };
+    const h = Math.min(ep.max ?? 1080, parseInt(fmt));
+    return { label: h + 'p', detail: h >= 1440 ? 'WEBM · VP9 + Opus' : 'MP4 · H.264 + AAC', sizeMB: Math.round(m * H[h]) };
+  };
+
+  const state = {
+    route: 'home', slots: 2, pickIdx: 0,
+    jobs: [], cols: [], downloads: [], dgroups: [],
+    homePhase: 'empty', payload: null, addedText: '',
+    sel: null, seq: 1,
+    folder: '~/Movies/VidStow', folderOpen: false, fpopPath: ['Movies', 'VidStow']
+  };
+  const jobById = id => state.jobs.find(j => j.id === id);
+  const colById = id => state.cols.find(c => c.id === id);
+  const activeWorkCount = () => state.jobs.filter(j => j.phase !== 'done').length;
+
+  /* ---------- chrome ---------- */
+  const NAV = [
+    { key: 'home', label: 'Home', tip: 'Home · ⌘1' },
+    { key: 'queue', label: 'Queue', tip: 'Queue · ⌘2' },
+    { key: 'downloads', label: 'Downloads', tip: 'Downloads · ⌘3' }
+  ];
+  const UTILITY = [
+    { key: 'settings', label: 'Settings', tip: 'Settings · ⌘,' }
+  ];
+  let lastQueueBadge = -1;
+  function renderChrome() {
+    $('#wtitle').textContent = (NAV.concat(UTILITY).find(n => n.key === state.route) || {}).label || 'Home';
+    const build = (list, el, primary) => list.map(n => {
+      let badge = 0, cls = '';
+      if (n.key === 'queue') {
+        badge = activeWorkCount();
+        if (lastQueueBadge >= 0 && badge > lastQueueBadge) cls = 'pulse';
+        lastQueueBadge = badge;
+      } else if (n.key === 'downloads') badge = state.downloads.length;
+      return `<button class="nav-item ${state.route === n.key ? 'active' : ''}" data-route="${n.key}" data-tip="${n.tip}">
+        ${ICONS[n.key]}<span>${n.label}</span>${badge ? `<span class="badge ${n.key === 'downloads' ? 'new' : ''} ${cls}">${badge}</span>` : ''}
+      </button>`;
+    }).join('');
+    $('#nav').innerHTML = build(NAV);
+    $('#nav-utility').innerHTML = build(UTILITY);
+  }
+  document.querySelector('.sidebar').addEventListener('click', e => {
+    const b = e.target.closest('[data-route]'); if (b) go(b.dataset.route);
+  });
+
+  function go(route) {
+    state.route = route;
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    $('#scr-' + route).classList.add('active');
+    renderChrome();
+    if (route === 'queue') renderQueue();
+    if (route === 'downloads') renderDownloads();
+    if (route === 'settings') renderSettings();
+    if (route === 'home') { const f = $('#field'); f && f.focus(); }
+  }
+
+  /* ---------- HOME ---------- */
+  let field = null;
+  function buildHome() {
+    $('#scr-home').innerHTML = `
+      <div class="tx">
+        <div class="fieldwrap">
+          <input id="field" type="text" placeholder="Paste a YouTube URL" spellcheck="false" autocomplete="off" aria-label="YouTube video, Short, or playlist URL">
+          <span class="kbd">⌘L</span>
+          <button class="btn query" id="analyze">Analyze</button>
+        </div>
+        <div class="slot" id="slot"></div>
+      </div>`;
+    field = $('#field');
+    field.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); state.homePhase === 'scope' ? chooseScope('video') : state.homePhase === 'result' ? commitAdd() : analyze(); }
+    });
+    field.addEventListener('input', () => {
+      if (['result', 'error', 'scope'].includes(state.homePhase)) { state.homePhase = 'empty'; renderSlot(); }
+    });
+    $('#analyze').addEventListener('click', () => state.homePhase === 'result' ? commitAdd() : analyze());
+    $('#slot').addEventListener('click', onSlotClick);
+    $('#slot').addEventListener('submit', e => {
+      const form = e.target.closest('[data-range]');
+      if (!form || !state.payload || state.payload.type !== 'playlist') return;
+      e.preventDefault();
+      const lo = parseInt(form.querySelector('[data-rs]').value), hi = parseInt(form.querySelector('[data-re]').value);
+      const warn = form.querySelector('[data-rwarn]');
+      if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 1 || hi < 1 || lo > PLAYLIST_EPS.length || hi > PLAYLIST_EPS.length) {
+        if (warn) warn.style.display = '';
+        return;
+      }
+      if (warn) warn.style.display = 'none';
+      const a = Math.min(lo, hi), b = Math.max(lo, hi);
+      state.payload.sel = new Set(PLAYLIST_EPS.map((_, i) => i).filter(i => i + 1 >= a && i + 1 <= b));
+      renderSlot();
+    });
+    renderSlot();
+  }
+  function renderSlot() {
+    const slot = $('#slot'), btn = $('#analyze');
+    btn.textContent = 'Analyze';
+    btn.disabled = state.homePhase === 'scope';
+    btn.classList.toggle('dim', ['result', 'added'].includes(state.homePhase));
+    const p = state.payload;
+    if (state.homePhase === 'empty') {
+      slot.innerHTML = `<div class="hint">One link, a playlist, or a handful — the link decides.<br>
+        Try: <span class="try" data-fill="https://youtube.com/watch?v=rust">a video</span> ·
+        <span class="try" data-fill="https://www.youtube.com/playlist?list=PLsc-VaxfZl4do3Etp_xQ0aQBoC-x5BIgJ">a playlist</span> ·
+        <span class="try" data-fill="https://youtube.com/watch?v=a, https://youtube.com/watch?v=b, https://youtube.com/watch?v=c, https://youtube.com/watch?v=d, https://youtube.com/watch?v=e">several links</span></div>`;
+    } else if (state.homePhase === 'analyzing') {
+      slot.innerHTML = `<div class="skel"><div class="sklab">Reading… youtube.com</div>
+        <div class="skrow"><div class="skth"></div><div><div class="skbar"><i></i></div><div class="skbar short"><i></i></div></div></div></div>`;
+    } else if (state.homePhase === 'error') {
+      slot.innerHTML = `<div class="errslot"><b>${p.msg}</b><span>${p.sub}</span></div>`;
+    } else if (state.homePhase === 'scope') {
+      const item = state.scopeItem;
+      const rec = plansFor(item).find(pl => pl.rec) || plansFor(item)[0];
+      const total = PLAYLIST_EPS.reduce((s, ep) => s + epPlan(ep, 'video', '1080p').sizeMB, 0);
+      slot.innerHTML = `<div class="sdialog">
+        <b>This link includes a playlist</b>
+        <span class="dsub">Choose what to download.</span>
+        <button class="scard pri" data-act="scope-video">
+          <img src="${item.thumb}" alt="">
+          <span><span class="sc-k">Video</span><span class="sc-t">${item.title}</span><span class="sc-m">${item.channel} · ${item.dur} · ${fmtSize(rec.sizeMB)}</span></span>
+        </button>
+        <button class="scard" data-act="scope-playlist">
+          <span class="sthumb"><img src="thumbs/pl1.jpg" alt=""><span class="scnt">${PLAYLIST_EPS.length}</span></span>
+          <span><span class="sc-k">Playlist</span><span class="sc-t">Concurrency in Go</span><span class="sc-m">${PLAYLIST_EPS.length} videos${plDur() ? ' · ' + plDur() : ''}</span></span>
+        </button>
+        <div class="sdlg-foot">Esc to cancel</div>
+      </div>`;
+    } else if (state.homePhase === 'added') {
+      slot.innerHTML = `<div class="doneline">${state.addedText}<button class="dolink" data-nav="queue">View Queue · ⌘2</button></div>`;
+    } else if (state.homePhase === 'result') {
+      if (p.type === 'video') {
+        const mode = p.mode || 'video';
+        const list = mode === 'audio' ? p.audioPlans : p.plans;
+        const sel = list.find(x => x.label === p.sel) || list.find(x => x.rec) || list[0];
+        const size = sel.sizeMB >= 1000 ? (sel.sizeMB / 1000).toFixed(1) + ' GB' : sel.sizeMB + ' MB';
+        const cav = /MP3/.test(sel.label) ? ' · requires FFmpeg' : '';
+        slot.innerHTML = `
+          <div class="dock2">
+            <div class="drow2">
+              <img class="dth" src="${p.item.thumb}" alt="">
+              <div class="dmain2">
+                <div class="dtop"><b>${p.item.title}</b></div>
+                <span class="dmeta">${p.item.channel} · ${p.item.dur}</span>
+                ${p.origin ? `<button class="swapline" data-act="swap">Part of playlist: <b>Concurrency in Go · ${PLAYLIST_EPS.length} videos</b> <span class="arr">→</span></button>` : ''}
+                <div class="doutcome"><span>${sel.detail}</span><span class="dcost">${size}</span></div>
+              </div>
+              <div class="dchoice">
+                <div class="modeseg"><button class="${mode === 'video' ? 'on' : ''}" data-mode="video">Video</button><button class="${mode === 'audio' ? 'on' : ''}" data-mode="audio">Audio</button></div>
+                <div class="segs">${list.map(pl => `<button class="seg ${pl.label === sel.label ? 'on' : ''}${pl.rec ? ' rec' : ''}" data-plan="${pl.label}" title="${pl.rec ? 'Recommended' : ''}">${pl.label}</button>`).join('')}</div>
+              </div>
+            </div>
+            <div class="dfoot">${footFolder('')}<button class="btn pri" data-act="add">Add to Queue</button></div>
+          </div>`;
+      } else if (p.type === 'playlist') {
+        const mode = p.mode || 'video';
+        const policies = mode === 'video' ? ['1080p', '720p', '480p'] : ['M4A', 'Opus', 'MP3 128', 'MP3 192', 'MP3 256'];
+        if (!p.sel) p.sel = new Set(PLAYLIST_EPS.map((_, i) => i));
+        const selCount = p.sel.size;
+        slot.innerHTML = `
+          <div class="dock2">
+            <div class="drow2">
+              <img class="dth" src="thumbs/pl1.jpg" alt="">
+              <div class="dmain2">
+                <div class="dtop"><b>Concurrency in Go</b></div>
+                <span class="dmeta">Playlist · ${PLAYLIST_EPS.length} videos${plDur() ? ' · ' + plDur() : ''} · Steve Hook</span>
+                ${p.origin ? `<button class="swapline" data-act="swap">Pasted video: <b>${p.origin.title} · ${p.origin.dur}</b> <span class="arr">→</span></button>` : ''}
+                <button class="ddisc has" data-act="details" aria-expanded="${!!p.detailsOpen}"><span class="chev">▸</span><span class="dlnk">${PLAYLIST_EPS.length} episodes</span><span class="cov">up to ${p.fmt}</span></button>
+              </div>
+              <div class="dchoice"><div class="modeseg"><button class="${mode === 'video' ? 'on' : ''}" data-mode="video">Video</button><button class="${mode === 'audio' ? 'on' : ''}" data-mode="audio">Audio</button></div>
+              <div class="segs">${policies.map(f => `<button class="seg ${f === p.fmt ? 'on' : ''}" data-fmt="${f}">${f}</button>`).join('')}</div></div>
+            </div>
+            <div class="dfoot">
+              ${footFolder('/Concurrency in Go')}
+              ${selCount ? `<button class="btn pri" data-act="add">Download ${selCount}</button>` : `<button class="btn pri" disabled>Nothing selected</button>`}
+            </div>
+          </div>
+          ${p.detailsOpen ? episodeList(p, mode) : ''}`;
+      } else if (p.type === 'batch') {
+        const mode = p.mode || 'video';
+        const all = p.items;
+        const maxH = Math.max(0, ...all.map(i => i.heights[0]));
+        const policies = mode === 'video'
+          ? [2160, 1080, 720, 480].filter(c => c <= maxH).slice(0, 3).map(c => c + 'p')
+          : ['M4A', 'Opus', 'MP3 128', 'MP3 192', 'MP3 256'];
+        const total = all.reduce((s, i) => s + epPlan({ max: i.heights[0], d: i.dur }, mode, p.fmt).sizeMB, 0);
+        const reach = all.filter(i => i.heights[0] >= parseInt(p.fmt)).length;
+        slot.innerHTML = `
+          <div class="dock2 v2">
+            <div class="drow2">
+              <div class="dth cnt2">${all.length}</div>
+              <div class="dmain2">
+                <div class="dtop"><b>Batch of public videos</b></div>
+                <span class="dmeta">${all.length} videos · one policy for all</span>
+                <div class="doutcome"><span>${mode === 'video' ? `up to ${p.fmt} each` : p.fmt === 'M4A' ? 'M4A originals' : p.fmt === 'Opus' ? 'Opus originals' : p.fmt + ' · converted with FFmpeg'}</span><span class="dcost">${fmtSize(total)}</span></div>
+                <div class="dpolhint">${mode === 'video' ? `${reach} of ${all.length} reach ${p.fmt}` : 'MP3 conversion requires FFmpeg'} · <u data-act="review" style="cursor:pointer">${all.length} titles</u></div>
+              </div>
+              <div class="dchoice">
+                <div class="col">
+                  <div class="modeseg"><button class="${mode === 'video' ? 'on' : ''}" data-mode="video">Video</button><button class="${mode === 'audio' ? 'on' : ''}" data-mode="audio">Audio</button></div>
+                  <div class="chips">${policies.map(f => `<button class="seg ${f === p.fmt ? 'on' : ''}" data-fmt="${f}">${f}</button>`).join('')}</div>
+                </div>
+                <button class="btn pri" data-act="add">Admit ${all.length}</button>
+              </div>
+            </div>
+            <div class="dfoot">${footFolder('')}</div>
+          </div>
+          ${p.reviewOpen ? `<div class="blist">${all.map(i => `<div class="brow">
+            <img src="${i.thumb}" alt=""><div><b>${i.title}</b><span>${i.channel} · ${i.dur} · up to ${i.heights[0]}p</span></div></div>`).join('')}</div>` : ''}`;
+      }
+    }
+  }
+  const FS = { Movies: { VidStow: {} }, Downloads: { Videos: {} }, Desktop: {}, Documents: { 'VidStow Tests': {} } };
+  const fsNode = segs => { let n = FS; for (const s of segs) { if (n[s] == null) return null; n = n[s]; } return n; };
+  const folderPop = () => {
+    const segs = state.fpopPath;
+    const node = fsNode(segs);
+    const subs = node ? Object.keys(node) : [];
+    const crumb = ['~', ...segs].map((s, i) => `<button class="fcrumb" data-crum="${i}">${s}</button>`).join('<span class="fsep">›</span>');
+    return `<div class="fpop">
+      <div class="fcrumbs">${crumb}</div>
+      <div class="flist">${subs.length ? subs.map(s => `<button class="fitem" data-fnav="${s}"><span>▸</span>${s}</button>`).join('') : '<span class="fempty">No subfolders</span>'}</div>
+      <div class="fnew"><button class="flink" data-act="newfolder">New Folder</button></div>
+      <div class="fbtns"><button class="btn sm ghost" data-act="folder">Cancel</button><button class="btn sm pri" data-act="choosefolder">Choose</button></div>
+    </div>`;
+  };
+  const footFolder = sub => `<span class="dleft"><button class="btn sm ghost" data-act="folder">Change</button><span class="dpath">${state.folder}${sub || ''}</span></span>${state.folderOpen ? folderPop() : ''}`;
+  function episodeList(p, mode) {
+    return `<div class="eplist">
+      <div class="ephead"><span data-count>${p.sel.size} of ${PLAYLIST_EPS.length} selected</span>
+        <span class="rng"><button data-act="selall" style="color:#93C5FD;background:none;border:0;padding:0;font-size:11.5px;cursor:pointer">All</button><button data-act="selnone" style="color:#93C5FD;background:none;border:0;padding:0;font-size:11.5px;cursor:pointer">None</button>
+        <form data-range style="display:flex;align-items:center;gap:6px;margin:0">Range
+          <input data-rs type="number" min="1" max="${PLAYLIST_EPS.length}" step="1" inputmode="numeric" placeholder="1" aria-label="Range start">
+          <span>–</span>
+          <input data-re type="number" min="1" max="${PLAYLIST_EPS.length}" step="1" inputmode="numeric" placeholder="${PLAYLIST_EPS.length}" aria-label="Range end">
+          <button type="submit" style="color:#93C5FD;background:none;border:0;padding:0;font-size:11.5px;cursor:pointer">Apply</button>
+          <span class="warn" data-rwarn style="display:none">Enter positions from 1 to ${PLAYLIST_EPS.length}</span>
+        </form></span></div>
+      <div class="epscroll">${PLAYLIST_EPS.map((ep, i) => {
+        const on = p.sel.has(i);
+        return `<div class="eprow ${on ? 'sel' : 'unsel'}" data-ep="${i}">
+          <span class="chk"></span>
+          <span><b>${ep.t}</b></span>
+          <span class="epd">${ep.d}</span>
+        </div>`;
+      }).join('')}</div>
+    </div>`;
+  }
+  function onSlotClick(e) {
+    if (state.folderOpen && !e.target.closest('.fpop') && !e.target.closest('[data-act="folder"]')) { state.folderOpen = false; renderSlot(); }
+    const crum = e.target.closest('[data-crum]');
+    if (crum && state.folderOpen) { state.fpopPath = state.fpopPath.slice(0, +crum.dataset.crum); renderSlot(); return; }
+    const fnav = e.target.closest('[data-fnav]');
+    if (fnav && state.folderOpen) { state.fpopPath = [...state.fpopPath, fnav.dataset.fnav]; renderSlot(); return; }
+    const navb = e.target.closest('[data-nav]');
+    if (navb) { go(navb.dataset.nav); return; }
+    const tr = e.target.closest('.try');
+    if (tr) { field.value = tr.dataset.fill; analyze(); return; }
+    const mode = e.target.closest('[data-mode]');
+    if (mode && state.payload) {
+      state.payload.mode = mode.dataset.mode;
+      if (state.payload.type !== 'video') state.payload.fmt = mode.dataset.mode === 'audio' ? 'M4A' : '1080p';
+      if (state.payload.type === 'video') state.payload.sel = null;
+      renderSlot(); return;
+    }
+    const ep = e.target.closest('.eprow[data-ep]');
+    if (ep && state.payload && state.payload.type === 'playlist') {
+      const i = +ep.dataset.ep;
+      state.payload.sel.has(i) ? state.payload.sel.delete(i) : state.payload.sel.add(i);
+      renderSlot(); return;
+    }
+    const plan = e.target.closest('[data-plan]');
+    if (plan && state.payload && state.payload.type === 'video') { state.payload.sel = plan.dataset.plan; renderSlot(); return; }
+    const seg = e.target.closest('.seg[data-fmt]');
+    if (seg && state.payload) { state.payload.fmt = seg.dataset.fmt; renderSlot(); return; }
+    const act = e.target.closest('[data-act]');
+    if (act) {
+      if (act.dataset.act === 'add') commitAdd();
+      if (act.dataset.act === 'review') { state.payload.reviewOpen = !state.payload.reviewOpen; renderSlot(); }
+      if (act.dataset.act === 'details') { state.payload.detailsOpen = !state.payload.detailsOpen; renderSlot(); }
+      if (act.dataset.act === 'folder') {
+        if (!state.folderOpen) state.fpopPath = state.folder.replace(/^~\/?/, '').split('/').filter(Boolean);
+        state.folderOpen = !state.folderOpen; renderSlot();
+      }
+      if (act.dataset.act === 'choosefolder') {
+        state.folder = '~/' + state.fpopPath.join('/');
+        state.folderOpen = false; renderSlot();
+      }
+      if (act.dataset.act === 'newfolder' && state.folderOpen) {
+        const node = fsNode(state.fpopPath) || {};
+        let name = 'New Folder', n = 2;
+        while (node[name]) name = 'New Folder ' + n++;
+        node[name] = {};
+        state.fpopPath = [...state.fpopPath, name];
+        renderSlot();
+      }
+      if (act.dataset.act === 'selall') { state.payload.sel = new Set(PLAYLIST_EPS.map((_, i) => i)); renderSlot(); }
+      if (act.dataset.act === 'selnone') { state.payload.sel = new Set(); renderSlot(); }
+      if (act.dataset.act === 'scope-video') chooseScope('video');
+      if (act.dataset.act === 'scope-playlist') chooseScope('playlist');
+      if (act.dataset.act === 'swap' && state.payload && state.payload.origin) {
+        const org = state.payload.origin;
+        chooseScope(state.payload.type === 'video' ? 'playlist' : 'video', org, org);
+      }
+    }
+  }
+  function chooseScope(kind, item, origin) {
+    const it = item || state.scopeItem;
+    const org = origin || it;
+    state.payload = kind === 'video'
+      ? { type: 'video', item: it, plans: plansFor(it), audioPlans: audioPlans(it), mode: 'video', sel: null, detailsOpen: false, origin: org }
+      : { type: 'playlist', mode: 'video', fmt: '1080p', detailsOpen: false, sel: new Set(PLAYLIST_EPS.map((_, i) => i)), origin: org };
+    state.homePhase = 'result'; renderSlot();
+  }
+  function pickItem(v) {
+    if (/_uQgGS_VIXM|PLsc-Vaxf/i.test(v)) return byId('cog1');
+    if (/consensus|servers|fail/i.test(v)) return byId('servers');
+    if (/rust/i.test(v)) return byId('rust');
+    if (/concurren/i.test(v)) return byId('concurrency');
+    if (/trac/i.test(v)) return byId('tracing');
+    if (/clock/i.test(v)) return byId('clocks');
+    if (/podcast|chat/i.test(v)) return byId('podcast');
+    if (/chaos/i.test(v)) return byId('chaos');
+    if (/raft/i.test(v)) return byId('consensus');
+    if (/distributed|systems/i.test(v)) return byId('code');
+    if (/\bgo\b/i.test(v)) return byId('go');
+    const safe = CAT.filter(c => !c.failAt);
+    return safe[(state.pickIdx++) % safe.length];
+  }
+  let analyzing = false;
+  function analyze() {
+    const v = field.value.trim();
+    if (!v || analyzing || state.homePhase === 'result') return;
+    analyzing = true;
+    state.homePhase = 'analyzing'; renderSlot();
+    setTimeout(() => {
+      analyzing = false;
+      if (/priv|fail|error/i.test(v)) {
+        state.payload = { type: 'error', msg: 'Private video — nothing to download', sub: 'Sign-in is required for this source. Paste another link to continue.' };
+      } else if (!/youtu/i.test(v)) {
+        state.payload = { type: 'error', msg: 'Not a YouTube link — nothing to download', sub: 'Only YouTube video and playlist links are supported. Paste another link to continue.' };
+      } else if (/list=|playlist/i.test(v)) {
+        if (/watch\?v=/i.test(v)) {
+          state.scopeItem = pickItem(v);
+          state.payload = { type: 'scope' };
+        } else {
+          state.payload = { type: 'playlist', mode: 'video', fmt: '1080p', detailsOpen: false, sel: new Set(PLAYLIST_EPS.map((_, i) => i)) };
+        }
+      } else if (v.split(/[\s,]+/).filter(Boolean).length > 1) {
+        const items = ['concurrency', 'rust', 'code', 'servers', 'tracing'].map(byId);
+        state.payload = { type: 'batch', items, mode: 'video', fmt: '1080p', reviewOpen: false };
+      } else {
+        const item = pickItem(v);
+        state.payload = { type: 'video', item, plans: plansFor(item), audioPlans: audioPlans(item), mode: 'video', sel: null, detailsOpen: false };
+      }
+      state.homePhase = state.payload.type === 'error' ? 'error' : state.payload.type === 'scope' ? 'scope' : 'result'; renderSlot();
+    }, 1200 + Math.random() * 800);
+  }
+  function resetHome() {
+    state.homePhase = 'empty'; state.payload = null; field.value = ''; renderSlot(); field.focus();
+  }
+  function commitAdd() {
+    const p = state.payload; if (!p || state.homePhase !== 'result') return;
+    if (p.type === 'video') {
+      const list = p.mode === 'audio' ? p.audioPlans : p.plans;
+      const sel = list.find(x => x.label === p.sel) || list.find(x => x.rec) || list[0];
+      addJob(p.item, sel);
+    }
+    else if (p.type === 'playlist') {
+      const sel = p.sel && p.sel.size ? p.sel : new Set(PLAYLIST_EPS.map((_, i) => i));
+      startPlaylistCollection(p.mode || 'video', p.fmt, sel);
+      state.addedText = `✓ Started · ${sel.size} episodes in queue`;
+    }
+    else p.items.forEach(i => addJob(i, epPlan({ max: i.heights[0], d: i.dur }, p.mode || 'video', p.fmt)));
+    if (p.type !== 'playlist') state.addedText = `✓ Added · ${activeWorkCount()} in queue`;
+    state.homePhase = 'added'; field.value = ''; renderSlot();
+    setTimeout(() => { if (state.homePhase === 'added') resetHome(); }, 3000);
+    renderChrome();
+    if (state.route === 'queue') renderQueue();
+  }
+
+  /* ---------- jobs & collections ---------- */
+  function addJob(item, plan, colId = null) {
+    const j = {
+      id: 'j' + (state.seq++), item, fmt: plan.label, sizeMB: plan.sizeMB, colId, phase: 'waiting', progress: 0,
+      rate: 100 / (20 + Math.random() * 14), speed: 0, base: 2.5 + Math.random() * 6,
+      mergeT: 0, retried: false, error: ''
+    };
+    state.jobs.push(j); return j;
+  }
+  function startPlaylistCollection(mode, fmt, selSet) {
+    const c = {
+      id: 'c' + (state.seq++), title: 'Concurrency in Go', channel: 'Steve Hook',
+      eps: PLAYLIST_EPS, mode: mode || 'video', fmt: fmt || '1080p', phase: 'active',
+      selected: new Set(selSet), children: []
+    };
+    state.cols.push(c);
+    [...selSet].sort((a, b) => a - b).forEach(i => {
+      const j = addJob({ title: c.eps[i].t, channel: c.channel, dur: c.eps[i].d, thumb: c.eps[i].thumb }, epPlan(c.eps[i], c.mode, c.fmt), c.id);
+      j.epIndex = i + 1;
+      c.children.push(j.id);
+    });
+    return c;
+  }
+  function cancelJob(j) {
+    state.jobs = state.jobs.filter(x => x !== j);
+    if (j.colId) { const c = colById(j.colId); c.children = c.children.filter(id => id !== j.id); }
+  }
+  function cancelCollection(c) {
+    state.jobs = state.jobs.filter(j => j.colId !== c.id);
+    state.cols = state.cols.filter(x => x !== c);
+  }
+  function finishJob(j) {
+    j.phase = 'done';
+    const ext = /MP3/.test(j.fmt) ? 'mp3' : /M4A|Opus/.test(j.fmt) ? 'm4a' : 'mp4';
+    const slug = j.item.title.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+    const prior = state.downloads.filter(d => d.item.id === j.item.id).length;
+    state.downloads.unshift({ item: j.item, fmt: j.fmt, sizeMB: j.sizeMB, group: 'today' });
+    if (!j.colId) {
+      toast({
+        title: j.item.title,
+        sub: prior > 0 ? `Finished · saved as ${slug}-${prior}.${ext} — the name already existed` : `Finished · ${state.folder}`,
+        actions: [
+          { label: 'Open', primary: true, onClick: () => toast({ title: 'Opened in default player', ms: 2500 }) },
+          { label: 'Reveal', onClick: () => toast({ title: 'Revealed in Finder', ms: 2500 }) },
+          { label: 'Dismiss' }
+        ]
+      });
+    } else {
+      const c = colById(j.colId);
+      if (c && c.children.every(id => { const k = jobById(id); return !k || k.phase === 'done'; })) {
+        const kids = c.children.map(id => jobById(id)).filter(Boolean).sort((a, b) => (a.epIndex || 0) - (b.epIndex || 0));
+        state.dgroups.unshift({ id: 'dg' + (state.seq++), title: c.title, channel: c.channel, thumb: (c.eps && c.eps[0].thumb) || kids[0].item.thumb, fmt: c.fmt, items: kids.map(k => ({ item: k.item, fmt: k.fmt, sizeMB: k.sizeMB, idx: k.epIndex || 0 })), group: 'today', open: false });
+        cancelCollection(c);
+        toast({ title: c.title, sub: `Playlist finished · ${c.children.length} files`, actions: [{ label: 'Open folder', primary: true, onClick: () => toast({ title: 'Revealed in Finder', ms: 2500 }) }, { label: 'Dismiss' }] });
+      }
+    }
+  }
+
+  /* ---------- QUEUE render ---------- */
+  const qEl = $('#scr-queue');
+  const tailFor = j => {
+    if (j.phase === 'downloading') return `${j.speed.toFixed(1)} MB/s · ${etaFor(j)}`;
+    if (j.phase === 'merging') return `merging · ${Math.max(1, Math.round(j.mergeT * 0.6))}s`;
+    if (j.phase === 'waiting') return 'waiting · slot';
+    if (j.phase === 'paused') return 'paused';
+    if (j.phase === 'failed') return 'rate-limited · 429';
+    return '';
+  };
+  const etaFor = j => {
+    const s = (100 - j.progress) / j.rate * 0.6;
+    return s < 90 ? `~${Math.max(1, Math.round(s))}s` : `~${Math.max(1, Math.round(s / 60))}m`;
+  };
+  function colStats(c) {
+    const kids = c.children.map(jobById).filter(Boolean);
+    const done = kids.filter(k => k.phase === 'done').length;
+    const speed = kids.filter(k => k.phase === 'downloading').reduce((s, k) => s + k.speed, 0);
+    const agg = kids.length ? kids.reduce((s, k) => s + k.progress, 0) / kids.length : 0;
+    const anyActive = kids.some(k => ['downloading', 'merging', 'waiting'].includes(k.phase));
+    return { kids, done, speed, agg, anyActive };
+  }
+  function rowJob(j) {
+    const sel = state.sel && state.sel.type === 'job' && state.sel.id === j.id;
+    return `<div class="qrow ${sel ? 'sel' : ''} ${j.phase === 'failed' ? 'fail' : ''}" data-job="${j.id}" tabindex="0">
+      <div class="qth"><img src="${j.item.thumb}" alt=""></div>
+      <div class="qmid"><span class="qt">${j.item.title}</span><span class="qbar"><i style="width:${j.progress}%"></i></span></div>
+      <span class="qtail ${j.phase === 'failed' ? 'err' : ''}">${tailFor(j)}</span></div>`;
+  }
+  function rowCol(c) {
+    const sel = state.sel && state.sel.type === 'col' && state.sel.id === c.id;
+    const s = colStats(c);
+    const tail = s.anyActive ? `${s.done}/${s.kids.length} · ${s.speed.toFixed(1)} MB/s` : `${s.done}/${s.kids.length} · paused`;
+    return `<div class="qrow ${sel ? 'sel' : ''}" data-col="${c.id}" tabindex="0">
+      <div class="qth"><span class="cnt">${c.children.length}</span></div>
+      <div class="qmid"><span class="qt">${c.title}</span><span class="qbar"><i style="width:${s.agg}%"></i></span></div>
+      <span class="qtail">${tail}</span></div>`;
+  }
+  function renderQueue() {
+    const stand = state.jobs.filter(j => !j.colId && j.phase !== 'done');
+    const ordered = ['downloading', 'merging', 'failed', 'paused', 'waiting'].flatMap(p => stand.filter(j => j.phase === p));
+    const rows = ordered.map(rowJob).join('') + state.cols.map(rowCol).join('');
+    if (!state.sel || !((state.sel.type === 'job' && jobById(state.sel.id) && !jobById(state.sel.id).colId) || (state.sel.type === 'col' && colById(state.sel.id)))) {
+      state.sel = ordered[0] ? { type: 'job', id: ordered[0].id } : (state.cols[0] ? { type: 'col', id: state.cols[0].id } : null);
+    }
+    const anyDown = state.jobs.some(j => j.phase === 'downloading');
+    const anyPaused = state.jobs.some(j => j.phase === 'paused');
+    qEl.innerHTML = rows ? `
+      <div class="qwrap">
+        <div class="qmaster">
+          <header class="qhead"><h1>Queue</h1><div class="acts">
+            <button class="btn sm ghost" data-act="pauseall" ${anyDown ? '' : 'disabled'}>Pause all</button>
+            <button class="btn sm ghost" data-act="resumeall" ${anyPaused ? '' : 'disabled'}>Resume all</button>
+          </div></header>
+          <div class="qlist">${rows}</div>
+        </div>
+        <aside class="qinsp">${inspHTML()}</aside>
+      </div>` : `
+      <div class="qempty"><div class="t">Nothing in the queue</div>
+        <div class="s">Paste a link on Home and downloads start here.</div>
+        <button class="btn pri" data-nav="home">Go to Home</button></div>`;
+  }
+  function inspHTML() {
+    if (!state.sel) return '<div class="imeta">Select a job to see its details.</div>';
+    if (state.sel.type === 'col') return inspCol(colById(state.sel.id));
+    const j = jobById(state.sel.id); if (!j) return '';
+    const fail = j.phase === 'failed';
+    const buttons = fail
+      ? `<button class="btn pri" data-act="retry">Retry</button><button class="btn ghost danger" data-act="cancel">Cancel</button>`
+      : j.phase === 'paused'
+        ? `<button class="btn pri" data-act="resume">Resume</button><button class="btn ghost danger" data-act="cancel">Cancel</button>`
+        : `<button class="btn ${j.phase === 'waiting' ? '' : 'pri'}" data-act="pause">Pause</button><button class="btn ghost danger" data-act="cancel">Cancel</button>`;
+    return `<h3>${j.item.title}</h3>
+      <img class="ibig" src="${j.item.thumb}" alt="">
+      <div class="imeta">${j.fmt} · ${j.item.channel} · ${j.item.dur}</div>
+      <dl class="istats">
+        <div><dt>Speed</dt><dd id="v-speed">${fail ? '—' : j.speed.toFixed(1) + ' MB/s'}</dd></div>
+        <div><dt>ETA</dt><dd id="v-eta">${fail ? '—' : etaFor(j)}</dd></div>
+        <div><dt>Progress</dt><dd id="v-prog">${Math.round(j.progress)}%</dd></div>
+        <div><dt>Size</dt><dd>${fmtSize(j.sizeMB)}</dd></div>
+      </dl>
+      <div class="ibar"><i id="v-bar" style="width:${j.progress}%"></i></div>
+      <div class="ipath">${state.folder}/${j.item.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}${/MP3/.test(j.fmt) ? '.mp3' : /M4A|Opus/.test(j.fmt) ? '.m4a' : '.mp4'}</div>
+      ${fail ? `<div class="ierr">ytdlp: HTTP Error 429: Too Many Requests<br>at fetch format list — ${j.item.title.toLowerCase().replace(/[^a-z0-9]+/g, '_')}<br>hint: wait or sign in for this source</div>
+      <div class="ibtns">${buttons}<button class="btn sm ghost" data-act="copy">Copy details</button></div>` : ''}
+      ${!fail ? `<div class="ibtns">${buttons}</div>` : ''}`;
+  }
+  function inspCol(c) {
+    if (!c) return '';
+    const s = colStats(c);
+    const anyActive = s.kids.some(k => ['downloading', 'merging', 'waiting'].includes(k.phase));
+    const live = s.kids.filter(k => ['downloading', 'merging'].includes(k.phase)).slice(0, 2);
+    const waiting = s.kids.filter(k => k.phase === 'waiting').slice(0, 3);
+    return `<h3>${c.title}</h3>
+      <div class="imeta" id="c-meta">${s.done}/${s.kids.length} finished · ${anyActive ? s.speed.toFixed(1) + ' MB/s' : 'paused'}</div>
+      <div class="ibar"><i id="c-bar" style="width:${s.agg}%"></i></div>
+      <div class="kids">
+        ${s.done ? `<div class="kid done"><span></span><span class="kt">✓ ${s.done} finished</span><span></span></div>` : ''}
+        ${live.map(k => `<div class="kid live"><span></span><span class="kt">${k.item.title}<span class="kbar"><i style="width:${k.progress}%"></i></span></span><span class="kd">${k.speed.toFixed(1)} MB/s</span></div>`).join('')}
+        ${waiting.map(k => `<div class="kid"><span></span><span class="kt">${k.item.title}</span><span class="kd">waiting</span></div>`).join('')}
+      </div>
+      <div class="ibtns"><button class="btn ${anyActive ? '' : 'pri'}" data-act="pause-col">${anyActive ? 'Pause collection' : 'Resume collection'}</button>
+      <button class="btn ghost danger" data-act="cancel-col">Cancel</button></div>`;
+  }
+  qEl.addEventListener('click', e => {
+    if (e.target.closest('[data-nav="home"]')) { go('home'); return; }
+    const btn = e.target.closest('[data-act]');
+    if (btn) { doAct(btn.dataset.act); return; }
+    const row = e.target.closest('.qrow');
+    if (row) {
+      state.sel = row.dataset.job ? { type: 'job', id: row.dataset.job } : { type: 'col', id: row.dataset.col };
+      renderQueue();
+    }
+  });
+  qEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.classList.contains('qrow')) e.target.click();
+    if (e.key === ' ' && e.target.classList.contains('qrow')) { e.preventDefault(); doAct('space'); }
+  });
+  function doAct(act) {
+    const j = state.sel && state.sel.type === 'job' ? jobById(state.sel.id) : null;
+    const c = state.sel && state.sel.type === 'col' ? colById(state.sel.id) : null;
+    if (act === 'pauseall') state.jobs.forEach(x => { if (x.phase === 'downloading') x.phase = 'paused'; });
+    if (act === 'resumeall') state.jobs.forEach(x => { if (x.phase === 'paused') x.phase = 'waiting'; });
+    if (act === 'pause' && j) j.phase = 'paused';
+    if (act === 'resume' && j) j.phase = 'waiting';
+    if (act === 'space' && j) j.phase = j.phase === 'paused' ? 'waiting' : j.phase === 'downloading' ? 'paused' : j.phase;
+    if (act === 'retry' && j) { j.retried = true; j.phase = 'downloading'; }
+    if (act === 'cancel' && j) cancelJob(j);
+    if (act === 'cancel-col' && c) cancelCollection(c);
+    if (act === 'pause-col' && c) {
+      const kids = c.children.map(jobById).filter(Boolean);
+      const anyActive = kids.some(k => ['downloading', 'merging', 'waiting'].includes(k.phase));
+      kids.forEach(k => {
+        if (anyActive && ['downloading', 'merging', 'waiting'].includes(k.phase)) k.phase = 'paused';
+        else if (!anyActive && k.phase === 'paused') k.phase = 'waiting';
+      });
+    }
+    if (act === 'copy' && j) {
+      const txt = `ytdlp: HTTP Error 429: Too Many Requests\nat fetch format list — ${j.item.title}\nhint: wait or sign in for this source`;
+      (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(() => {});
+      toast({ title: 'Error details copied', ms: 2500 });
+    }
+    if (state.sel && state.sel.type === 'job' && !jobById(state.sel.id)) state.sel = null;
+    renderQueue(); renderChrome();
+  }
+
+  /* ---------- DOWNLOADS ---------- */
+  const dEl = $('#scr-downloads');
+  let dBuilt = false;
+  function renderDownloads() {
+    if (!dBuilt) {
+      dEl.innerHTML = `<div style="display:flex;flex-direction:column;height:100%">
+        <div class="dhead"><h1>Downloads</h1><input class="dsearch" id="dsearch" type="text" placeholder="Search · ⌘F"></div>
+        <div class="dlist" id="dlist"></div>
+      </div>`;
+      $('#dsearch').addEventListener('input', renderDList);
+      dBuilt = true;
+    }
+    renderDList();
+  }
+  function renderDList() {
+    const q = ($('#dsearch').value || '').toLowerCase();
+    const match = d => !q || (d.item.title + ' ' + d.item.channel).toLowerCase().includes(q);
+    const grpMatch = g => !q || g.title.toLowerCase().includes(q) || g.items.some(d => (d.item.title + ' ' + (d.item.channel || g.channel)).toLowerCase().includes(q));
+    const groups = [['Today', 'today'], ['Yesterday', 'yesterday'], ['Earlier', 'earlier']];
+    let html = '';
+    for (const [label, key] of groups) {
+      const dgs = state.dgroups.filter(g => g.group === key && grpMatch(g));
+      const items = state.downloads.filter(d => d.group === key && match(d));
+      if (!dgs.length && !items.length) continue;
+      html += `<div class="dgroup">${label}</div>`;
+      html += dgs.map(g => {
+        const open = q ? true : !!g.open;
+        const total = g.items.reduce((s, d) => s + d.sizeMB, 0);
+        const head = `<div class="drow grp" data-grp="${g.id}" tabindex="0" title="${open ? 'Hide episodes' : 'Show episodes'}">
+          <span class="chev">${open ? '▾' : '▸'}</span><img src="${g.thumb}" alt="">
+          <div><b>${g.title}</b><span>Playlist · ${g.items.length} episodes · ${g.fmt} · ${fmtSize(total)}</span></div>
+          <div class="dact"><button class="btn sm ghost" data-rev-grp="1">Reveal</button><button class="btn sm ghost" data-open-grp="1">Open</button></div>
+        </div>`;
+        if (!open) return head;
+        return head + g.items.map(d => `
+          <div class="drow sub"><span class="epx">EP ${String(d.idx).padStart(2, '0')}</span><img src="${d.item.thumb}" alt="">
+            <div><b>${d.item.title}</b><span>${d.item.dur} · ${fmtSize(d.sizeMB)}</span></div>
+            <div class="dact"><button class="btn sm ghost" data-rev="1">Reveal</button><button class="btn sm ghost" data-open="1">Open</button></div>
+          </div>`).join('');
+      }).join('');
+      html += items.map(d => `
+        <div class="drow"><img src="${d.item.thumb}" alt="">
+          <div><b>${d.item.title}</b><span>${d.fmt} · ${fmtSize(d.sizeMB)} · ${d.item.channel}</span></div>
+          <div class="dact"><button class="btn sm ghost" data-rev="1">Reveal</button><button class="btn sm ghost" data-open="1">Open</button></div>
+        </div>`).join('');
+    }
+    $('#dlist').innerHTML = html || `<div class="dgroup">No downloads yet</div>`;
+  }
+  dEl.addEventListener('click', e => {
+    if (e.target.closest('[data-rev-grp]')) { toast({ title: 'Revealed playlist folder in Finder', ms: 2500 }); return; }
+    if (e.target.closest('[data-open-grp]')) { toast({ title: 'Opened playlist folder', ms: 2500 }); return; }
+    if (e.target.closest('[data-rev]')) { toast({ title: 'Revealed in Finder', ms: 2500 }); return; }
+    if (e.target.closest('[data-open]')) { toast({ title: 'Opened in default player', ms: 2500 }); return; }
+    const grp = e.target.closest('.drow.grp');
+    if (grp) { const g = state.dgroups.find(x => x.id === grp.dataset.grp); if (g) { g.open = !g.open; renderDList(); } }
+  });
+
+  /* ---------- SETTINGS (merged with About) ---------- */
+  const sEl = $('#scr-settings');
+  const settings = { subfolder: true, confirm: false, concurrency: 2 };
+  function renderSettings() {
+    sEl.innerHTML = `<div class="spage"><div class="scol">
+      <h1>Settings</h1>
+      <div class="sgroup"><h2>Downloads</h2>
+        <div class="srow"><div class="scopy"><strong>Default download folder</strong><span class="mono">~/Movies/VidStow</span></div>
+          <div class="sact"><button class="btn sm ghost" data-set="finder">Show in Finder</button><button class="btn sm ghost" data-set="changedir">Change…</button></div></div>
+        <div class="srow"><div class="scopy"><strong>Create a subfolder for each download</strong><span>Places all files for one video together.</span></div>
+          <div class="sact"><button class="toggle ${settings.subfolder ? 'on' : ''}" data-set="subfolder">${settings.subfolder ? 'On' : 'Off'}</button></div></div>
+        <div class="srow"><div class="scopy"><strong>Confirm before starting downloads</strong><span>Shows the selected output before adding it to the queue.</span></div>
+          <div class="sact"><button class="toggle ${settings.confirm ? 'on' : ''}" data-set="confirm">${settings.confirm ? 'On' : 'Off'}</button></div></div>
+        <div class="srow"><div class="scopy"><strong>Concurrent downloads</strong><span>How many jobs transfer at once.</span></div>
+          <div class="sact"><button class="btn sm ghost" data-set="dec">−</button><b>${settings.concurrency}</b><button class="btn sm ghost" data-set="inc">+</button></div></div>
+        ${settings.concurrency > 4 ? `<p class="swarn">More than 4 concurrent downloads may trigger YouTube rate limits (HTTP 429).</p>` : ''}
+      </div>
+      <div class="sgroup"><h2>Engine</h2>
+        <div class="srow"><div class="scopy"><strong>FFmpeg</strong><span>Version 7.1 · ready for merging and MP3 conversion.</span></div>
+          <div class="sact"><em class="sbadge">Ready</em><button class="btn sm ghost" data-set="recheck">Recheck</button></div></div>
+        <div class="srow"><div class="scopy"><strong>FFmpeg path</strong><span class="mono">/opt/homebrew/bin/ffmpeg</span></div>
+          <div class="sact"><button class="btn sm ghost" data-set="changedir">Change…</button></div></div>
+        <div class="srow"><div class="scopy"><strong>Engine</strong><span>ytdlp-go v0.3.0</span></div>
+          <div class="sact"><em class="sbadge">Ready</em></div></div>
+      </div>
+      <div class="sgroup"><h2>Diagnostics</h2>
+        <div class="srow"><div class="scopy"><strong>Send operational diagnostics</strong><span>When VidStow cannot complete a requested download, send a small sanitized report. Links, paths, and error text stay private.</span><small><span class="slink" data-set="privacy">Diagnostics privacy notice ↗</span></small></div>
+          <div class="sact"><button class="btn sm ghost" data-set="send-diag">Send</button><button class="btn sm ghost" data-set="dont-diag">Don’t send</button></div></div>
+        <div class="srow"><div class="scopy"><strong>Support report</strong><span>Includes app and FFmpeg status plus recent sanitized failures.</span></div>
+          <div class="sact"><button class="btn sm ghost" data-set="copy-diag">Copy diagnostics</button><button class="btn sm ghost" data-set="clear-hist">Clear history</button></div></div>
+      </div>
+      <div class="colophon">
+        <div class="cleft"><span class="cmark">V</span><div><b>VidStow</b><span>2.0.0-proto · Apache-2.0 · darwin/arm64</span></div></div>
+        <div class="cact"><button class="btn sm ghost" data-set="source">View source</button><button class="btn sm ghost" data-set="docs">Read the docs</button></div>
+        <div class="cbuilt">A tidy YouTube video, Short, and playlist downloader for the desktop. Built with Go · Wails · Svelte · ytdlp-go · FFmpeg</div>
+      </div>
+    </div></div>`;
+  }
+  sEl.addEventListener('click', e => {
+    const t = e.target.closest('[data-set]');
+    if (!t) return;
+    const k = t.dataset.set;
+    if (k === 'subfolder') settings.subfolder = !settings.subfolder;
+    if (k === 'confirm') settings.confirm = !settings.confirm;
+    if (k === 'inc') settings.concurrency = Math.min(10, settings.concurrency + 1);
+    if (k === 'dec') settings.concurrency = Math.max(1, settings.concurrency - 1);
+    state.slots = settings.concurrency;
+    if (k === 'finder') { toast({ title: 'Revealed in Finder', ms: 2500 }); return; }
+    if (k === 'changedir') { toast({ title: 'Choose a folder', ms: 2500 }); return; }
+    if (k === 'recheck') { toast({ title: 'FFmpeg rechecked · Ready', ms: 2500 }); return; }
+    if (k === 'send-diag') { toast({ title: 'Diagnostics will be sent', ms: 2500 }); return; }
+    if (k === 'dont-diag') { toast({ title: 'Diagnostics will not be sent', ms: 2500 }); return; }
+    if (k === 'copy-diag') { toast({ title: 'Diagnostics copied', ms: 2500 }); return; }
+    if (k === 'clear-hist') { toast({ title: 'History cleared', ms: 2500 }); return; }
+    if (k === 'privacy') { toast({ title: 'Diagnostics privacy notice', ms: 2500 }); return; }
+    if (k === 'source' || k === 'docs') { toast({ title: 'Opens in your browser', ms: 2500 }); return; }
+    renderSettings(); renderChrome();
+  });
+
+  /* ---------- toasts ---------- */
+  function toast({ title, sub = '', actions = [], ms = 4200 }) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = `<b>${title}</b>${sub ? `<span>${sub}</span>` : ''}${actions.length ? `<div class="tact">${actions.map((a, i) => `<button class="btn sm ${a.primary ? 'pri' : 'ghost'}" data-t="${i}">${a.label}</button>`).join('')}</div>` : ''}`;
+    $('#toasts').appendChild(t);
+    const kill = () => { t.classList.add('out'); setTimeout(() => t.remove(), 220); };
+    const timer = setTimeout(kill, ms);
+    t.addEventListener('click', e => {
+      const b = e.target.closest('[data-t]');
+      if (!b) return;
+      clearTimeout(timer);
+      const a = actions[+b.dataset.t];
+      if (a && a.onClick) a.onClick();
+      kill();
+    });
+  }
+
+  /* ---------- statusbar ---------- */
+  function statusbar() {
+    const el = $('#sb-right');
+    const act = state.jobs.filter(j => j.phase === 'downloading');
+    if (act.length) el.textContent = `${act.reduce((s, j) => s + j.speed, 0).toFixed(1)} MB/s · ${act.length}/${state.slots} slots`;
+    else el.textContent = 'Idle';
+  }
+
+  /* ---------- tick engine ---------- */
+  function tick() {
+    let structural = false;
+    while (state.jobs.filter(j => j.phase === 'downloading' || j.phase === 'merging').length < state.slots) {
+      const nx = state.jobs.find(j => j.phase === 'waiting');
+      if (!nx) break; nx.phase = 'downloading'; structural = true;
+    }
+    for (const j of state.jobs) {
+      if (j.phase === 'downloading') {
+        if (j.item.failAt != null && !j.retried && j.progress >= j.item.failAt) {
+          j.phase = 'failed'; j.error = 'HTTP 429'; structural = true; continue;
+        }
+        j.speed = j.base * (0.7 + Math.random() * 0.6);
+        j.progress = Math.min(100, j.progress + j.rate);
+        if (j.progress >= 100) { j.phase = 'merging'; j.mergeT = 4; structural = true; }
+      } else if (j.phase === 'merging') {
+        j.mergeT--; if (j.mergeT <= 0) { finishJob(j); structural = true; }
+      }
+    }
+    if (structural) {
+      renderChrome();
+      if (state.route === 'queue') renderQueue();
+      if (state.route === 'downloads') renderDList();
+    } else {
+      tickDyn();
+    }
+    statusbar();
+  }
+  function tickDyn() {
+    if (state.route !== 'queue') return;
+    state.jobs.forEach(j => {
+      if (j.colId) return;
+      const el = document.querySelector(`[data-job="${j.id}"]`);
+      if (el) {
+        const bar = el.querySelector('.qbar i'); if (bar) bar.style.width = j.progress + '%';
+        const tail = el.querySelector('.qtail'); if (tail) tail.textContent = tailFor(j);
+      }
+    });
+    state.cols.forEach(c => {
+      const el = document.querySelector(`[data-col="${c.id}"]`);
+      if (!el) return;
+      const s = colStats(c);
+      const bar = el.querySelector('.qbar i'); if (bar) bar.style.width = s.agg + '%';
+      const tail = el.querySelector('.qtail'); if (tail) tail.textContent = s.anyActive ? `${s.done}/${s.kids.length} · ${s.speed.toFixed(1)} MB/s` : `${s.done}/${s.kids.length} · paused`;
+    });
+    const j = state.sel && state.sel.type === 'job' ? jobById(state.sel.id) : null;
+    if (j && !j.colId) {
+      const sp = $('#v-speed'), et = $('#v-eta'), pg = $('#v-prog'), br = $('#v-bar');
+      if (sp) sp.textContent = j.phase === 'failed' ? '—' : j.speed.toFixed(1) + ' MB/s';
+      if (et) et.textContent = j.phase === 'failed' ? '—' : etaFor(j);
+      if (pg) pg.textContent = Math.round(j.progress) + '%';
+      if (br) br.style.width = j.progress + '%';
+    }
+    const c = state.sel && state.sel.type === 'col' ? colById(state.sel.id) : null;
+    if (c) {
+      const s = colStats(c);
+      const m = $('#c-meta'), br = $('#c-bar');
+      if (m) m.textContent = `${s.done}/${s.kids.length} finished · ${s.anyActive ? s.speed.toFixed(1) + ' MB/s' : 'paused'}`;
+      if (br) br.style.width = s.agg + '%';
+    }
+  }
+
+  /* ---------- keyboard ---------- */
+  addEventListener('keydown', e => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key.toLowerCase() === 'l') { e.preventDefault(); go('home'); field.focus(); field.select(); }
+    else if (mod && ['1', '2', '3'].includes(e.key)) { e.preventDefault(); go(['home', 'queue', 'downloads'][+e.key - 1]); }
+    else if (mod && e.key === ',') { e.preventDefault(); go('settings'); }
+    else if (mod && e.key.toLowerCase() === 'f' && state.route === 'downloads') { e.preventDefault(); const s = $('#dsearch'); s && s.focus(); }
+    else if (e.key === 'Escape' && state.route === 'home') {
+      if (state.folderOpen) { state.folderOpen = false; renderSlot(); }
+      else if (['result', 'error', 'added', 'scope'].includes(state.homePhase)) resetHome();
+    }
+    else if (['ArrowDown', 'ArrowUp'].includes(e.key) && state.route === 'home' && state.homePhase === 'scope') {
+      e.preventDefault();
+      const cards = [...document.querySelectorAll('.scard')];
+      if (!cards.length) return;
+      const i = cards.indexOf(document.activeElement);
+      const next = e.key === 'ArrowDown' ? (i + 1) % cards.length : (i - 1 + cards.length) % cards.length;
+      cards[i < 0 ? (e.key === 'ArrowDown' ? 0 : cards.length - 1) : next].focus();
+    }
+  });
+
+  /* ---------- init ---------- */
+  buildHome();
+  state.downloads.push(
+    { item: byId('go'), fmt: '2160p', sizeMB: POLICY['2160p'](26), group: 'yesterday' },
+    { item: byId('tracing'), fmt: '1080p', sizeMB: POLICY['1080p'](10), group: 'yesterday' },
+    { item: byId('podcast'), fmt: 'M4A', sizeMB: POLICY['Audio'](48), group: 'earlier' },
+    { item: byId('chaos'), fmt: '1080p', sizeMB: POLICY['1080p'](11), group: 'earlier' },
+    { item: byId('clocks'), fmt: '720p', sizeMB: POLICY['720p'](15), group: 'earlier' }
+  );
+  state.dgroups.push({
+    id: 'dg0', title: 'Concurrency in Go', channel: 'Steve Hook', thumb: PLAYLIST_EPS[0].thumb, fmt: '1080p', group: 'yesterday', open: false,
+    items: PLAYLIST_EPS.map((ep, i) => ({ item: { id: 'pl' + (i + 1), title: ep.t, channel: 'Steve Hook', dur: ep.d, thumb: ep.thumb }, fmt: '1080p', sizeMB: epPlan(ep, 'video', '1080p').sizeMB, idx: i + 1 }))
+  });
+  const j1 = addJob(byId('concurrency'), POLICY['1080p'](12)); j1.phase = 'downloading'; j1.progress = 55;
+  addJob(byId('rust'), POLICY['1080p'](18));
+  renderChrome();
+  go('home');
+  setInterval(tick, 600);
+})();
+</script>
+</body>
+</html>
