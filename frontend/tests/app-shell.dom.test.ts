@@ -59,6 +59,9 @@ function installBindings() {
           available: true, path: '/usr/bin/ffmpeg', version: '7.0', ffprobePath: '/usr/bin/ffprobe', message: '',
         })),
         GetPersistenceStatus: vi.fn(async () => ({ available: true, healthy: true })),
+        GetBuildInfo: vi.fn(async () => ({
+          version: '0.0.0-test', engineVersion: 'v0.3.0', os: 'linux', architecture: 'amd64', goVersion: 'go1.25',
+        })),
         ValidateURL,
         AnalyzeURL,
         AnalyzePlaylist: vi.fn(),
@@ -130,7 +133,7 @@ describe('Home analysis survives navigation', () => {
     expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(firstURL);
 
     await user.click(screen.getByRole('button', { name: 'Downloads' }));
-    expect(await screen.findByText('No downloads yet.')).toBeInTheDocument();
+    expect(await screen.findByText('No downloads yet')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Home' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();

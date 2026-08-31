@@ -93,6 +93,11 @@ export interface HistoryEntry {
   durationLabel: string;
   thumbnail: string;
   fileMissing?: boolean;
+  playlistId?: string;
+  collectionId?: string;
+  playlistTitle?: string;
+  collectionTitle?: string;
+  collectionIndex?: number;
 }
 
 export interface FFmpegStatus {

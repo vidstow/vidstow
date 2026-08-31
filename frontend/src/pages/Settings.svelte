@@ -2,20 +2,37 @@
   import { onMount } from 'svelte';
   import { api } from '../lib/api.js';
   import { settings, ffmpeg, showBanner, showError } from '../lib/stores.js';
-  import type { Settings } from '../lib/types.js';
-  import QueueSettingsCard from '../lib/lifecycle-ui/QueueSettingsCard.svelte';
+  import { formatEngineVersion } from '../lib/format.js';
+  import { MAX_CONCURRENCY, MIN_CONCURRENCY } from '../lib/lifecycle-ui/types.js';
+  import type { BuildInfo, Settings } from '../lib/types.js';
+
+  const APP = {
+    name: 'VidStow',
+    license: 'Apache-2.0',
+    source: 'https://github.com/vidstow/vidstow',
+    docs: 'https://github.com/vidstow/vidstow#readme',
+    tagline: 'A tidy YouTube video, Short, and playlist downloader for the desktop. Built with Go · Wails · Svelte · ytdlp-go · FFmpeg',
+  };
 
   let folder = '';
   let ffmpegPath = '';
   let saving = false;
+  let build: BuildInfo = {
+    version: 'Loading…', engineVersion: 'Loading…', os: '', architecture: '', goVersion: '',
+  };
 
   onMount(() => {
     folder = $settings.downloadFolder || '';
     ffmpegPath = $settings.ffmpegPath || $ffmpeg.path || '';
+    api.app.buildInfo()
+      .then((info) => { build = info; })
+      .catch((err) => { showError(err, 'Could not read build information'); });
   });
   $: displayedFFmpegPath = ffmpegPath || $ffmpeg.path || '';
   $: concurrency = $settings.downloadConcurrency;
   $: ffmpegVersion = ($ffmpeg.version || '').replace(/^ffmpeg version /i, '').split(/\s+/)[0] || '';
+  $: platform = build.os && build.architecture ? `${build.os}/${build.architecture}` : '';
+  $: engineReady = !!build.engineVersion && build.engineVersion !== 'Loading…';
 
   async function update(next: Settings, message = 'Settings updated') {
     saving = true;
@@ -69,7 +86,9 @@
   }
 
   async function changeConcurrency(value: number) {
-    await update({ ...$settings, downloadConcurrency: value });
+    const next = Math.min(MAX_CONCURRENCY, Math.max(MIN_CONCURRENCY, value));
+    if (next === concurrency) return;
+    await update({ ...$settings, downloadConcurrency: next });
   }
 
   async function setAutomaticDiagnostics(value: 'enabled' | 'disabled') {
@@ -77,222 +96,366 @@
       settings.set(await api.settings.setAutomaticDiagnostics(value));
       showBanner('success', value === 'enabled' ? 'Automatic diagnostics enabled' : 'Automatic diagnostics disabled');
     } catch (err) {
-      // Disabling remains persisted even if its best-effort local purge reports
-      // an error, so refresh instead of leaving the control misleadingly on.
       try { settings.set(await api.settings.get()); } catch { /* retain the last known value */ }
       showError(err, 'Could not save the diagnostics preference');
     }
   }
+
+  function open(url: string) {
+    if (url) window.runtime?.BrowserOpenURL?.(url);
+  }
 </script>
 
-<section class="page" aria-labelledby="settings-title">
-  <header class="page-header">
+<section class="page settings-page" aria-labelledby="settings-title">
+  <div class="scol">
     <h1 id="settings-title">Settings</h1>
-    <p>Configure downloads, queue behavior, and external tools.</p>
-  </header>
 
-  <section class="group" aria-labelledby="general-title">
-    <h2 id="general-title">Downloads</h2>
+    <section class="sgroup" aria-labelledby="downloads-settings-title">
+      <h2 id="downloads-settings-title">Downloads</h2>
 
-    <div class="setting">
-      <div class="copy">
-        <strong>Default download folder</strong>
-        <span class="mono" title={folder}>{folder || 'Not set'}</span>
+      <div class="srow">
+        <div class="scopy">
+          <strong>Default download folder</strong>
+          <span class="mono" title={folder}>{folder || 'Not set'}</span>
+        </div>
+        <div class="sact">
+          <button type="button" class="btn sm ghost" disabled={!folder} on:click={showFolder}>Show in Finder</button>
+          <button type="button" class="btn sm ghost" on:click={pickFolder}>Change…</button>
+        </div>
       </div>
-      <div class="actions">
-        <button type="button" class="app-btn" disabled={!folder} on:click={showFolder}>Show in Finder</button>
-        <button type="button" class="app-btn primary" on:click={pickFolder}>Change…</button>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Create a subfolder for each download</strong>
+          <span>Places all files for one video together.</span>
+        </div>
+        <div class="sact">
+          <button
+            type="button"
+            class="toggle"
+            class:on={$settings.perVideoSubfolder}
+            aria-pressed={$settings.perVideoSubfolder}
+            on:click={() => update({ ...$settings, perVideoSubfolder: !$settings.perVideoSubfolder })}
+          >{$settings.perVideoSubfolder ? 'On' : 'Off'}</button>
+        </div>
       </div>
-    </div>
 
-    <label class="setting">
-      <span class="copy">
-        <strong>Create a subfolder for each download</strong>
-        <small>Places all files for one video together.</small>
-      </span>
-      <input type="checkbox" checked={$settings.perVideoSubfolder} on:change={(e) => update({ ...$settings, perVideoSubfolder: e.currentTarget.checked })} />
-    </label>
+      <div class="srow">
+        <div class="scopy">
+          <strong>Confirm before starting downloads</strong>
+          <span>Shows the selected output before adding it to the queue.</span>
+        </div>
+        <div class="sact">
+          <button
+            type="button"
+            class="toggle"
+            class:on={$settings.confirmBeforeDownload}
+            aria-pressed={$settings.confirmBeforeDownload}
+            on:click={() => update({ ...$settings, confirmBeforeDownload: !$settings.confirmBeforeDownload })}
+          >{$settings.confirmBeforeDownload ? 'On' : 'Off'}</button>
+        </div>
+      </div>
 
-    <label class="setting">
-      <span class="copy">
-        <strong>Confirm before starting downloads</strong>
-        <small>Shows the selected output before adding it to the queue.</small>
-      </span>
-      <input type="checkbox" checked={$settings.confirmBeforeDownload} on:change={(e) => update({ ...$settings, confirmBeforeDownload: e.currentTarget.checked })} />
-    </label>
+      <div class="srow">
+        <div class="scopy">
+          <strong>Concurrent downloads</strong>
+          <span>How many jobs transfer at once.</span>
+        </div>
+        <div class="sact">
+          <button type="button" class="btn sm ghost" aria-label="Decrease concurrent downloads" disabled={saving || concurrency <= MIN_CONCURRENCY} on:click={() => changeConcurrency(concurrency - 1)}>−</button>
+          <b>{concurrency}</b>
+          <button type="button" class="btn sm ghost" aria-label="Increase concurrent downloads" disabled={saving || concurrency >= MAX_CONCURRENCY} on:click={() => changeConcurrency(concurrency + 1)}>+</button>
+        </div>
+      </div>
+      {#if concurrency > 4}
+        <p class="swarn">More than 4 concurrent downloads may trigger YouTube rate limits (HTTP 429).</p>
+      {/if}
+    </section>
 
-    <QueueSettingsCard
-      model={{ concurrency, minimum: 1, maximum: 10, defaultValue: 2, disabled: saving }}
-      onConcurrencyChange={changeConcurrency}
-    />
-    {#if concurrency > 4}
-      <p class="warning">More than 4 simultaneous downloads may reduce stability or trigger rate limits.</p>
-    {/if}
-  </section>
+    <section class="sgroup" aria-labelledby="engine-title">
+      <h2 id="engine-title">Engine</h2>
 
-  <section class="group" aria-labelledby="ffmpeg-title">
-    <h2 id="ffmpeg-title">FFmpeg</h2>
+      <div class="srow">
+        <div class="scopy">
+          <strong>FFmpeg</strong>
+          <span>
+            {#if $ffmpeg.available && ffmpegVersion}
+              Version {ffmpegVersion} · ready for merging and MP3 conversion.
+            {:else}
+              Needed to merge video and audio, and to convert to MP3.
+            {/if}
+          </span>
+        </div>
+        <div class="sact">
+          <em class="sbadge" class:ok={$ffmpeg.available}>{$ffmpeg.available ? 'Ready' : 'Missing'}</em>
+          <button type="button" class="btn sm ghost" on:click={recheck}>Recheck</button>
+        </div>
+      </div>
 
-    <div class="setting">
-      <div class="copy">
-        <strong>FFmpeg status</strong>
-        <span>
-          {#if $ffmpeg.available && ffmpegVersion}
-            Version {ffmpegVersion} · ready for merging and MP3 conversion
-          {:else}
-            Needed to merge video and audio, and to convert to MP3.
+      <div class="srow">
+        <div class="scopy">
+          <strong>FFmpeg path</strong>
+          <span class="mono" class:empty={!displayedFFmpegPath} title={displayedFFmpegPath}>{displayedFFmpegPath || 'Not configured'}</span>
+        </div>
+        <div class="sact">
+          <button type="button" class="btn sm ghost" on:click={locateFFmpeg}>Change…</button>
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Engine</strong>
+          <span>ytdlp-go {formatEngineVersion(build.engineVersion)}</span>
+        </div>
+        <div class="sact">
+          {#if engineReady}
+            <em class="sbadge ok">Ready</em>
           {/if}
-        </span>
+        </div>
       </div>
-      <div class="actions">
-        <em class="badge" class:ok={$ffmpeg.available}>{$ffmpeg.available ? 'Ready' : 'Not found'}</em>
-        <button type="button" class="app-btn" on:click={recheck}>Recheck</button>
-      </div>
-    </div>
+    </section>
 
-    <div class="setting">
-      <div class="copy">
-        <strong>FFmpeg path</strong>
-        <span class="mono" class:empty={!displayedFFmpegPath} title={displayedFFmpegPath}>{displayedFFmpegPath || 'Not configured'}</span>
+    <section class="sgroup" aria-labelledby="diagnostics-title">
+      <h2 id="diagnostics-title">Diagnostics</h2>
+      <div class="srow">
+        <div class="scopy">
+          <strong>Send operational diagnostics</strong>
+          <span>When VidStow cannot complete a requested download, send a small sanitized report. Links, paths, and error text stay private.</span>
+          <small>
+            <button class="slink" type="button" on:click={() => open('https://diagnostics.vidstow.workers.dev/privacy')}>Diagnostics privacy notice ↗</button>
+          </small>
+        </div>
+        <div class="sact" role="radiogroup" aria-label="Automatic diagnostics">
+          <button
+            type="button"
+            class="btn sm ghost"
+            class:on={$settings.automaticDiagnostics === 'enabled'}
+            aria-pressed={$settings.automaticDiagnostics === 'enabled'}
+            on:click={() => setAutomaticDiagnostics('enabled')}
+          >Send</button>
+          <button
+            type="button"
+            class="btn sm ghost"
+            class:on={$settings.automaticDiagnostics === 'disabled'}
+            aria-pressed={$settings.automaticDiagnostics === 'disabled'}
+            on:click={() => setAutomaticDiagnostics('disabled')}
+          >Don’t send</button>
+        </div>
       </div>
-      <div class="actions">
-        <button type="button" class="app-btn primary" on:click={locateFFmpeg}>Change…</button>
+      <div class="srow">
+        <div class="scopy">
+          <strong>Support report</strong>
+          <span>Includes app and FFmpeg status plus recent sanitized failures.</span>
+        </div>
+        <div class="sact">
+          <button type="button" class="btn sm ghost" on:click={copyDiagnostics}>Copy diagnostics</button>
+          <button type="button" class="btn sm ghost" on:click={clearDiagnostics}>Clear history</button>
+        </div>
       </div>
-    </div>
+    </section>
 
-    {#if !$ffmpeg.available}
-      <div class="setting hint">
-        <p>Install FFmpeg, then Recheck or choose the binary with Change…</p>
-        <button type="button" class="app-btn" on:click={() => window.runtime.BrowserOpenURL('https://ffmpeg.org/download.html')}>Installation guide ↗</button>
+    <div class="colophon">
+      <div class="cleft">
+        <span class="cmark" aria-hidden="true">V</span>
+        <div>
+          <b>{APP.name}</b>
+          <span>{build.version} · {APP.license}{platform ? ` · ${platform}` : ''}</span>
+        </div>
       </div>
-    {/if}
-  </section>
-
-  <section class="group" aria-labelledby="diagnostics-title">
-    <h2 id="diagnostics-title">Diagnostics</h2>
-    <div class="setting">
-      <div class="copy">
-        <strong>Send operational diagnostics</strong>
-        <span>When VidStow cannot complete a requested download or encounters an app failure, send a small sanitized report in the background. Video IDs, links, paths, filenames, cookies, tokens, and error text stay private.</span>
-        <small>Local diagnostic history remains available either way. Disabling this immediately deletes anything waiting to be sent.</small>
-        <button class="privacy-link" type="button" on:click={() => window.runtime.BrowserOpenURL('https://diagnostics.vidstow.workers.dev/privacy')}>Diagnostics privacy notice ↗</button>
+      <div class="cact">
+        <button type="button" class="btn sm ghost" on:click={() => open(APP.source)}>View source</button>
+        <button type="button" class="btn sm ghost" on:click={() => open(APP.docs)}>Read the docs</button>
       </div>
-      <div class="actions choices" role="radiogroup" aria-label="Automatic diagnostics">
-        <label><input type="radio" name="automatic-diagnostics" checked={$settings.automaticDiagnostics === 'enabled'} on:change={() => setAutomaticDiagnostics('enabled')} /> Send diagnostics</label>
-        <label><input type="radio" name="automatic-diagnostics" checked={$settings.automaticDiagnostics === 'disabled'} on:change={() => setAutomaticDiagnostics('disabled')} /> Don’t send</label>
-      </div>
+      <div class="cbuilt">{APP.tagline}</div>
     </div>
-    <div class="setting">
-      <div class="copy">
-        <strong>Support report</strong>
-        <span>Includes app and FFmpeg status plus recent sanitized failures. URLs and paths stay private.</span>
-      </div>
-      <div class="actions">
-        <button type="button" class="app-btn" on:click={clearDiagnostics}>Clear history</button>
-        <button type="button" class="app-btn primary" on:click={copyDiagnostics}>Copy Diagnostics</button>
-      </div>
-    </div>
-  </section>
+  </div>
 </section>
 
 <style>
-  .group {
-    padding: 2px 20px 8px;
-    border: 1px solid var(--border-default);
-    border-radius: var(--r-lg);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-card);
+  .settings-page {
+    padding: 18px 18px 28px;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
   }
-  .group h2 {
-    margin: 0;
-    padding: 12px 0 2px;
-    font-size: var(--fs-xs);
+  .settings-page h1 {
+    margin: 0 0 16px;
+    font-size: 17px;
     font-weight: 650;
-    letter-spacing: 0.04em;
+    letter-spacing: -0.02em;
+  }
+  .scol {
+    max-width: 680px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .sgroup {
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    background: var(--surface-raised);
+    padding: 4px 18px 6px;
+  }
+  .sgroup h2 {
+    margin: 0;
+    padding: 12px 0 4px;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-muted);
   }
-
-  .setting {
-    min-height: 48px;
+  .srow {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--sp-4);
-    padding: 8px 0;
-    border-top: 1px solid var(--border-subtle);
+    gap: 24px;
+    padding: 11px 0;
+    border-top: 1px solid #1F1F23;
+    min-height: 48px;
   }
-  .group > h2 + .setting { border-top: 0; }
-  .copy { min-width: 0; flex: 1; }
-  .copy strong, .copy span, .copy small { display: block; }
-  .copy strong { font-size: var(--fs-sm); color: var(--text-primary); font-weight: 600; }
-  .copy span, .copy small {
-    margin-top: 4px;
+  .sgroup h2 + .srow { border-top: 0; }
+  .scopy { min-width: 0; flex: 1; }
+  .scopy strong, .scopy span, .scopy small { display: block; }
+  .scopy strong { font-size: 13px; font-weight: 600; }
+  .scopy span {
+    margin-top: 3px;
     color: var(--text-secondary);
-    font-size: var(--fs-xs);
+    font-size: 11.5px;
     line-height: 1.45;
   }
-  .copy .mono {
+  .scopy small {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .scopy .mono {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
     font-size: 11px;
   }
-  .copy .mono.empty { font-family: var(--font-sans); font-style: italic; }
-  label.setting { cursor: pointer; }
-  label.setting input { margin-left: 8px; flex-shrink: 0; }
-  .choices { align-items: flex-start; flex-direction: column; gap: 6px; min-width: 154px; }
-  .choices label { display: flex; gap: 7px; align-items: center; font-size: var(--fs-xs); cursor: pointer; }
-  .choices input { margin: 0; }
-  .privacy-link { margin-top: 6px; padding: 0; color: var(--accent-primary); font-size: var(--fs-xs); text-decoration: underline; text-underline-offset: 3px; }
-
-  .actions {
+  .scopy .mono.empty { font-family: var(--font-sans); font-style: italic; }
+  .sact {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: var(--sp-2);
+    gap: 6px;
     flex-shrink: 0;
   }
-
-  .badge {
-    padding: 4px 10px;
-    border-radius: var(--r-full);
+  .sact b {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    min-width: 16px;
+    text-align: center;
+  }
+  .sbadge {
+    padding: 3px 10px;
+    border-radius: 99px;
     background: var(--status-danger-soft);
     color: var(--status-danger);
     font-style: normal;
     font-size: 11px;
     font-weight: 650;
   }
-  .badge.ok {
-    background: var(--status-success-soft);
-    color: var(--status-success);
+  .sbadge.ok {
+    background: rgba(34, 197, 94, 0.12);
+    color: #4ADE80;
+  }
+  .swarn {
+    margin: 0;
+    padding: 2px 0 10px;
+    color: #FBBF24;
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .slink {
+    color: #93C5FD;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .toggle {
+    height: 24px;
+    padding: 0 12px;
+    border-radius: 99px;
+    border: 1px solid var(--border-default);
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--surface-base);
+  }
+  .toggle.on {
+    background: var(--accent-soft);
+    border-color: rgba(59, 130, 246, 0.55);
+    color: #93C5FD;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 120ms ease, border-color 120ms ease;
+  }
+  .btn:hover:not(:disabled) { background: var(--surface-hover); }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+  .btn.on {
+    background: var(--accent-soft);
+    color: #93C5FD;
   }
 
-  .warning, .hint {
-    display: flex;
+  .colophon {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px 16px;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-3);
-    margin: 4px 0 6px;
-    padding: 8px 12px;
-    border-radius: var(--r-md);
-    font-size: var(--fs-sm);
+    padding: 16px 18px;
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    background: var(--surface-raised);
   }
-  .warning {
-    background: var(--status-warning-soft);
-    color: var(--status-warning);
+  .cleft { display: flex; align-items: center; gap: 13px; }
+  .cmark {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+    font-weight: 700;
+    font-size: 15px;
+    color: #fff;
+    flex-shrink: 0;
   }
-  .hint {
-    margin-top: 0;
-    background: var(--status-info-soft);
-    color: var(--text-primary);
-    border-top: 0;
+  .cleft b { display: block; font-size: 13.5px; font-weight: 650; }
+  .cleft span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-top: 2px;
+    font-family: var(--font-mono);
   }
-  .hint p { margin: 0; color: var(--text-secondary); font-size: var(--fs-xs); }
+  .cact { display: flex; gap: 6px; }
+  .cbuilt {
+    grid-column: 1 / -1;
+    padding-top: 10px;
+    border-top: 1px solid #1F1F23;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
 
   @media (max-width: 720px) {
-    .setting, .hint { flex-direction: column; align-items: flex-start; }
-    .actions { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+    .srow { flex-direction: column; align-items: flex-start; }
+    .sact { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+    .colophon { grid-template-columns: 1fr; }
   }
 </style>

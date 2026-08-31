@@ -69,8 +69,8 @@
           <button
             type="button"
             class="nav-item"
-            class:active={$route === item.key}
-            aria-current={$route === item.key ? 'page' : undefined}
+            class:active={$route === item.key || ($route === 'about' && item.key === 'settings')}
+            aria-current={$route === item.key || ($route === 'about' && item.key === 'settings') ? 'page' : undefined}
             onclick={() => go(item.key)}
           >
             <span class="nav-icon" aria-hidden="true">

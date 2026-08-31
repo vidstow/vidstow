@@ -93,18 +93,21 @@ test('app shell mounts the workstation, status bar, and keeps the About page', a
   assert.match(main, /MinHeight:\s+600/);
 });
 
-test('About page uses backend build info with legal copy and external links', async () => {
-  const about = await read('../src/pages/About.svelte');
-  assert.match(about, /<h1 id="about-title">About<\/h1>/);
-  assert.match(about, /name: 'VidStow'/);
-  assert.match(about, /api\.app\.buildInfo\(\)/);
-  assert.match(about, /engineVersion/);
-  assert.match(about, /Copy Diagnostics/);
-  assert.match(about, /license: 'Apache-2\.0'/);
-  assert.match(about, /BrowserOpenURL\?\.\(url\)/);
-  assert.match(about, /github\.com\/vidstow\/vidstow/);
-  assert.match(about, /yt-dlp/);
-  assert.match(about, /not affiliated with, or endorsed by,/);
+test('About route renders the Settings page with the About colophon', async () => {
+  const [about, settings] = await Promise.all([
+    read('../src/pages/About.svelte'),
+    read('../src/pages/Settings.svelte'),
+  ]);
+  assert.match(about, /import Settings from '\.\/Settings\.svelte'/);
+  assert.match(about, /<Settings \/>/);
+  assert.match(settings, /api\.app\.buildInfo\(\)/);
+  assert.match(settings, /engineVersion/);
+  assert.match(settings, /license: 'Apache-2\.0'/);
+  assert.match(settings, /github\.com\/vidstow\/vidstow/);
+  assert.match(settings, /class="colophon"/);
+  assert.match(settings, />View source</);
+  assert.match(settings, />Read the docs</);
+  assert.match(settings, /Built with Go · Wails · Svelte · ytdlp-go · FFmpeg/);
 });
 
 test('ui primitives exist and expose the expected API surface', async () => {

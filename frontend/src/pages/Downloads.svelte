@@ -1,52 +1,43 @@
 <script lang="ts">
   import { history, modal, showBanner, showError } from '../lib/stores.js';
   import { api } from '../lib/api.js';
-  import { formatBytes, formatRelative, qualityLabel } from '../lib/format.js';
-  import { Tabs, EmptyState } from '../lib/components/ui/index.js';
-  import type { HistoryEntry } from '../lib/types.js';
+  import {
+    buildHistorySections,
+    episodeIndex,
+    episodeLabel,
+    historySubtitle,
+    thumbnailFor,
+    type HistoryCollectionRow,
+    type HistoryRecord,
+  } from '../lib/download-history.js';
 
-  const RECENT_LIMIT = 10;
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const searchPlaceholder = isMac ? 'Search · ⌘F' : 'Search · Ctrl+F';
 
   let query = '';
-  let view: 'recent' | 'all' = 'recent';
-  let selected: HistoryEntry | null = null;
+  let searchField: HTMLInputElement | null = null;
+  let selectedId: string | null = null;
+  let openGroups = new Set<string>();
 
-  $: recentCount = Math.min(RECENT_LIMIT, $history.length);
-  $: showRange = $history.length > RECENT_LIMIT;
-  $: source = view === 'recent' && showRange ? $history.slice(0, RECENT_LIMIT) : $history;
-  $: needle = query.trim().toLowerCase();
-  $: filtered = source.filter((entry) =>
-    [entry.title, entry.channel, entry.filename, entry.quality, entry.container || '']
-      .some((value) => value.toLowerCase().includes(needle)),
-  );
-  $: if (selected && !filtered.some((entry) => entry.id === selected?.id)) selected = null;
+  $: sections = buildHistorySections($history, query);
+  $: needle = query.trim();
+  $: openGroupList = [...openGroups];
 
-  $: rangeTabs = [
-    { value: 'recent', label: 'Recent', count: recentCount },
-    { value: 'all', label: 'All', count: $history.length },
-  ];
+  $: if (selectedId && !$history.some((entry) => entry.id === selectedId)) selectedId = null;
 
-  function formatLabel(entry: HistoryEntry): string {
-    const quality = qualityLabel(entry.quality);
-    return entry.container ? `${quality} · ${entry.container}` : quality;
+  function toggleGroup(id: string) {
+    if (needle) return;
+    const next = new Set(openGroups);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    openGroups = next;
   }
 
-  function codecSummary(entry: HistoryEntry): string {
-    return [entry.videoCodec, entry.audioCodec].filter(Boolean).join(' · ');
+  function toggleDetails(entry: HistoryRecord) {
+    selectedId = selectedId === entry.id ? null : entry.id;
   }
 
-  function thumbnailFor(entry: HistoryEntry): string {
-    if (entry.thumbnail) return entry.thumbnail;
-    return entry.videoId
-      ? `https://i.ytimg.com/vi/${encodeURIComponent(entry.videoId)}/hqdefault.jpg`
-      : '';
-  }
-
-  function toggle(entry: HistoryEntry) {
-    selected = selected?.id === entry.id ? null : entry;
-  }
-
-  const open = async (entry: HistoryEntry) => {
+  const open = async (entry: HistoryRecord) => {
     if (entry.fileMissing) {
       showBanner('warning', 'That downloaded file is no longer on disk.');
       return;
@@ -58,7 +49,7 @@
     }
   };
 
-  const reveal = async (entry: HistoryEntry) => {
+  const reveal = async (entry: HistoryRecord) => {
     if (entry.fileMissing) {
       showBanner('warning', 'That downloaded file is no longer on disk.');
       return;
@@ -70,7 +61,21 @@
     }
   };
 
-  function confirmRemoveHistory(entry: HistoryEntry) {
+  function firstPresent(entries: HistoryRecord[]): HistoryRecord | undefined {
+    return entries.find((entry) => !entry.fileMissing) ?? entries[0];
+  }
+
+  async function openGroup(group: HistoryCollectionRow) {
+    const entry = firstPresent(group.entries);
+    if (entry) await open(entry);
+  }
+
+  async function revealGroup(group: HistoryCollectionRow) {
+    const entry = firstPresent(group.entries);
+    if (entry) await reveal(entry);
+  }
+
+  function confirmRemoveHistory(entry: HistoryRecord) {
     modal.set({
       kind: 'confirm',
       title: 'Remove from history?',
@@ -92,7 +97,7 @@
     });
   }
 
-  function confirmDeleteFile(entry: HistoryEntry) {
+  function confirmDeleteFile(entry: HistoryRecord) {
     modal.set({
       kind: 'confirm',
       title: 'Delete downloaded file?',
@@ -113,282 +118,285 @@
       ],
     });
   }
+
+  function onWindowKeydown(event: KeyboardEvent) {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.repeat) return;
+    if (event.key.toLowerCase() !== 'f') return;
+    event.preventDefault();
+    searchField?.focus();
+    searchField?.select();
+  }
 </script>
 
-<section class="page" aria-labelledby="downloads-title">
-  <header class="page-header">
+<svelte:window on:keydown={onWindowKeydown} />
+
+<section class="page downloads-page" aria-labelledby="downloads-title">
+  <header class="dhead">
     <h1 id="downloads-title">Downloads</h1>
-    <p>View your recently downloaded items.</p>
+    <input
+      bind:this={searchField}
+      class="dsearch"
+      type="search"
+      bind:value={query}
+      placeholder={searchPlaceholder}
+      aria-label="Search downloads"
+    />
   </header>
-  <div class="toolbar">
-    <label class="search">
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-        <circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" />
-      </svg>
-      <input type="search" bind:value={query} placeholder="Search downloads…" aria-label="Search downloads" />
-    </label>
-    {#if showRange}
-      <Tabs options={rangeTabs} value={view} onChange={(value) => (view = value === 'all' ? 'all' : 'recent')} ariaLabel="Download history range">
-        <span class="visually-hidden">Showing {view === 'recent' ? 'recent' : 'all'} downloads</span>
-      </Tabs>
-    {/if}
-    {#if filtered.length}
-        <ul class="library" aria-label="Downloaded videos">
-          {#each filtered as entry (entry.id)}
-            <li class="item" class:selected={selected?.id === entry.id} class:missing={entry.fileMissing}>
-              <button
-                class="item-main"
-                type="button"
-                aria-label={`${selected?.id === entry.id ? 'Hide' : 'Show'} details for ${entry.title}`}
-                aria-expanded={selected?.id === entry.id}
-                on:click={() => toggle(entry)}
-              >
-                <span class="thumb">
+
+  <div class="dlist">
+    {#if sections.length}
+      {#each sections as section (section.key)}
+        <div class="dgroup">{section.label}</div>
+        {#each section.rows as row (row.kind === 'collection' ? row.id : row.entry.id)}
+          {#if row.kind === 'collection'}
+            {@const expanded = !!needle || openGroupList.includes(row.id)}
+            <div
+              class="drow grp"
+              class:open={expanded}
+              tabindex="0"
+              role="button"
+              title={expanded ? 'Hide episodes' : 'Show episodes'}
+              aria-expanded={expanded}
+              on:click={() => toggleGroup(row.id)}
+              on:keydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleGroup(row.id); } }}
+            >
+              <span class="chev" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+              {#if row.thumbnail}
+                <img src={row.thumbnail} alt="" referrerpolicy="no-referrer" />
+              {:else}
+                <span class="thumb-fallback" aria-hidden="true"></span>
+              {/if}
+              <div class="copy">
+                <b title={row.title}>{row.title}</b>
+                <span>Playlist · {row.entries.length} {row.entries.length === 1 ? 'episode' : 'episodes'} · {row.format} · {row.sizeLabel}</span>
+              </div>
+              <div class="dact">
+                <button type="button" class="btn sm ghost" on:click|stopPropagation={() => revealGroup(row)}>Reveal</button>
+                <button type="button" class="btn sm ghost" on:click|stopPropagation={() => openGroup(row)}>Open</button>
+              </div>
+            </div>
+            {#if expanded}
+              {#each row.entries as entry, index (entry.id)}
+                {@const ep = episodeIndex(entry, index + 1)}
+                <div class="drow sub" class:missing={entry.fileMissing} class:selected={selectedId === entry.id}>
+                  <span class="epx">{episodeLabel(ep)}</span>
                   {#if thumbnailFor(entry)}
                     <img src={thumbnailFor(entry)} alt="" referrerpolicy="no-referrer" />
+                  {:else}
+                    <span class="thumb-fallback" aria-hidden="true"></span>
                   {/if}
-                  {#if entry.durationLabel}
-                    <span class="duration">{entry.durationLabel}</span>
+                  <button class="copy" type="button" on:click={() => toggleDetails(entry)}>
+                    <b title={entry.title}>{entry.title}</b>
+                    <span>{entry.durationLabel ? `${entry.durationLabel} · ` : ''}{historySubtitle(entry)}</span>
+                  </button>
+                  <div class="dact">
+                    <button type="button" class="btn sm ghost" aria-label="Show in Finder" disabled={entry.fileMissing} on:click={() => reveal(entry)}>Reveal</button>
+                    <button type="button" class="btn sm ghost" aria-label="Open downloaded file" disabled={entry.fileMissing} on:click={() => open(entry)}>Open</button>
+                  </div>
+                  {#if selectedId === entry.id}
+                    <div class="detail">
+                      {#if entry.fileMissing}
+                        <p class="missing-note">This file is no longer on disk. You can still remove the history entry.</p>
+                      {/if}
+                      <p class="path" title={entry.absolutePath}>{entry.absolutePath}</p>
+                      <div class="dact">
+                        <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}>Remove</button>
+                        <button type="button" class="btn sm ghost danger" aria-label="Delete downloaded file" disabled={entry.fileMissing} on:click={() => confirmDeleteFile(entry)}>Delete file</button>
+                      </div>
+                    </div>
                   {/if}
-                </span>
-                <span class="copy">
-                  <strong title={entry.title}>{entry.title}</strong>
-                  <span class="meta">
-                    <span class="channel">{entry.channel || 'YouTube'}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{formatLabel(entry)}</span>
-                    {#if entry.sizeBytes}
-                      <span aria-hidden="true">·</span>
-                      <span>{formatBytes(entry.sizeBytes)}</span>
-                    {/if}
-                    {#if entry.completedAt}
-                      <span aria-hidden="true">·</span>
-                      <span>{formatRelative(entry.completedAt)}</span>
-                    {/if}
-                    {#if entry.fileMissing}
-                      <span class="missing-flag">File missing</span>
-                    {/if}
-                  </span>
-                </span>
+                </div>
+              {/each}
+            {/if}
+          {:else}
+            {@const entry = row.entry}
+            <div class="drow" class:missing={entry.fileMissing} class:selected={selectedId === entry.id}>
+              {#if thumbnailFor(entry)}
+                <img src={thumbnailFor(entry)} alt="" referrerpolicy="no-referrer" />
+              {:else}
+                <span class="thumb-fallback" aria-hidden="true"></span>
+              {/if}
+              <button class="copy" type="button" aria-label={`${selectedId === entry.id ? 'Hide' : 'Show'} details for ${entry.title}`} aria-expanded={selectedId === entry.id} on:click={() => toggleDetails(entry)}>
+                <b title={entry.title}>{entry.title}</b>
+                <span>{historySubtitle(entry)}</span>
               </button>
-
-              <div class="item-actions">
-                <button
-                  type="button"
-                  class="app-btn primary"
-                  aria-label="Open downloaded file"
-                  disabled={entry.fileMissing}
-                  on:click={() => open(entry)}
-                >Open</button>
-                <button
-                  type="button"
-                  class="app-btn"
-                  aria-label="Show in Finder"
-                  disabled={entry.fileMissing}
-                  on:click={() => reveal(entry)}
-                >Show in Finder</button>
+              <div class="dact">
+                <button type="button" class="btn sm ghost" aria-label="Show in Finder" disabled={entry.fileMissing} on:click={() => reveal(entry)}>Reveal</button>
+                <button type="button" class="btn sm ghost" aria-label="Open downloaded file" disabled={entry.fileMissing} on:click={() => open(entry)}>Open</button>
               </div>
-
-              {#if selected?.id === entry.id}
-                <div class="item-detail">
+              {#if selectedId === entry.id}
+                <div class="detail">
                   {#if entry.fileMissing}
                     <p class="missing-note">This file is no longer on disk. You can still remove the history entry.</p>
                   {/if}
-                  <p class="path-full" title={entry.absolutePath}>
-                    {#if codecSummary(entry)}{codecSummary(entry)} · {/if}{entry.absolutePath}
-                  </p>
-                  <div class="detail-actions">
-                    <button type="button" class="app-btn" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}>
-                      Remove
-                    </button>
-                    <button
-                      type="button"
-                      class="app-btn danger"
-                      aria-label="Delete downloaded file"
-                      disabled={entry.fileMissing}
-                      on:click={() => confirmDeleteFile(entry)}
-                    >Delete file</button>
+                  <p class="path" title={entry.absolutePath}>{entry.absolutePath}</p>
+                  <div class="dact">
+                    <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}>Remove</button>
+                    <button type="button" class="btn sm ghost danger" aria-label="Delete downloaded file" disabled={entry.fileMissing} on:click={() => confirmDeleteFile(entry)}>Delete file</button>
                   </div>
                 </div>
               {/if}
-            </li>
-          {/each}
-        </ul>
-        {#if view === 'recent' && $history.length > RECENT_LIMIT && !needle}
-          <button type="button" class="more" on:click={() => (view = 'all')}>
-            Show all {$history.length} downloads
-          </button>
-        {/if}
+            </div>
+          {/if}
+        {/each}
+      {/each}
     {:else}
-      <EmptyState
-        icon={needle ? 'search' : 'inbox'}
-        title={needle ? 'No downloads match your search.' : 'No downloads yet.'}
-        message={needle ? 'Try a title, channel, or format.' : 'Finished downloads will show up here.'}
-      />
+      <div class="dgroup">{needle ? 'No matching downloads' : 'No downloads yet'}</div>
     {/if}
   </div>
 </section>
 
 <style>
-  .toolbar {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--page-section-gap);
-  }
-
-  .search {
-    position: relative;
-    display: block;
-    width: 100%;
-  }
-  .search svg {
+  .downloads-page {
     position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-muted);
-    pointer-events: none;
-  }
-  .search input {
-    height: 40px;
-    padding-left: 36px;
-    font-size: var(--fs-md);
-    background: var(--surface-base);
-  }
-
-  .toolbar :global(.tabs) {
-    align-self: flex-start;
-  }
-
-  .library {
-    list-style: none;
-    margin: 0;
+    inset: 0;
     padding: 0;
+    gap: 0;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: var(--sp-2);
   }
 
-  .item {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--sp-3) var(--sp-4);
-    padding: var(--sp-3);
-    background: var(--surface-base);
-    border: 1px solid var(--border-default);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow-card);
-  }
-  .item:hover { border-color: var(--border-strong); }
-  .item.selected { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-ring); }
-  .item.missing { opacity: 0.92; }
-
-  .item-main {
-    display: grid;
-    grid-template-columns: 128px minmax(0, 1fr);
+  .dhead {
+    display: flex;
     align-items: center;
-    gap: var(--sp-4);
+    justify-content: space-between;
+    gap: 14px;
+    padding: 18px 18px 10px;
+  }
+  .dhead h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+  }
+  .downloads-page input[type="search"].dsearch {
+    width: 240px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: var(--surface-base);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12px;
+    box-shadow: none;
+  }
+  .downloads-page input[type="search"].dsearch:focus {
+    border-color: var(--accent-500);
+    outline: none;
+    box-shadow: none;
+  }
+
+  .dlist {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 10px 14px;
+  }
+  .dgroup {
+    padding: 14px 8px 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .drow {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    min-height: 46px;
+    padding: 0 8px;
+    border-radius: 7px;
+  }
+  .drow:hover { background: #131316; }
+  .drow.selected { background: var(--surface-raised); }
+  .drow.missing { opacity: 0.92; }
+  .drow img, .thumb-fallback {
+    width: 48px;
+    height: 28px;
+    border-radius: 4px;
+    object-fit: cover;
+    display: block;
+    background: var(--surface-base);
+  }
+  .drow.grp { grid-template-columns: 16px 48px minmax(0, 1fr) auto; cursor: pointer; }
+  .drow.sub { grid-template-columns: 34px 48px minmax(0, 1fr) auto; padding-left: 14px; }
+  .drow.sub b { font-weight: 450; font-size: 12px; }
+  .chev {
+    color: var(--text-muted);
+    font-size: 10px;
+    width: 16px;
+    text-align: center;
+    margin: 0;
+  }
+  .epx {
+    color: #6b6b74;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    margin: 0;
+  }
+  .copy {
     min-width: 0;
     text-align: left;
   }
-
-  .thumb {
-    position: relative;
-    width: 128px;
-    aspect-ratio: 16 / 9;
-    border-radius: var(--r-sm);
+  .copy b {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
     overflow: hidden;
-    background: var(--surface-sunken);
-    flex-shrink: 0;
+    text-overflow: ellipsis;
   }
-  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .duration {
-    position: absolute;
-    right: 5px;
-    bottom: 5px;
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: rgba(17, 18, 21, 0.82);
-    color: #fff;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-  }
-
-  .copy { min-width: 0; }
-  .copy strong {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
+  .copy span {
+    display: block;
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-top: 1px;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dact { display: flex; gap: 6px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
     color: var(--text-primary);
-    font-size: var(--fs-md);
-    font-weight: 600;
-    line-height: 1.35;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 120ms ease, border-color 120ms ease;
   }
-  .meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    color: var(--text-secondary);
-    font-size: var(--fs-sm);
-  }
-  .channel { color: var(--text-muted); }
-  .missing-flag {
-    color: var(--status-warning);
-    background: var(--status-warning-soft);
-    border-radius: var(--r-full);
-    padding: 1px 7px;
-    font-weight: 600;
-    font-size: var(--fs-xs);
-  }
+  .btn:hover:not(:disabled) { background: var(--surface-hover); }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+  .btn.danger { color: #FCA5A5; }
 
-  .item-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    align-self: center;
-  }
-
-  .item-detail {
+  .detail {
     grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
-    gap: var(--sp-3);
-    padding: var(--sp-3) 4px 4px;
-    border-top: 1px solid var(--border-subtle);
+    gap: 8px;
+    padding: 0 0 10px;
   }
-  .missing-note { margin: 0; color: var(--status-warning); font-size: var(--fs-sm); }
-  .path-full {
+  .missing-note { margin: 0; color: var(--status-warning); font-size: 11px; }
+  .path {
     margin: 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-muted);
-    font-size: var(--fs-xs);
-  }
-  .detail-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-
-  .more {
-    display: block;
-    width: 100%;
-    margin-top: var(--sp-3);
-    min-height: 36px;
-    color: var(--accent-600);
-    font-size: var(--fs-sm);
-    font-weight: 600;
-  }
-  .more:hover { background: var(--accent-soft); border-radius: var(--r-sm); }
-
-  @media (max-width: 800px) {
-    .item { grid-template-columns: 1fr; }
-    .item-main { grid-template-columns: 96px minmax(0, 1fr); gap: var(--sp-3); }
-    .thumb { width: 96px; }
-    .item-actions { justify-content: flex-start; }
+    font-family: var(--font-mono);
+    font-size: 11px;
   }
 </style>

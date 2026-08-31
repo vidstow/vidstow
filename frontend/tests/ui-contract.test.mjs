@@ -97,22 +97,30 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(queue, /collectionLabel = collection\?\.kind === 'batch' \? 'batch' : 'playlist'/);
   assert.match(queue, /Completed files remain on disk\./);
   assert.match(queue, /Jobs are saved automatically\./);
-  assert.match(downloads, /View your recently downloaded items\./);
-  assert.match(downloads, /placeholder="Search downloads…"/);
-  assert.match(settings, /Configure downloads, queue behavior, and external tools\./);
+  assert.match(downloads, /Search · ⌘F/);
+  assert.match(downloads, /Search · Ctrl\+F/);
+  assert.match(downloads, /aria-label="Search downloads"/);
+  assert.match(downloads, /No downloads yet/);
+  assert.match(downloads, /buildHistorySections/);
+  assert.doesNotMatch(downloads, /Recent/);
   assert.match(settings, />Default download folder</);
   assert.match(settings, />FFmpeg path</);
   assert.match(settings, />Diagnostics</);
-  assert.match(settings, />Copy Diagnostics</);
+  assert.match(settings, />Copy diagnostics</);
   assert.match(settings, />Clear history</);
-  assert.match(settings, /> Send diagnostics<\/label>/);
-  assert.match(settings, /> Don’t send<\/label>/);
+  assert.match(settings, />Send</);
+  assert.match(settings, />Don’t send</);
   assert.match(settings, /automaticDiagnostics === 'enabled'/);
   assert.match(settings, /automaticDiagnostics === 'disabled'/);
-  assert.match(settings, /Disabling this immediately deletes anything waiting to be sent/);
+  assert.match(settings, /When VidStow cannot complete a requested download, send a small sanitized report/);
   assert.match(settings, /api\.settings\.setAutomaticDiagnostics\(value\)/);
   assert.match(settings, /await api\.diagnostics\.copy\(\)/);
   assert.match(settings, /await api\.diagnostics\.clear\(\)/);
+  assert.match(settings, /class="colophon"/);
+  assert.match(settings, /api\.app\.buildInfo\(\)/);
+  assert.match(settings, /ytdlp-go \{formatEngineVersion/);
+  assert.match(settings, /Built with Go · Wails · Svelte · ytdlp-go · FFmpeg/);
+  assert.doesNotMatch(settings, /QueueSettingsCard/);
 });
 
 test('first launch asks for explicit diagnostic consent without a default', async () => {
@@ -182,7 +190,10 @@ test('terminal queue rows expose recovery and removal actions', async () => {
 });
 
 test('download history actions remain native accessible buttons', async () => {
-  const downloads = await read('../src/pages/Downloads.svelte');
+  const [downloads, grouping] = await Promise.all([
+    read('../src/pages/Downloads.svelte'),
+    read('../src/lib/download-history.ts'),
+  ]);
   assert.doesNotMatch(downloads, /role="(?:table|row|cell)"/);
   assert.match(downloads, /<button[^>]+aria-label="Open downloaded file"/);
   assert.match(downloads, /<button[^>]+aria-label="Show in Finder"/);
@@ -193,9 +204,10 @@ test('download history actions remain native accessible buttons', async () => {
   assert.match(downloads, /api\.downloads\.remove\(entry\.id\)/);
   assert.match(downloads, /api\.downloads\.deleteFile\(entry\.id\)/);
   assert.match(downloads, /entry\.fileMissing/);
-  assert.match(downloads, /File missing/);
-  assert.match(downloads, /formatLabel\(entry\)/);
-  assert.match(downloads, /container/);
+  assert.match(grouping, /File missing/);
+  assert.match(downloads, /historySubtitle\(entry\)/);
+  assert.match(downloads, />Reveal</);
+  assert.match(downloads, />Open</);
 });
 
 test('queue distinguishes temporary in-memory storage from durable automatic saving', async () => {
