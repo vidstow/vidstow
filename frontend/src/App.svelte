@@ -2,8 +2,8 @@
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { api } from './lib/api.js';
-  import { errorMessage, ffmpeg, history, jobs, queueView, route, settings, modal, persistence, pendingUrl, showBanner } from './lib/stores.js';
-  import { progressOf, youtubeUrlFromText } from './lib/format.js';
+  import { errorMessage, ffmpeg, history, jobs, queueView, route, settings, modal, persistence, pendingHomeFocus, pendingUrl, showBanner } from './lib/stores.js';
+  import { youtubeUrlFromText } from './lib/format.js';
   import type { QueueView } from './lib/lifecycle-ui/types.js';
   import { newestQueueView } from './lib/queue-view.js';
   import type { JobSnapshot, QuitSummary, StartupStatus } from './lib/types.js';
@@ -12,6 +12,7 @@
   import DiagnosticConsentDialog from './lib/lifecycle-ui/DiagnosticConsentDialog.svelte';
   import RecoveryRequiredShell from './lib/lifecycle-ui/RecoveryRequiredShell.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
+  import StatusBar from './lib/components/StatusBar.svelte';
   import Modal from './lib/components/Modal.svelte';
   import Banner from './lib/components/Banner.svelte';
   import Home from './pages/Home.svelte';
@@ -30,6 +31,8 @@
   let showFFmpegAfterDiagnosticChoice = false;
 
   onMount(async () => {
+    document.title = 'VidStow';
+    window.runtime?.WindowSetTitle?.('VidStow');
     unsubAll = [
       api.events.onJobUpdate(updateJobInList),
       api.events.onQueue((list) => jobs.set(list ?? [])),
@@ -131,6 +134,16 @@
     route.set(target);
   }
 
+  function onWindowKeydown(event: KeyboardEvent) {
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.repeat) return;
+    if (event.key.toLowerCase() !== 'l') return;
+    if (startupStatus === null || startupStatus.mode === 'recovery-required') return;
+    if (quitOpen || diagnosticChoiceOpen || get(modal)) return;
+    event.preventDefault();
+    route.set('home');
+    pendingHomeFocus.set(true);
+  }
+
   function showFFmpegRequired() {
     modal.set({
       kind: 'ffmpeg-missing',
@@ -187,15 +200,6 @@
     }
   }
 
-  $: {
-    const running = $jobs.find((job) => job.status === 'active');
-    const title = running
-      ? `Downloading “${(running.title || 'video').slice(0, 42)}” · ${Math.round(progressOf(running) * 100)}%`
-      : 'VidStow';
-    document.title = title;
-    window.runtime?.WindowSetTitle?.(title);
-  }
-
   function acceptDrop(event: DragEvent) {
     event.preventDefault();
   }
@@ -222,7 +226,7 @@
   }
 </script>
 
-<svelte:window on:dragover={acceptDrop} on:drop={handleDrop} on:error={reportFrontendFailure} on:unhandledrejection={reportFrontendFailure} />
+<svelte:window on:keydown={onWindowKeydown} on:dragover={acceptDrop} on:drop={handleDrop} on:error={reportFrontendFailure} on:unhandledrejection={reportFrontendFailure} />
 
 {#if startupStatus === null}
   <main class="main startup-shell" aria-busy="true" aria-label="Starting VidStow">
@@ -242,23 +246,28 @@
     </div>
   </main>
 {:else}
-  <Sidebar />
+  <div class="workstation">
+    <Sidebar />
 
-  <main class="main">
-    <div class="scroll">
-      {#if $route === 'home'}
-        <Home on:goto={(e) => navigate(e.detail)} />
-      {:else if $route === 'queue'}
-        <Queue />
-      {:else if $route === 'downloads'}
-        <Downloads />
-      {:else if $route === 'settings'}
-        <Settings />
-      {:else if $route === 'about'}
-        <About />
-      {/if}
-    </div>
-  </main>
+    <main class="main">
+      <div class="scroll">
+        <!-- Analysis lives in Home. Destroying the page on Queue, Downloads, or Settings would throw it away. -->
+        <div class="home-host" hidden={$route !== 'home'} inert={$route !== 'home'}>
+          <Home on:goto={(e) => navigate(e.detail)} />
+        </div>
+        {#if $route === 'queue'}
+          <Queue />
+        {:else if $route === 'downloads'}
+          <Downloads />
+        {:else if $route === 'settings'}
+          <Settings />
+        {:else if $route === 'about'}
+          <About />
+        {/if}
+      </div>
+    </main>
+  </div>
+  <StatusBar />
 {/if}
 
 <Modal />
@@ -280,18 +289,32 @@
 />
 
 <style>
+  .workstation {
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
   .main {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    background:
-      radial-gradient(900px 420px at 0% 0%, rgba(47,111,237,0.045), transparent 60%),
-      var(--surface-bg);
+    background: var(--surface-bg);
   }
   .scroll {
+    position: relative;
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+  }
+  .home-host {
+    height: 100%;
+  }
+  .home-host[hidden] {
+    display: none;
   }
   .startup-shell {
     align-items: center;

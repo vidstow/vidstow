@@ -17,11 +17,11 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:            "VidStow",
-		Width:            1280,
-		Height:           800,
-		MinWidth:         1000,
-		MinHeight:        640,
-		BackgroundColour: &options.RGBA{R: 14, G: 17, B: 23, A: 1},
+		Width:            1180,
+		Height:           760,
+		MinWidth:         960,
+		MinHeight:        600,
+		BackgroundColour: &options.RGBA{R: 9, G: 9, B: 11, A: 1},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
@@ -40,7 +40,7 @@ func main() {
 				UseToolbar:                 false,
 				HideToolbarSeparator:       true,
 			},
-			Appearance:           mac.NSAppearanceNameAqua,
+			Appearance:           mac.NSAppearanceNameDarkAqua,
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,
 			About: &mac.AboutInfo{

@@ -10,9 +10,12 @@ test('approved navigation and window branding are used', async () => {
     read('../../main.go'),
   ]);
   for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
-  assert.match(sidebar, /brand-mark\.svg/);
+  assert.match(sidebar, /class="brand-mark"/);
+  assert.doesNotMatch(sidebar, /brand-mark\.svg/);
+  assert.doesNotMatch(sidebar, /label: 'About'/);
   for (const rejected of ['v0 · single video', 'Single public YouTube videos only', 'brand-name', 'class="logo"', 'logo-universal']) assert.doesNotMatch(sidebar, new RegExp(rejected));
   assert.match(main, /Title:\s+"VidStow"/);
+  assert.match(main, /NSAppearanceNameDarkAqua/);
   assert.match(await read('../index.html'), /<title>VidStow<\/title>/);
 });
 
@@ -21,25 +24,75 @@ test('page titles and controls match the approved redesign', async () => {
     read('../src/pages/Home.svelte'), read('../src/pages/Queue.svelte'),
     read('../src/pages/Downloads.svelte'), read('../src/pages/Settings.svelte'),
   ]);
-  assert.match(home, /inputMode === 'batch' \? 'Batch URLs' : 'Download from YouTube'/);
-  assert.match(home, />Single URL<\/button>/);
-  assert.match(home, />Batch URLs<\/button>/);
-  assert.match(home, /Start \$\{batchReadyCount\} downloads/);
+  assert.doesNotMatch(home, />Single URL<\/button>/);
+  assert.doesNotMatch(home, />Batch URLs<\/button>/);
+  assert.doesNotMatch(home, /Download from YouTube/);
+  assert.doesNotMatch(home, /Add a YouTube link/);
+  assert.doesNotMatch(home, /Start \$\{batchReadyCount\}/);
+  assert.doesNotMatch(home, /Starting…/);
+  assert.match(home, /downloadVideosLabel\(selectedItems\.size\)/);
+  assert.match(home, /downloadVideosLabel\(batchReadyCount\)/);
   assert.match(home, /<small>\{item\.message\}<\/small>/);
-  assert.match(home, /Paste a public YouTube video, Short, or playlist URL to analyze it and choose your download\./);
+  assert.match(home, /the link decides\.<br>/);
+  assert.match(home, /class="sep"/);
+  assert.match(home, /word-break: break-all/);
+  assert.match(home, /class="kbd"/);
+  assert.match(home, /class="cmdkey"/);
+  assert.match(home, /textarea:focus-visible/);
+  assert.match(home, /a private link/);
+  assert.doesNotMatch(home, /a video in a playlist/);
+  assert.match(home, /-webkit-text-decoration: underline dotted/);
   assert.match(home, /This link includes a playlist/);
-  assert.match(home, /Review the playlist instead/);
-  assert.match(home, /Every selected video uses this format/);
+  assert.match(home, /Choose what to download/);
+  assert.match(home, /class="sdialog"/);
+  assert.match(home, /class="swapline"/);
+  assert.match(home, /playlist\.duration/);
+  assert.match(home, /playlist\.channel/);
+  assert.doesNotMatch(home, /reach 1080p/);
+  assert.doesNotMatch(home, /Review the playlist instead/);
   assert.match(home, /PLAYLIST_ADMIT_CAP = 500/);
   assert.match(home, /VidStow can review up to \{PLAYLIST_ADMIT_CAP\} videos from a playlist\./);
   assert.doesNotMatch(home, /Admit another batch/);
-  assert.match(home, /All available/);
-  assert.match(home, /Search playlist…/);
-  assert.match(home, />Choose Download</);
-  assert.match(home, />Add to Queue</);
+  assert.doesNotMatch(home, />Admit /);
+  assert.match(home, />All</);
+  assert.doesNotMatch(home, />Select all</);
+  assert.doesNotMatch(home, /aria-label="Search playlist"/);
+  assert.match(home, /aria-label="Range start"/);
+  assert.match(home, /class="eprow"/);
+  assert.match(home, />Change</);
+  assert.doesNotMatch(home, /Save to /);
+  assert.match(home, /Paste another link/);
+  assert.match(home, /<footer class="dfoot">[\s\S]*?>Download</);
+  assert.match(home, />Download<\/button>/);
+  assert.doesNotMatch(home, />Add to Queue</);
+  assert.match(home, /class="drow drow2 v2"/);
+  assert.match(home, /\.drow2 \.thumb \{[^}]*max-height: 90px/);
+  assert.match(home, /\.drow2\.v2 \.thumb \{[^}]*max-height: 90px/);
+  assert.doesNotMatch(home, /\.drow2\.v2 \.thumb \{[^}]*height: auto/);
+  assert.match(home, /grid-template-columns: 160px minmax\(0, 1fr\) minmax\(168px, 220px\)/);
+  assert.match(home, /-webkit-line-clamp: 2/);
+  assert.match(home, /\.modeseg button \{[\s\S]*?font-size: 11px;/);
+  assert.match(home, /\.seg \{[\s\S]*?font-size: 12px;/);
+  assert.match(home, /\.modeseg button\.on \{[\s\S]*?background: var\(--surface-raised\)/);
+  assert.match(home, /class="dchoice stack"/);
+  assert.match(home, /class="dcost"/);
+  assert.doesNotMatch(home, /Best available up to/);
+  assert.doesNotMatch(home, /doutcome"><b>/);
   assert.match(home, /'Analyze'/);
+  assert.match(home, /class="dbtn query"/);
+  assert.doesNotMatch(home, /class="dbtn pri" type="submit"/);
+  assert.doesNotMatch(home, /12vh/);
+  assert.doesNotMatch(home, /class:empty=/);
+  assert.match(home, /\.composer \{[\s\S]*?width: 100%;/);
+  assert.match(home, /\.fieldwrap textarea \{[\s\S]*?font-family: var\(--font-mono\)/);
+  assert.match(home, /\.fieldwrap textarea \{[\s\S]*?font-size: 13px/);
   assert.match(queue, /<QueueOverview/);
   assert.match(queue, /api\.queue\.pauseAll/);
+  assert.match(queue, /onResumeAll=\{resumeAll\}/);
+  assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /Go to Home/);
+  assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /Nothing in the queue/);
+  assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /grid-template-columns: minmax\(0, 1fr\) 300px/);
+  assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /height: 36px/);
   assert.match(queue, /api\.queue\.clearCompleted/);
   assert.match(queue, /collectionLabel = collection\?\.kind === 'batch' \? 'batch' : 'playlist'/);
   assert.match(queue, /Completed files remain on disk\./);
@@ -79,11 +132,12 @@ test('first launch asks for explicit diagnostic consent without a default', asyn
   assert.doesNotMatch(dialog, /checked|selected/);
 });
 
-test('analysis failures use the redesigned error modal', async () => {
+test('analysis failures stay on Home with a paste-another-link recovery', async () => {
   const home = await read('../src/pages/Home.svelte');
   assert.match(home, /title: 'Unsupported URL'/);
-  assert.match(home, /kind: 'error'/);
-  assert.match(home, /message: errorMessage\(err,/);
+  assert.match(home, /analyzeError = \{/);
+  assert.match(home, /Paste another link/);
+  assert.match(home, /urlField\?\.select\(\)/);
   assert.doesNotMatch(home, /catch \(err\) \{\s*unsupported = \{\s*url: result\.url/);
 });
 

@@ -129,6 +129,7 @@ export interface PlaylistEntrySummary {
   url: string;
   title: string;
   duration?: string;
+  durationSeconds?: number;
   thumbnail?: string;
   available: boolean;
 }
@@ -138,6 +139,8 @@ export interface PlaylistSummary {
   url: string;
   title: string;
   channel: string;
+  duration?: string;
+  durationSeconds?: number;
   thumbnail: string;
   entryCount: number;
   available: number;

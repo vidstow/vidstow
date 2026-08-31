@@ -129,18 +129,20 @@ func (q Quality) ytdlpFormat() string {
 // default title-only template would otherwise let the later job overwrite the
 // earlier successful artifact.
 func (q Quality) outputTemplate() string {
-	return fmt.Sprintf("%%(title)s [%%(id)s] [%s].%%(ext)s", q.Label())
+	return fmt.Sprintf("%%(title)S [%%(id)s] [%s].%%(ext)s", q.Label())
 }
 
 // OutputTemplateForPlan is the exact basename template used by a curated
 // output plan. Admission uses the same template before choosing a durable
 // reservation, so the queue and the engine do not drift on filenames.
+// %(title)S sanitizes path separators and Windows-reserved characters so a
+// title like "VR / 4K" cannot become a nested directory.
 func OutputTemplateForPlan(plan outputplan.Plan) string {
 	label := plan.Label
 	if label == "" {
 		label = plan.ID
 	}
-	return fmt.Sprintf("%%(title)s [%%(id)s] [%s].%%(ext)s", label)
+	return fmt.Sprintf("%%(title)S [%%(id)s] [%s].%%(ext)s", label)
 }
 
 // Status is the lifecycle state of a job.
@@ -4357,6 +4359,7 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 
 	switch ev.Kind {
 	case engine.EventDownloadStarting:
+		state.snap.Phase = jobmodel.PhaseDownloading
 		state.snap.Message = "Starting download"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventDownloadProgress:
@@ -4388,6 +4391,7 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 			state.startBps = now
 			state.startByt = state.snap.Bytes
 		}
+		state.snap.Phase = jobmodel.PhaseDownloading
 		state.snap.Message = "Downloading"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventDownloadRetry, engine.EventExtractorRetry:
@@ -4397,16 +4401,19 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 		if ev.Bytes > 0 {
 			state.snap.Bytes = ev.Bytes
 		}
+		state.snap.Phase = jobmodel.PhaseFinalizing
 		state.snap.Message = "Finalising"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventPostprocessStarting, engine.EventPostprocessProgress:
 		state.snap.Processing = true
 		state.snap.CanPause = false
+		state.snap.Phase = jobmodel.PhaseFinalizing
 		state.snap.Message = "Finalising"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventPostprocessCompleted:
 		state.snap.Processing = false
 		state.snap.CanPause = state.snap.Status == StatusActive
+		state.snap.Phase = jobmodel.PhaseFinalizing
 		state.snap.Message = "Finalising"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventDownloadCancelled:
@@ -4644,25 +4651,28 @@ func isKnownQuality(quality Quality) bool {
 // PlaylistSummary is a lightweight flat-playlist preview. Child formats are
 // deliberately not extracted until their individual queue jobs run.
 type PlaylistSummary struct {
-	ID          string                 `json:"id"`
-	URL         string                 `json:"url"`
-	Title       string                 `json:"title"`
-	Channel     string                 `json:"channel"`
-	Thumbnail   string                 `json:"thumbnail"`
-	EntryCount  int                    `json:"entryCount"`
-	Available   int                    `json:"available"`
-	Unavailable int                    `json:"unavailable"`
-	Entries     []PlaylistEntrySummary `json:"entries"`
+	ID              string                 `json:"id"`
+	URL             string                 `json:"url"`
+	Title           string                 `json:"title"`
+	Channel         string                 `json:"channel"`
+	Duration        string                 `json:"duration,omitempty"`
+	DurationSeconds int64                  `json:"durationSeconds,omitempty"`
+	Thumbnail       string                 `json:"thumbnail"`
+	EntryCount      int                    `json:"entryCount"`
+	Available       int                    `json:"available"`
+	Unavailable     int                    `json:"unavailable"`
+	Entries         []PlaylistEntrySummary `json:"entries"`
 }
 
 type PlaylistEntrySummary struct {
-	Index     int    `json:"index"`
-	VideoID   string `json:"videoId"`
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Duration  string `json:"duration,omitempty"`
-	Thumbnail string `json:"thumbnail,omitempty"`
-	Available bool   `json:"available"`
+	Index           int    `json:"index"`
+	VideoID         string `json:"videoId"`
+	URL             string `json:"url"`
+	Title           string `json:"title"`
+	Duration        string `json:"duration,omitempty"`
+	DurationSeconds int64  `json:"durationSeconds,omitempty"`
+	Thumbnail       string `json:"thumbnail,omitempty"`
+	Available       bool   `json:"available"`
 }
 
 // InfoSummary is the metadata displayed on the Home page after analyse.
@@ -4808,14 +4818,13 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 	if len(result.InfoJSON) > 0 && json.Unmarshal(result.InfoJSON, &parent) != nil {
 		return PlaylistSummary{}, errors.New("analyze playlist: invalid metadata")
 	}
-	summary := PlaylistSummary{URL: rawURL, ID: metadataText(parent, "id"), Title: metadataText(parent, "title"), Channel: metadataText(parent, "channel"), Thumbnail: metadataText(parent, "thumbnail")}
-	if summary.Channel == "" {
-		summary.Channel = metadataText(parent, "uploader")
-	}
+	summary := PlaylistSummary{URL: rawURL, ID: metadataText(parent, "id"), Title: metadataText(parent, "title"), Channel: playlistChannel(parent), Thumbnail: metadataText(parent, "thumbnail")}
 	entries := result.Entries
 	if len(entries) > MaxPlaylistEntries {
 		entries = entries[:MaxPlaylistEntries]
 	}
+	var durationSeconds int64
+	missingDuration := false
 	for position, child := range entries {
 		var info map[string]any
 		if json.Unmarshal(child.InfoJSON, &info) != nil {
@@ -4835,8 +4844,17 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 		if summary.Thumbnail == "" && available {
 			summary.Thumbnail = thumbnail
 		}
+		if summary.Channel == "" {
+			summary.Channel = playlistChannel(info)
+		}
 		if duration := metadataInteger(info["duration"]); duration > 0 {
 			entry.Duration = formatDuration(duration)
+			entry.DurationSeconds = duration
+			if available {
+				durationSeconds += duration
+			}
+		} else if available {
+			missingDuration = true
 		}
 		if entry.Title == "" {
 			if available {
@@ -4851,6 +4869,10 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 		} else {
 			summary.Unavailable++
 		}
+	}
+	if durationSeconds > 0 && !missingDuration {
+		summary.DurationSeconds = durationSeconds
+		summary.Duration = formatPlaylistDuration(durationSeconds)
 	}
 	summary.EntryCount = len(summary.Entries)
 	if summary.ID == "" {
@@ -5041,6 +5063,19 @@ func metadataText(info map[string]any, key string) string {
 	return value
 }
 
+func firstMetadataText(info map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if text := strings.TrimSpace(metadataText(info, key)); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func playlistChannel(info map[string]any) string {
+	return firstMetadataText(info, "channel", "uploader", "playlist_channel", "playlist_uploader")
+}
+
 func (m *Manager) cachePlans(videoID string, plans []outputplan.Plan) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -5092,4 +5127,24 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
 	}
 	return fmt.Sprintf("%d:%02d", m, s)
+}
+
+// formatPlaylistDuration sums entry lengths as a short span. Seconds drop
+// once the total reaches a minute so the dock can say 6h 45m, not 6:45:00.
+func formatPlaylistDuration(seconds int64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	h := seconds / 3600
+	m := (seconds % 3600) / 60
+	if h > 0 && m > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	if h > 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm", m)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }

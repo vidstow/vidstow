@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { route, counts, ffmpeg, history } from '../stores.js';
-  import brandMark from '../../assets/images/brand-mark.svg';
+  import { route, counts, history } from '../stores.js';
   type Route = 'home' | 'queue' | 'downloads' | 'settings' | 'about';
 
   $: c = $counts;
@@ -13,21 +12,19 @@
   ];
   const utility: Array<{ key: Route; label: string; icon: string }> = [
     { key: 'settings', label: 'Settings', icon: 'settings' },
-    { key: 'about',    label: 'About',    icon: 'about' },
   ];
 
   function go(target: Route) {
     route.set(target);
-  }
-  function openFFmpeg() {
-    window.runtime?.BrowserOpenURL?.('https://ffmpeg.org/download.html');
   }
 </script>
 
 <aside class="sidebar" aria-label="Primary">
   <button type="button" class="brand" onclick={() => go('home')} aria-label="VidStow home">
     <span class="brand-mark" aria-hidden="true">
-      <img src={brandMark} alt="" width="26" height="26" />
+      <svg viewBox="0 0 24 24" width="12" height="12">
+        <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/>
+      </svg>
     </span>
     <span class="brand-title">VidStow</span>
   </button>
@@ -45,15 +42,11 @@
           >
             <span class="nav-icon" aria-hidden="true">
               {#if item.icon === 'home'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/></svg>
               {:else if item.icon === 'queue'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/></svg>
-              {:else if item.icon === 'downloads'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
-              {:else if item.icon === 'about'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 11v5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/></svg>
               {:else}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
               {/if}
             </span>
             <span class="nav-label">{item.label}</span>
@@ -81,11 +74,7 @@
             onclick={() => go(item.key)}
           >
             <span class="nav-icon" aria-hidden="true">
-              {#if item.icon === 'about'}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 11v5"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
-              {:else}
-                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-              {/if}
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
             </span>
             <span class="nav-label">{item.label}</span>
           </button>
@@ -93,17 +82,6 @@
       {/each}
     </ul>
   </nav>
-
-  <div class="ffmpeg" aria-label="FFmpeg status">
-    <span class="dot" class:ok={$ffmpeg.available} class:missing={!$ffmpeg.available} aria-hidden="true"></span>
-    <div class="ffmpeg-copy">
-      <strong>FFmpeg</strong>
-      <span>{$ffmpeg.available ? 'Ready' : 'Required'}</span>
-    </div>
-    {#if !$ffmpeg.available}
-      <button type="button" class="ffmpeg-link" onclick={openFFmpeg} aria-label="Open FFmpeg download page">Get</button>
-    {/if}
-  </div>
 </aside>
 
 <style>
@@ -111,77 +89,85 @@
     width: var(--sidebar-w);
     flex-shrink: 0;
     background: var(--surface-sidebar);
-    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    border-right: 1px solid var(--border-default);
     display: flex;
     flex-direction: column;
     /* Keep navigation below the native macOS traffic-light/titlebar region. */
-    padding: 38px 10px 12px;
+    padding: 38px 8px 12px;
   }
 
   .brand {
     display: flex;
     align-items: center;
-    gap: var(--sp-2);
-    padding: 2px 8px 16px;
-    color: #F4EEE4;
+    gap: 8px;
+    padding: 2px 6px 14px;
+    color: var(--text-primary);
     text-decoration: none;
     border-radius: var(--r-sm);
   }
   .brand-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 7px;
-    overflow: hidden;
+    display: inline-grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #3B82F6, #1D4ED8);
+    color: #fff;
     flex-shrink: 0;
   }
-  .brand-mark img {
-    width: 100%;
-    height: 100%;
-    display: block;
-    object-fit: cover;
-  }
   .brand-title {
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 650;
     letter-spacing: -0.01em;
   }
 
   nav { flex: 1; padding-top: 2px; }
-  nav.utility { flex: 0; padding-top: 8px; }
+  nav.utility {
+    flex: 0;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-default);
+  }
   nav ul {
     list-style: none;
     margin: 0;
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
   }
 
   .nav-item {
+    position: relative;
     width: 100%;
     display: flex;
     align-items: center;
-    gap: var(--sp-3);
-    min-height: 38px;
-    padding: 0 11px;
-    border-radius: var(--r-sm);
-    color: #C9BBA8;
-    font-size: 13.5px;
+    gap: 9px;
+    min-height: 30px;
+    padding: 0 9px 0 11px;
+    border-radius: 7px;
+    color: var(--text-secondary);
+    font-size: 13px;
     transition: background 120ms ease, color 120ms ease;
   }
 
   .nav-item:hover {
-    background: rgba(255, 251, 245, 0.08);
-    color: #F4EEE4;
+    background: var(--surface-raised);
+    color: var(--text-primary);
   }
 
   .nav-item.active {
-    background: rgba(255, 251, 245, 0.12);
-    color: #FFFBF5;
-    box-shadow: inset 2px 0 0 var(--accent-400);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 7px;
+    bottom: 7px;
+    width: 2px;
+    border-radius: 99px;
+    background: var(--accent-500);
   }
 
   .nav-icon { display: inline-flex; }
@@ -189,48 +175,20 @@
   .nav-label { flex: 1; text-align: left; }
 
   .nav-badge {
-    background: var(--accent-500);
+    background: var(--accent-600);
     color: var(--text-on-accent);
-    font-size: var(--fs-xs);
+    font-size: 10px;
     font-weight: 600;
-    padding: 1px 8px;
+    padding: 0 5px;
+    height: 17px;
+    min-width: 17px;
+    display: inline-grid;
+    place-items: center;
     border-radius: var(--r-full);
-    min-width: 22px;
-    text-align: center;
+    font-variant-numeric: tabular-nums;
   }
   .nav-badge.subtle {
-    background: rgba(255, 255, 255, 0.12);
-    color: #C9BBA8;
-  }
-
-  .ffmpeg {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-2);
-    padding: 10px;
-    margin-top: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: var(--r-sm);
-    background: rgba(255, 255, 255, 0.03);
-  }
-  .ffmpeg .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    background: #B9BCC3;
-  }
-  .ffmpeg .dot.ok { background: #3FBF6F; }
-  .ffmpeg .dot.missing { background: #E05D54; }
-  .ffmpeg-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  .ffmpeg-copy strong { color: #F4EEE4; font-size: 12px; font-weight: 600; }
-  .ffmpeg-copy span { color: #C9BBA8; font-size: 11px; margin-top: 1px; }
-  .ffmpeg-link {
-    color: var(--accent-400);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 8px;
-    border: 1px solid rgba(79, 127, 240, 0.4);
-    border-radius: var(--r-sm);
+    background: var(--border-default);
+    color: var(--text-secondary);
   }
 </style>

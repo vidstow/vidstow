@@ -48,41 +48,49 @@ function conflictModel(overrides: Partial<DestinationConflictViewModel> = {}): D
 describe('backend-authored capabilities', () => {
   test('queue-wide actions fail closed when capabilities are absent at runtime', async () => {
     const onPauseAll = vi.fn();
-    const onClearCompleted = vi.fn();
+    const onResumeAll = vi.fn();
     const user = userEvent.setup();
-    const model = queueModel() as Partial<QueueOverviewViewModel>;
-    delete model.canPauseAll;
-    delete model.canClearCompleted;
 
     render(QueueOverview, {
-      props: { model: model as QueueOverviewViewModel },
-      events: { 'pause-all': onPauseAll, 'clear-completed': onClearCompleted },
+      props: {
+        model: {
+          ...queueModel(),
+          canPauseAll: undefined as unknown as boolean,
+          jobs: [{
+            id: 'active-1', title: 'Active', lifecycle: 'active', occupiesSlot: true,
+            capabilities: {}, commandToken: 'job-token',
+          }],
+        } as QueueOverviewViewModel,
+      },
+      events: { 'pause-all': onPauseAll, 'resume-all': onResumeAll },
     });
 
-    const pauseAll = screen.getByRole('button', { name: 'Pause All' });
-    const clearCompleted = screen.getByRole('button', { name: 'Clear Completed' });
+    const pauseAll = screen.getByRole('button', { name: 'Pause all' });
+    const resumeAll = screen.getByRole('button', { name: 'Resume all' });
     expect(pauseAll).toBeDisabled();
-    expect(clearCompleted).toBeDisabled();
+    expect(resumeAll).toBeDisabled();
 
     await user.click(pauseAll);
-    await user.click(clearCompleted);
+    await user.click(resumeAll);
     expect(onPauseAll).not.toHaveBeenCalled();
-    expect(onClearCompleted).not.toHaveBeenCalled();
+    expect(onResumeAll).not.toHaveBeenCalled();
   });
 
-  test('playlist collections expand children and emit only backend-authorized parent actions', async () => {
+  test('playlist collections show children in the inspector and emit only backend-authorized parent actions', async () => {
     const onCollectionAction = vi.fn();
     const user = userEvent.setup();
-    render(QueueOverview, {
+    const { container } = render(QueueOverview, {
       props: {
         model: queueModel({
           jobs: [{
             id: 'child-1', collectionId: 'collection-1', collectionIndex: 1,
             title: 'Child video', lifecycle: 'pending', desired: 'running', occupiesSlot: false,
+            thumbnailUrl: 'https://i.ytimg.com/vi/child/hqdefault.jpg',
             capabilities: { pause: true }, commandToken: 'child-token',
           }],
           collections: [{
             id: 'collection-1', kind: 'playlist', title: 'Fixture playlist', metadata: 'Creator', policy: 'video:1080p',
+            thumbnailUrl: 'https://i.ytimg.com/vi/playlist/hqdefault.jpg',
             childJobIds: ['child-1'], total: 1, completed: 0, failed: 0, canceled: 0,
             active: 0, pending: 1, paused: 0, progress: 0, progressLabel: '0 of 1 complete',
             capabilities: { pause: true }, commandToken: 'collection-token',
@@ -92,14 +100,16 @@ describe('backend-authored capabilities', () => {
       },
     });
 
-    expect(screen.getByText('Fixture playlist')).toBeInTheDocument();
+    expect(screen.getAllByText('Fixture playlist').length).toBeGreaterThan(0);
+    expect(screen.getByText('Playlist')).toBeInTheDocument();
     expect(screen.getByText('Child video')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    const thumbs = container.querySelectorAll('.qth img, .kth img, .ibig');
+    expect(thumbs.length).toBeGreaterThanOrEqual(3);
+    expect(container.querySelector('.qth img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/playlist/hqdefault.jpg');
+    expect(container.querySelector('.kth img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/child/hqdefault.jpg');
+    await user.click(screen.getByRole('button', { name: 'Pause collection' }));
     expect(onCollectionAction).toHaveBeenCalledWith({ collectionId: 'collection-1', commandToken: 'collection-token', action: 'pause' });
-
-    await user.click(screen.getByRole('button', { name: 'Collapse Fixture playlist' }));
-    expect(screen.queryByText('Child video')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Expand Fixture playlist' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: 'Collapse Fixture playlist' })).not.toBeInTheDocument();
   });
 
   test('interleaves collections and standalone videos using backend priority order', () => {
@@ -112,25 +122,25 @@ describe('backend-authored capabilities', () => {
               occupiesSlot: true, capabilities: {},
             },
             {
-              id: 'completed-child', collectionId: 'completed-collection', collectionIndex: 1,
-              title: 'Completed collection video', lifecycle: 'completed',
+              id: 'playlist-child', collectionId: 'live-collection', collectionIndex: 1,
+              title: 'Playlist episode', lifecycle: 'pending',
               occupiesSlot: false, capabilities: {},
             },
           ],
           collections: [{
-            id: 'completed-collection', kind: 'playlist', title: 'Completed collection', policy: 'video:1080p',
-            childJobIds: ['completed-child'], total: 1, completed: 1, failed: 0, canceled: 0,
-            active: 0, pending: 0, paused: 0, progress: 1, progressLabel: '1 of 1 complete',
+            id: 'live-collection', kind: 'playlist', title: 'Live collection', policy: 'video:1080p',
+            childJobIds: ['playlist-child'], total: 1, completed: 0, failed: 0, canceled: 0,
+            active: 0, pending: 1, paused: 0, progress: 0, progressLabel: '0 of 1 complete',
             capabilities: {},
           }],
         }),
       },
     });
 
-    const entries = Array.from(container.querySelectorAll('.job-list > :is(article, section)'));
+    const entries = Array.from(container.querySelectorAll('.qrow'));
     expect(entries).toHaveLength(2);
     expect(entries[0]).toHaveAttribute('aria-label', 'Active standalone video');
-    expect(entries[1]).toHaveTextContent('Completed collection');
+    expect(entries[1]).toHaveAttribute('aria-label', 'Live collection');
   });
 
   test('batch collection parents omit synthetic thumbnails', () => {
@@ -148,9 +158,35 @@ describe('backend-authored capabilities', () => {
       },
     });
 
-    expect(screen.getByText('Batch download · 2 videos')).toBeInTheDocument();
-    expect(screen.getByText('video:720p')).toBeInTheDocument();
-    expect(container.querySelector('.parent-row > .thumbnail')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Batch download · 2 videos').length).toBeGreaterThan(0);
+    expect(container.querySelector('.qrow[data-policy="video:720p"]')).toBeTruthy();
+    expect(container.querySelector('.qth img')).not.toBeInTheDocument();
+    expect(container.querySelector('.qth .cnt')).toHaveTextContent('2');
+    expect(screen.getByText('Batch')).toBeInTheDocument();
+  });
+
+  test('playlist rows fall back to a child still when the parent has none', () => {
+    const { container } = render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'ep-1', collectionId: 'pl-1', collectionIndex: 1,
+            title: 'Episode one', lifecycle: 'active', occupiesSlot: true,
+            thumbnailUrl: 'https://i.ytimg.com/vi/episode/hqdefault.jpg',
+            capabilities: {},
+          }],
+          collections: [{
+            id: 'pl-1', kind: 'playlist', title: 'No parent art', policy: 'video:1080p',
+            childJobIds: ['ep-1'], total: 1, completed: 0, failed: 0, canceled: 0,
+            active: 1, pending: 0, paused: 0, progress: 0.2, progressLabel: '0 of 1 complete',
+            capabilities: {},
+          }],
+        }),
+      },
+    });
+
+    expect(container.querySelector('.qth img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/episode/hqdefault.jpg');
+    expect(screen.getByText('Playlist')).toBeInTheDocument();
   });
 
   test('playlist collection actions fail closed without a valid token', async () => {
@@ -177,18 +213,26 @@ describe('backend-authored capabilities', () => {
 
   test('queue-wide actions emit only when explicitly enabled', async () => {
     const onPauseAll = vi.fn();
-    const onClearCompleted = vi.fn();
+    const onResumeAll = vi.fn();
     const user = userEvent.setup();
 
     render(QueueOverview, {
-      props: { model: queueModel({ canPauseAll: true, canClearCompleted: true }) },
-      events: { 'pause-all': onPauseAll, 'clear-completed': onClearCompleted },
+      props: {
+        model: queueModel({
+          canPauseAll: true,
+          jobs: [{
+            id: 'paused-1', title: 'Paused video', lifecycle: 'paused', occupiesSlot: false,
+            capabilities: { resume: true }, commandToken: 'job-token',
+          }],
+        }),
+      },
+      events: { 'pause-all': onPauseAll, 'resume-all': onResumeAll },
     });
 
-    await user.click(screen.getByRole('button', { name: 'Pause All' }));
-    await user.click(screen.getByRole('button', { name: 'Clear Completed' }));
+    await user.click(screen.getByRole('button', { name: 'Pause all' }));
+    await user.click(screen.getByRole('button', { name: 'Resume all' }));
     expect(onPauseAll).toHaveBeenCalledOnce();
-    expect(onClearCompleted).toHaveBeenCalledOnce();
+    expect(onResumeAll).toHaveBeenCalledOnce();
   });
 
   test('disabled row capabilities do not emit actions', async () => {
@@ -317,10 +361,10 @@ describe('backend-authored capabilities', () => {
     render(QueueOverview, {
       props: { model: queueModel({ commandToken: undefined, canPauseAll: false, canClearCompleted: false, jobs: [{ id: 'active-1', title: 'Active', lifecycle: 'active', occupiesSlot: true, capabilities: {}, commandToken: undefined }] }) },
     });
-    expect(screen.getByRole('button', { name: 'Pause All' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Clear Completed' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Pause download' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Cancel download' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Pause all' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Resume all' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
   });
 });
 

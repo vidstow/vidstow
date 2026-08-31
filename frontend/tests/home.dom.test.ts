@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 import Home from '../src/pages/Home.svelte';
-import { pendingUrl, settings } from '../src/lib/stores.js';
+import { pendingUrl, pendingHomeFocus, settings, modal } from '../src/lib/stores.js';
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
@@ -20,20 +20,84 @@ function videoSummary(raw: string) {
   };
 }
 
+function playlistSummary(raw: string) {
+  return {
+    id: 'PLfixture',
+    url: raw,
+    title: 'Fixture playlist',
+    channel: 'Fixture channel',
+    duration: '3m',
+    durationSeconds: 180,
+    thumbnail: '',
+    entryCount: 2,
+    available: 2,
+    unavailable: 0,
+    entries: [
+      { index: 1, videoId: 'fixture0001', url: firstURL, title: 'First video', available: true, duration: '1:00' },
+      { index: 2, videoId: 'fixture0002', url: 'https://www.youtube.com/watch?v=fixture0002', title: 'Second video', available: true, duration: '2:00' },
+    ],
+  };
+}
+
 function installBindings() {
   const ValidateURL = vi.fn(async (raw: string) => ({
     kind: 'single_video', url: raw, videoUrl: raw, playlistUrl: '', videoId: 'fixture0001', playlistId: '',
   }));
   const AnalyzeURL = vi.fn(async (raw: string) => videoSummary(raw));
+  const AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
   const AnalyzeBatchURLs = vi.fn();
   const StartBatchDownload = vi.fn();
-  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload } } };
-  return { ValidateURL, AnalyzeURL, AnalyzeBatchURLs, StartBatchDownload };
+  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload } } };
+  return { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload };
 }
 
 describe('Home analysis authority', () => {
+  test('empty Home shows the field shortcut and dotted try chips', async () => {
+    render(Home);
+    const kbd = document.querySelector('.fieldwrap .kbd');
+    expect(kbd).toBeTruthy();
+    expect(kbd?.textContent).toMatch(/L|Ctrl\+L/);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'a private link' }));
+    expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(
+      'https://www.youtube.com/watch?v=private',
+    );
+  });
+
+  test('a watch URL with a list chooses video or playlist and can swap', async () => {
+    const user = userEvent.setup();
+    const watch = 'https://www.youtube.com/watch?v=Xpr8D6LeAtw&list=PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu';
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'video_playlist',
+      url: watch,
+      videoUrl: 'https://www.youtube.com/watch?v=Xpr8D6LeAtw',
+      playlistUrl: 'https://www.youtube.com/playlist?list=PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu',
+      videoId: 'Xpr8D6LeAtw',
+      playlistId: 'PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu',
+    }));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), watch);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('This link includes a playlist')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Fixture video/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Fixture video/ }));
+    expect(await screen.findByRole('button', { name: /Part of playlist/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Part of playlist/ }));
+    expect(await screen.findByText('Fixture playlist')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Pasted video/ }));
+    expect(await screen.findByRole('button', { name: /Part of playlist/ })).toBeInTheDocument();
+  });
+
+  test('pending home focus selects the field', async () => {
+    render(Home);
+    const field = screen.getByLabelText('YouTube video, Short, or playlist URL');
+    pendingHomeFocus.set(true);
+    await waitFor(() => expect(field).toHaveFocus());
+  });
+
   beforeEach(() => {
     pendingUrl.set('');
+    pendingHomeFocus.set(false);
+    modal.set(null);
     settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', confirmBeforeDownload: false }));
     installBindings();
   });
@@ -50,7 +114,7 @@ describe('Home analysis authority', () => {
     await user.clear(input);
     await user.type(input, 'https://www.youtube.com/watch?v=fixture0002');
     await waitFor(() => expect(screen.queryByText('Fixture video')).not.toBeInTheDocument());
-    expect(screen.getByText('Add a YouTube link')).toBeInTheDocument();
+    expect(screen.getByText(/the link decides/)).toBeInTheDocument();
   });
 
   test('re-analyzes a URL dropped while that URL is already in the field', async () => {
@@ -96,7 +160,8 @@ describe('Home analysis authority', () => {
       kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
     }));
     (window as any).go.main.App.AnalyzePlaylist = vi.fn(async () => ({
-      id: 'PLfixture', url: playlistURL, title: 'Fixture playlist', channel: 'Fixture channel', thumbnail: '',
+      id: 'PLfixture', url: playlistURL, title: 'Fixture playlist', channel: 'Fixture channel', duration: '3m',
+      durationSeconds: 180, thumbnail: '',
       entryCount: 1, available: 1, unavailable: 0,
       entries: [{ index: 1, videoId: 'fixture0001', url: firstURL, title: 'First video', available: true }],
     }));
@@ -106,7 +171,77 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
 
     expect(await screen.findByText('Fixture playlist')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add 1 Video to Queue' })).toBeDisabled();
+    expect(screen.getByText('Playlist · 1 videos · 3m · Fixture channel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download 1 video' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'All' })).not.toBeInTheDocument();
+  });
+
+  test('keeps playlist episodes behind the disclosure and shows Range without Search', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
+    }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+
+    expect(await screen.findByRole('button', { name: 'Download 2 videos' })).toBeEnabled();
+    expect(screen.queryByText('First video')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /2 episodes/ }));
+    expect(await screen.findByText('First video')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Range start')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Search playlist')).not.toBeInTheDocument();
+    expect(screen.getByText('2 selected · up to 1080p')).toBeInTheDocument();
+  });
+
+  test('All and None write the range fields', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
+    }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async (raw: string) => ({
+      ...playlistSummary(raw),
+      entryCount: 4,
+      available: 4,
+      entries: [
+        { index: 1, videoId: 'a', url: firstURL, title: 'First video', available: true, duration: '1:00' },
+        { index: 2, videoId: 'b', url: firstURL, title: 'Second video', available: true, duration: '2:00' },
+        { index: 3, videoId: 'c', url: firstURL, title: 'Third video', available: true, duration: '3:00' },
+        { index: 4, videoId: 'd', url: firstURL, title: 'Fourth video', available: true, duration: '4:00' },
+      ],
+    }));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByRole('button', { name: /4 episodes/ }));
+
+    const start = screen.getByLabelText('Range start');
+    const end = screen.getByLabelText('Range end');
+    expect(start).toHaveValue(1);
+    expect(end).toHaveValue(4);
+
+    await user.clear(end);
+    await user.type(end, '2');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByText('2 of 4 selected')).toBeInTheDocument();
+    expect(end).toHaveValue(2);
+
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    expect(start).toHaveValue(1);
+    expect(end).toHaveValue(4);
+    expect(screen.getByText('4 of 4 selected')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'None' }));
+    expect(start).toHaveValue(null);
+    expect(end).toHaveValue(null);
+    expect(screen.getByText('0 of 4 selected')).toBeInTheDocument();
   });
 
   test('badges a Short from extracted media type, not the submitted URL', async () => {
@@ -139,17 +274,24 @@ describe('Home analysis authority', () => {
     expect(screen.queryByText('Short')).not.toBeInTheDocument();
   });
 
-  test('requires at least two non-empty lines before batch review', async () => {
+  test('two pasted lines go to batch review without a Batch URLs mode', async () => {
     const user = userEvent.setup();
+    const { ValidateURL, AnalyzeBatchURLs } = installBindings();
+    AnalyzeBatchURLs.mockResolvedValue({
+      token: 'batch-token', expiresAt: '2099-08-22T12:00:00Z',
+      counts: { pasted: 2, ready: 2, duplicate: 0, invalid: 0, analysisFailed: 0 },
+      items: [
+        { lineNumber: 1, input: 'one', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'First' },
+        { lineNumber: 2, input: 'two', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'Second' },
+      ],
+    });
     render(Home);
-    await user.click(screen.getByRole('button', { name: 'Batch URLs' }));
-    const input = screen.getByLabelText('YouTube video or Short URLs');
-    const review = screen.getByRole('button', { name: 'Review URLs' });
-    expect(review).toBeDisabled();
-    await user.type(input, 'one');
-    expect(review).toBeDisabled();
-    await user.type(input, '\n\ntwo');
-    expect(review).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Batch URLs' })).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await waitFor(() => expect(AnalyzeBatchURLs).toHaveBeenCalledWith('one\ntwo'));
+    expect(ValidateURL).not.toHaveBeenCalled();
+    expect(await screen.findByText('Batch of public videos')).toBeInTheDocument();
   });
 
   test('does not publish an in-flight batch review after the lines change', async () => {
@@ -158,18 +300,17 @@ describe('Home analysis authority', () => {
     const { AnalyzeBatchURLs } = installBindings();
     AnalyzeBatchURLs.mockImplementation(() => new Promise((resolve) => { finishReview = resolve; }));
     render(Home);
-    await user.click(screen.getByRole('button', { name: 'Batch URLs' }));
-    const input = screen.getByLabelText('YouTube video or Short URLs');
+    const input = screen.getByLabelText('YouTube video, Short, or playlist URL');
     await user.type(input, 'one\ntwo');
-    await user.click(screen.getByRole('button', { name: 'Review URLs' }));
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
     await waitFor(() => expect(AnalyzeBatchURLs).toHaveBeenCalledOnce());
     await user.type(input, '\nthree');
     finishReview({
       token: 'stale-token', expiresAt: '2099-01-01T00:00:00Z',
       counts: { pasted: 2, ready: 2, duplicate: 0, invalid: 0, analysisFailed: 0 }, items: [],
     });
-    await waitFor(() => expect(screen.queryByText('Review URLs', { selector: 'h2' })).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Review URLs' })).toBeEnabled();
+    await waitFor(() => expect(screen.queryByText('Batch of public videos')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeEnabled();
   });
 
   test('reviews mixed batch lines on Home and starts every ready item', async () => {
@@ -189,16 +330,15 @@ describe('Home analysis authority', () => {
     StartBatchDownload.mockResolvedValue({ collectionId: 'batch-1', admitted: 3 });
     render(Home);
 
-    await user.click(screen.getByRole('button', { name: 'Batch URLs' }));
-    await user.type(screen.getByLabelText('YouTube video or Short URLs'), 'one\ntwo\nthree\nfour\nfive');
-    await user.click(screen.getByRole('button', { name: 'Review URLs' }));
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo\nthree\nfour\nfive');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
 
     expect(await screen.findByText('Duplicate of line 1')).toBeInTheDocument();
     expect(screen.getByText('Only YouTube links are supported.')).toBeInTheDocument();
     expect(screen.getByText('3 ready · 1 duplicate · 1 invalid')).toBeInTheDocument();
     expect(screen.queryByLabelText('Batch review counts')).not.toBeInTheDocument();
     expect(document.querySelector('.batch-thumbnail img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/fixture0001/hqdefault.jpg');
-    const start = screen.getByRole('button', { name: 'Start 3 downloads' });
+    const start = screen.getByRole('button', { name: 'Download 3 videos' });
     expect(start).toBeEnabled();
     await user.click(start);
     await waitFor(() => expect(StartBatchDownload).toHaveBeenCalledWith({ token: 'batch-token', quality: '1080p', audioBitrate: 0 }));
@@ -216,15 +356,14 @@ describe('Home analysis authority', () => {
     });
     render(Home);
 
-    await user.click(screen.getByRole('button', { name: 'Batch URLs' }));
-    const input = screen.getByLabelText('YouTube video or Short URLs');
+    const input = screen.getByLabelText('YouTube video, Short, or playlist URL');
     await user.type(input, 'one\ntwo');
-    await user.click(screen.getByRole('button', { name: 'Review URLs' }));
-    expect(await screen.findByRole('button', { name: 'Start 2 downloads' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Download 2 videos' })).toBeEnabled();
     expect(screen.getByText('2 videos ready to download')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Edit URLs' }));
-    expect(screen.queryByRole('button', { name: 'Start 2 downloads' })).not.toBeInTheDocument();
-    expect(screen.getByLabelText('YouTube video or Short URLs')).toHaveValue('one\ntwo');
+    expect(screen.queryByRole('button', { name: 'Download 2 videos' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue('one\ntwo');
   });
 
   test('disables admission when the backend batch review is expired', async () => {
@@ -239,11 +378,10 @@ describe('Home analysis authority', () => {
       ],
     });
     render(Home);
-    await user.click(screen.getByRole('button', { name: 'Batch URLs' }));
-    await user.type(screen.getByLabelText('YouTube video or Short URLs'), 'one\ntwo');
-    await user.click(screen.getByRole('button', { name: 'Review URLs' }));
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('This review expired');
-    expect(screen.getByRole('button', { name: 'Start 2 downloads' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Download 2 videos' })).toBeDisabled();
   });
 
   test('switching output types selects a visible compatible plan', async () => {
@@ -257,6 +395,34 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Audio' }));
     expect(screen.getByText('Audio plan')).toBeInTheDocument();
     expect(screen.queryByText('Video plan')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Add to Queue' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled();
+  });
+
+  test('a failed Analyze offers Paste another link instead of only a dead modal', async () => {
+    const user = userEvent.setup();
+    const { ValidateURL } = installBindings();
+    ValidateURL.mockRejectedValue(new Error('This video is private.'));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Unsupported URL')).toBeInTheDocument();
+    expect(screen.getByText('This video is private.')).toBeInTheDocument();
+    const recover = screen.getByRole('button', { name: 'Paste another link' });
+    const field = screen.getByLabelText('YouTube video, Short, or playlist URL');
+    await user.click(recover);
+    await waitFor(() => expect(screen.queryByText('Unsupported URL')).not.toBeInTheDocument());
+    expect(field).toHaveFocus();
+  });
+
+  test('Analyze submits the live field when the DOM and Svelte state diverge', async () => {
+    const { ValidateURL, AnalyzeURL } = installBindings();
+    render(Home);
+    const field = screen.getByLabelText('YouTube video, Short, or playlist URL') as HTMLTextAreaElement;
+    await userEvent.setup().type(field, firstURL);
+    const later = 'https://www.youtube.com/watch?v=fixture9999';
+    field.value = later;
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Analyze' }));
+    await waitFor(() => expect(ValidateURL).toHaveBeenCalledWith(later));
+    expect(AnalyzeURL).toHaveBeenCalledWith(later);
   });
 });

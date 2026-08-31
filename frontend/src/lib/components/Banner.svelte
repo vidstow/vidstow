@@ -12,7 +12,7 @@
 <style>
   .banner {
     position: fixed;
-    bottom: var(--sp-6);
+    bottom: calc(var(--statusbar-h) + var(--sp-3));
     left: 50%;
     transform: translateX(-50%);
     background: var(--surface-raised);

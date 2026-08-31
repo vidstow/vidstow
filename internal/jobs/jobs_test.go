@@ -14,6 +14,7 @@ import (
 
 	"github.com/tejasa97/vidstow/internal/outputplan"
 	"github.com/tejasa97/ytdlp-go/engine"
+	"github.com/tejasa97/ytdlp-go/engine/value"
 )
 
 type memoryPersistence struct {
@@ -117,9 +118,62 @@ func TestSummarizePlaylistBuildsBoundedSelectableEntries(t *testing.T) {
 	if !summary.Entries[0].Available || summary.Entries[1].Available {
 		t.Fatalf("availability=%#v", summary.Entries)
 	}
+	if summary.Channel != "Teacher" {
+		t.Fatalf("channel=%q, want Teacher from the playlist uploader", summary.Channel)
+	}
 	wantThumbnail := "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg"
 	if summary.Thumbnail != wantThumbnail || summary.Entries[0].Thumbnail != wantThumbnail {
 		t.Fatalf("thumbnail fallback: summary=%q entry=%q", summary.Thumbnail, summary.Entries[0].Thumbnail)
+	}
+}
+
+func TestSummarizePlaylistSumsDurationAndTakesChildChannel(t *testing.T) {
+	result := engine.Result{InfoJSON: json.RawMessage(`{"id":"PLfixture","title":"Course"}`), Entries: []engine.Result{
+		{InfoJSON: json.RawMessage(`{"id":"aaaaaaaaaaa","title":"One","url":"https://www.youtube.com/watch?v=aaaaaaaaaaa","playlist_index":1,"duration":3600,"channel":"Vizuara"}`)},
+		{InfoJSON: json.RawMessage(`{"id":"bbbbbbbbbbb","title":"Two","url":"https://www.youtube.com/watch?v=bbbbbbbbbbb","playlist_index":2,"duration":450}`)},
+	}}
+	summary, err := summarizePlaylist(result, "https://www.youtube.com/playlist?list=PLfixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Channel != "Vizuara" {
+		t.Fatalf("channel=%q, want Vizuara from the first child", summary.Channel)
+	}
+	if summary.DurationSeconds != 4050 || summary.Duration != "1h 7m" {
+		t.Fatalf("duration=%q seconds=%d, want 1h 7m / 4050", summary.Duration, summary.DurationSeconds)
+	}
+}
+
+func TestSummarizePlaylistOmitsDurationWhenAnAvailableEntryLacksOne(t *testing.T) {
+	result := engine.Result{InfoJSON: json.RawMessage(`{"id":"PLfixture","title":"Course"}`), Entries: []engine.Result{
+		{InfoJSON: json.RawMessage(`{"id":"aaaaaaaaaaa","title":"One","url":"https://www.youtube.com/watch?v=aaaaaaaaaaa","playlist_index":1,"duration":3600}`)},
+		{InfoJSON: json.RawMessage(`{"id":"bbbbbbbbbbb","title":"Two","url":"https://www.youtube.com/watch?v=bbbbbbbbbbb","playlist_index":2}`)},
+	}}
+	summary, err := summarizePlaylist(result, "https://www.youtube.com/playlist?list=PLfixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Duration != "" || summary.DurationSeconds != 0 {
+		t.Fatalf("duration=%q seconds=%d, want empty when an available entry has no length", summary.Duration, summary.DurationSeconds)
+	}
+}
+
+func TestFormatPlaylistDuration(t *testing.T) {
+	cases := []struct {
+		seconds int64
+		want    string
+	}{
+		{0, ""},
+		{45, "45s"},
+		{60, "1m"},
+		{4050, "1h 7m"},
+		{7200, "2h"},
+		{24300, "6h 45m"},
+	}
+	for _, test := range cases {
+		if got := formatPlaylistDuration(test.seconds); got != test.want {
+			t.Fatalf("formatPlaylistDuration(%d) = %q, want %q", test.seconds, got, test.want)
+		}
 	}
 }
 
@@ -801,12 +855,12 @@ func TestDownloadRequestsUseExactV0SelectorsAndDistinctOutputTemplates(t *testin
 		selector string
 		template string
 	}{
-		{QualityBest, "bv*+ba/b", "%(title)s [%(id)s] [Best].%(ext)s"},
-		{Quality4K, "bv*[height<=2160]+ba/b[height<=2160]", "%(title)s [%(id)s] [4K].%(ext)s"},
-		{Quality1440p, "bv*[height<=1440]+ba/b[height<=1440]", "%(title)s [%(id)s] [1440p].%(ext)s"},
-		{Quality1080p, "bv*[height<=1080]+ba/b[height<=1080]", "%(title)s [%(id)s] [1080p].%(ext)s"},
-		{Quality720p, "bv*[height<=720]+ba/b[height<=720]", "%(title)s [%(id)s] [720p].%(ext)s"},
-		{QualityAudioOnly, "ba/b", "%(title)s [%(id)s] [Audio only].%(ext)s"},
+		{QualityBest, "bv*+ba/b", "%(title)S [%(id)s] [Best].%(ext)s"},
+		{Quality4K, "bv*[height<=2160]+ba/b[height<=2160]", "%(title)S [%(id)s] [4K].%(ext)s"},
+		{Quality1440p, "bv*[height<=1440]+ba/b[height<=1440]", "%(title)S [%(id)s] [1440p].%(ext)s"},
+		{Quality1080p, "bv*[height<=1080]+ba/b[height<=1080]", "%(title)S [%(id)s] [1080p].%(ext)s"},
+		{Quality720p, "bv*[height<=720]+ba/b[height<=720]", "%(title)S [%(id)s] [720p].%(ext)s"},
+		{QualityAudioOnly, "ba/b", "%(title)S [%(id)s] [Audio only].%(ext)s"},
 	}
 
 	for _, test := range tests {
@@ -837,6 +891,29 @@ func TestDownloadRequestsUseExactV0SelectorsAndDistinctOutputTemplates(t *testin
 
 	if QualityBest.outputTemplate() == QualityAudioOnly.outputTemplate() {
 		t.Fatal("Best and Audio only must not resolve to the same output template")
+	}
+}
+
+func TestOutputTemplateForPlanKeepsSlashTitlesAsOneBasename(t *testing.T) {
+	plan := outputplan.Plan{ID: "480p", Label: "480p", Container: "mp4"}
+	metadata := value.NewInfo(value.NewObject(
+		value.Field{Key: "title", Value: value.String("MrBeast Rizz in Supermarket ! | 360° VR / 4K | Dance")},
+		value.Field{Key: "id", Value: value.String("YnLkdT-rlFo")},
+	))
+	artifacts, err := engine.RenderOutputArtifacts(engine.OutputPreviewRequest{
+		Template:  OutputTemplateForPlan(plan),
+		Metadata:  metadata,
+		Extension: "mp4",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(artifacts) != 1 {
+		t.Fatalf("artifacts = %#v", artifacts)
+	}
+	name := artifacts[0].ProposedBasename
+	if strings.ContainsAny(name, `/\`) {
+		t.Fatalf("basename %q still contains a path separator", name)
 	}
 }
 

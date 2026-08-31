@@ -254,6 +254,21 @@
     } catch (err) { showError(err, 'Could not pause the queue'); }
   }
 
+  async function resumeAll() {
+    const jobs = model.jobs.filter((job) => job.capabilities?.resume === true && job.commandToken);
+    const collections = (model.collections ?? []).filter((collection) => collection.capabilities?.resume === true && collection.commandToken);
+    try {
+      for (const job of jobs) await api.queue.resume(job.id, job.commandToken ?? '');
+      for (const collection of collections) await api.queue.resumeCollection(collection.id, collection.commandToken ?? '');
+      await refresh();
+      const count = jobs.length + collections.length;
+      showBanner('info', count ? `Resume requested for ${count} item${count === 1 ? '' : 's'}.` : 'No jobs can be resumed right now.');
+    } catch (err) {
+      await refresh().catch(() => undefined);
+      showError(err, 'Could not resume the queue');
+    }
+  }
+
   async function clearCompleted() {
     try { await api.queue.clearCompleted(model.commandToken ?? ''); await refresh(); }
     catch (err) { showError(err, 'Could not clear completed downloads'); }
@@ -263,6 +278,8 @@
 <QueueOverview
   {model}
   onPauseAll={pauseAll}
+  onResumeAll={resumeAll}
+  onGoHome={() => route.set('home')}
   onClearCompleted={clearCompleted}
   onCollectionAction={collectionAction}
   onAction={(event) => {
