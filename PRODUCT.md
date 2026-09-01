@@ -152,7 +152,7 @@ File-manager labels must be platform-aware: Show in Finder on macOS, Show in Exp
 
 Home is intake. It is the only place work is analyzed and admitted. A live analysis stays for the rest of this window session. Opening Queue, Downloads, Settings, or About does not discard it. Coming back shows the same field, dock, and selection. An edited URL, a new Analyze, a dropped URL, or Start over from Home replaces it.
 
-**One field.** No page title. No Single URL / Batch URLs switch. Placeholder: `Paste a YouTube URL`. A `⌘L` / `Ctrl+L` hint sits left of Analyze and focuses the field. Under the empty field, two lines: the paste sentence, then **Try:** with dotted chips for a video, a playlist, several links, and a private link. Those chips fill the field. Analyze is the only submit. A watch URL that also has a list id is not a Try chip. Paste it and Home asks before any dock.
+**One field.** No page title. No Single URL / Batch URLs switch. Placeholder: `Paste a YouTube URL`. A `⌘L` / `Ctrl+L` hint sits left of Analyze and focuses the field. Under the empty field, two lines: the paste sentence, then **Try:** with dotted chips for a video, a playlist, and several links. Those chips fill the field. Analyze is the only submit. A watch URL that also has a list id is not a Try chip. Paste it and Home asks before any dock.
 
 Paste count chooses the path. One URL goes to `ValidateURL`. Two to twenty go to `AnalyzeBatchURLs`. A playlist URL is still a playlist. Playlist URLs do not belong in a batch. The 2 to 20 and 500 caps stay.
 
@@ -285,7 +285,7 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 
 - Default download folder, Show in file manager, Change…
 - Create a subfolder for each download (all artifacts for one video together). Playlist admission still uses a playlist folder under that root. Batch children may use distinct roots when this is on.
-- Queue and recovery: Interrupted jobs are a fixed value, `Restored as paused`. Nothing auto-starts on launch. Concurrent downloads 1-10, default 2, FIFO. Reducing the limit waits for active jobs. It does not pause them. Warn when concurrency is greater than 4: stability and rate limits.
+- Queue and recovery: Interrupted jobs are a fixed value, `In progress continues`. The download that was in progress continues on launch. Waiting stays waiting. Paused stays paused. Concurrent downloads 1-10, default 2, FIFO. Reducing the limit waits for active jobs. It does not pause them. Warn when concurrency is greater than 4: stability and rate limits.
 
 **Video files**
 
@@ -322,7 +322,7 @@ Never display the string `yt-dlp` as the engine name. The branded engine is `ytd
 
 **Diagnostic consent (first launch).** `Help improve VidStow?` Don't send / Send diagnostics. Closing without a choice leaves automatic sending off. Privacy notice link. No preselected radio in Settings until the user has chosen.
 
-**Quit.** `Quit VidStow?` Active downloads will be paused. Summary list: active (will be paused), waiting or paused (already safe). `Saved progress will be restored as paused the next time VidStow opens.` Keep working / Pause downloads and quit.
+**Quit.** `Quit VidStow?` Active downloads will continue on reopen. Summary list: active (will continue on reopen), waiting or paused (already safe). `The download that was in progress will continue the next time VidStow opens. Waiting and paused jobs stay as they are.` Keep working / Pause downloads and quit / Quit. Pause downloads and quit records paused intent first, so those jobs stay paused.
 
 **Destination conflict.** `Choose a new filename`. VidStow will not replace the existing file. Read-only unavailable name and proposed name, Available chip when the proposal is free. Cancel download / Use new name. Authority is the opaque conflict token, never the displayed filename.
 

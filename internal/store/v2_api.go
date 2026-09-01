@@ -99,7 +99,7 @@ func (s *V2Store) History() []HistoryEntry {
 	}
 	sort.SliceStable(result, func(i, j int) bool { return result[i].CompletedAt > result[j].CompletedAt })
 	for i := range result {
-		result[i].FileMissing = !regularFileNoFollow(result[i].AbsolutePath)
+		result[i].FileMissing = false
 	}
 	return result
 }

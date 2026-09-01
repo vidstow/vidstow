@@ -39,7 +39,7 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /class="kbd"/);
   assert.match(home, /class="cmdkey"/);
   assert.match(home, /textarea:focus-visible/);
-  assert.match(home, /a private link/);
+  assert.doesNotMatch(home, /a private link/);
   assert.doesNotMatch(home, /a video in a playlist/);
   assert.match(home, /-webkit-text-decoration: underline dotted/);
   assert.match(home, /This link includes a playlist/);
@@ -160,6 +160,12 @@ test('startup performs one FFmpeg fetch and normalizes binding errors', async ()
   ]);
   assert.equal((app.match(/api\.ffmpeg\.status\(\)/g) || []).length, 1);
   assert.match(app, /title: 'The app could not finish starting'/);
+  assert.match(app, /Your downloads are safe on disk\. VidStow could not read its saved queue, so the Queue was reset!/);
+  assert.match(app, /class="btn sm ghost" onclick=\{copyRecoveryDiagnostics\}/);
+  assert.match(app, /class="btn sm" onclick=\{openRecoveryDataFolder\}/);
+  assert.match(app, /class="btn sm ghost quiet"/);
+  assert.doesNotMatch(app, /class="notice-btn"/);
+  assert.doesNotMatch(app, /so the Queue was reset\.</);
   assert.match(app, /api\.events\.onJobUpdate\(updateJobInList\)/);
   assert.match(app, /if \(idx === -1\) return \[updated, \.\.\.list\]/);
   assert.match(stores, /'message' in err/);
@@ -192,8 +198,9 @@ test('download history actions remain native accessible buttons', async () => {
   assert.match(downloads, /await api\.fs\.reveal\(entry\.absolutePath\)/);
   assert.match(downloads, /api\.downloads\.remove\(entry\.id\)/);
   assert.match(downloads, /api\.downloads\.deleteFile\(entry\.id\)/);
-  assert.match(downloads, /entry\.fileMissing/);
-  assert.match(downloads, /File missing/);
+  assert.match(downloads, /That file is no longer at this path/);
+  assert.doesNotMatch(downloads, /fileMissing/);
+  assert.doesNotMatch(downloads, /File missing/);
   assert.match(downloads, /formatLabel\(entry\)/);
   assert.match(downloads, /container/);
 });

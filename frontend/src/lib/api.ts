@@ -97,6 +97,7 @@ export const api = {
     startupStatus: () => call<StartupStatus>('GetStartupStatus'),
     keepWorking: () => call<void>('KeepWorking'),
     pauseAndQuit: () => call<void>('PauseDownloadsAndQuit'),
+    quitAndContinue: () => call<void>('QuitAndContinue'),
     openDataFolder: () => call<void>('OpenDataFolder'),
   },
   folder: {
@@ -137,6 +138,8 @@ export const api = {
     retryActionRequired: (id: string, token: string) => call<void>('RetryActionRequiredQueueJob', id, token),
     retryActionRequiredFreshLink: (id: string, token: string) => call<void>('RetryActionRequiredWithFreshLink', id, token),
     discardActionRequired: (id: string, token: string) => call<void>('DiscardActionRequiredQueueJob', id, token),
+    discardSavedData: (id: string, token: string) => call<void>('DiscardSavedQueueJob', id, token),
+    changeFolder: (id: string, token: string) => call<void>('ChangeQueueJobFolder', id, token),
     retryCleanup: (id: string, token: string) => call<void>('RetryQueueJobCleanup', id, token),
     open: (id: string, token: string) => call<void>('OpenQueueJob', id, token),
     remove: (id: string, token: string) => call<void>('RemoveQueueJob', id, token),

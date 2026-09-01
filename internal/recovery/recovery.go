@@ -67,15 +67,19 @@ type decision struct {
 	retryMode      jobmodel.RetryMode
 	actionCode     string
 	lastErrorCode  string
+	startupResume  bool
+	committedBytes int64
 	cleanupPending bool
 	completed      bool
 }
 
 // Reconcile performs the complete State-v2 startup evidence pass. It never
-// starts a worker. Interrupted pending/active work is converted to paused;
-// publication-winner evidence becomes completed; uncertain evidence becomes
-// action-required; and canceling rows are discarded only after the public
-// engine says the session is safe to destroy.
+// starts a worker. Waiting pending jobs stay pending. The job that was
+// actively downloading becomes pending with StartupResume so restore can
+// start it. Pausing settles to paused; publication-winner evidence becomes
+// completed; a missing save folder becomes a failed queue row; leftover
+// data that cannot continue becomes paused; and canceling rows are discarded
+// only after the public engine says the session is safe to destroy.
 func Reconcile(ctx context.Context, stateStore StateStore, options Options) (jobmodel.State, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -163,19 +167,21 @@ func reconcileJob(ctx context.Context, job jobmodel.DurableJob, options Options,
 	}
 
 	if job.Lifecycle == jobmodel.LifecyclePending {
-		result.lifecycle = jobmodel.LifecyclePaused
-		result.desired = jobmodel.DesiredPaused
-		result.phase = normalizeJobPhase(job.Phase)
-		result.actionCode = ""
-		result.lastErrorCode = ""
-		return result, decisionDiffers(job, result), nil
+		return result, false, nil
 	}
 
 	if job.OutputRoot.CanonicalPath == "" || job.OutputRoot.Identity == "" || job.SessionID == "" {
-		result.lifecycle = jobmodel.LifecycleActionRequired
+		if job.Lifecycle == jobmodel.LifecyclePausing || job.Lifecycle == jobmodel.LifecyclePaused {
+			result.lifecycle = jobmodel.LifecyclePaused
+			result.desired = jobmodel.DesiredPaused
+			result.startupResume = false
+			return result, decisionDiffers(job, result), nil
+		}
+		result.lifecycle = jobmodel.LifecyclePaused
 		result.desired = jobmodel.DesiredPaused
-		result.actionCode = "recovery-session-reference-invalid"
-		result.lastErrorCode = result.actionCode
+		result.actionCode = ""
+		result.lastErrorCode = "recovery-session-reference-invalid"
+		result.startupResume = false
 		return result, decisionDiffers(job, result), nil
 	}
 
@@ -185,12 +191,14 @@ func reconcileJob(ctx context.Context, job jobmodel.DurableJob, options Options,
 			result.lifecycle = jobmodel.LifecycleActionRequired
 			result.desired = jobmodel.DesiredPaused
 			result.actionCode = "cancel-reconciliation-required"
-		} else {
-			result.lifecycle = jobmodel.LifecycleActionRequired
-			result.desired = jobmodel.DesiredPaused
-			result.actionCode = "recovery-session-unavailable"
+			result.lastErrorCode = result.actionCode
+			return result, decisionDiffers(job, result), nil
 		}
-		result.lastErrorCode = result.actionCode
+		result.lifecycle = jobmodel.LifecyclePaused
+		result.desired = jobmodel.DesiredPaused
+		result.actionCode = ""
+		result.lastErrorCode = "recovery-session-unavailable"
+		result.startupResume = false
 		return result, decisionDiffers(job, result), nil
 	}
 
@@ -201,23 +209,38 @@ func reconcileJob(ctx context.Context, job jobmodel.DurableJob, options Options,
 		result.retryMode = jobmodel.RetryModePublishOnly
 		result.actionCode = ""
 		result.lastErrorCode = ""
+		result.startupResume = false
 		result.completed = true
 		return result, decisionDiffers(job, result), nil
 	}
 
 	if IsRootUnavailable(summary) && job.Lifecycle != jobmodel.LifecycleCanceling {
-		result.lifecycle = jobmodel.LifecycleActionRequired
-		result.desired = jobmodel.DesiredPaused
-		result.actionCode = "output-root-unavailable"
-		result.lastErrorCode = result.actionCode
+		result.lifecycle = jobmodel.LifecycleFailed
+		result.desired = jobmodel.DesiredRunning
+		result.actionCode = ""
+		result.lastErrorCode = "output-root-unavailable"
+		result.startupResume = false
 		return result, decisionDiffers(job, result), nil
 	}
 
-	if summary.LeaseContended || hasUncertainEvidence(summary) {
+	if summary.LeaseContended || keepActionRequiredEvidence(summary) {
 		result.lifecycle = jobmodel.LifecycleActionRequired
 		result.desired = jobmodel.DesiredPaused
 		result.actionCode = evidenceActionCode(summary)
 		result.lastErrorCode = result.actionCode
+		result.startupResume = false
+		return result, decisionDiffers(job, result), nil
+	}
+
+	if hasUncertainEvidence(summary) {
+		result.lifecycle = jobmodel.LifecyclePaused
+		result.desired = jobmodel.DesiredPaused
+		result.phase = mapSessionPhase(summary.Phase, job.Phase)
+		result.actionCode = ""
+		result.lastErrorCode = evidenceActionCode(summary)
+		result.startupResume = false
+		result.retryMode = jobmodel.RetryModeRestartNewSession
+		result.committedBytes = committedBytesFromSummary(summary)
 		return result, decisionDiffers(job, result), nil
 	}
 
@@ -225,16 +248,33 @@ func reconcileJob(ctx context.Context, job jobmodel.DurableJob, options Options,
 		return reconcileCanceling(ctx, job, result, options, summary)
 	}
 
-	result.lifecycle = jobmodel.LifecyclePaused
-	result.desired = jobmodel.DesiredPaused
+	if job.Lifecycle == jobmodel.LifecyclePaused || job.Lifecycle == jobmodel.LifecyclePausing {
+		result.lifecycle = jobmodel.LifecyclePaused
+		result.desired = jobmodel.DesiredPaused
+		result.phase = mapSessionPhase(summary.Phase, job.Phase)
+		result.actionCode = ""
+		result.lastErrorCode = ""
+		result.startupResume = false
+		if result.phase == jobmodel.PhaseReadyToPublish {
+			result.retryMode = jobmodel.RetryModePublishOnly
+		} else if result.retryMode == jobmodel.RetryModeNone {
+			result.retryMode = jobmodel.RetryModeResumeValidated
+		}
+		return result, decisionDiffers(job, result), nil
+	}
+
+	result.lifecycle = jobmodel.LifecyclePending
+	result.desired = jobmodel.DesiredRunning
 	result.phase = mapSessionPhase(summary.Phase, job.Phase)
 	result.actionCode = ""
 	result.lastErrorCode = ""
+	result.startupResume = true
 	if result.phase == jobmodel.PhaseReadyToPublish {
 		result.retryMode = jobmodel.RetryModePublishOnly
-	} else if result.retryMode == jobmodel.RetryModeNone {
+	} else {
 		result.retryMode = jobmodel.RetryModeResumeValidated
 	}
+	result.committedBytes = committedBytesFromSummary(summary)
 	return result, decisionDiffers(job, result), nil
 }
 
@@ -303,12 +343,40 @@ func applyDecision(job *jobmodel.DurableJob, result decision, now time.Time) {
 	job.RetryMode = result.retryMode
 	job.ActionRequiredCode = result.actionCode
 	job.LastErrorCode = result.lastErrorCode
+	job.StartupResume = result.startupResume
+	if result.committedBytes > 0 {
+		job.LastFailureCommittedBytes = result.committedBytes
+	}
 	job.Revision++
 	job.UpdatedAt = now
 }
 
 func decisionDiffers(job jobmodel.DurableJob, result decision) bool {
-	return job.Lifecycle != result.lifecycle || job.Desired != result.desired || job.Phase != result.phase || job.RetryMode != result.retryMode || job.ActionRequiredCode != result.actionCode || job.LastErrorCode != result.lastErrorCode
+	return job.Lifecycle != result.lifecycle || job.Desired != result.desired || job.Phase != result.phase || job.RetryMode != result.retryMode || job.ActionRequiredCode != result.actionCode || job.LastErrorCode != result.lastErrorCode || job.StartupResume != result.startupResume
+}
+
+func keepActionRequiredEvidence(summary engine.ResumeSummary) bool {
+	if summary.LeaseContended || summary.Publication == "indeterminate" {
+		return true
+	}
+	classes := append([]engine.ResumeInspectionClass{summary.Classification}, summary.Classifications...)
+	for _, class := range classes {
+		switch string(class) {
+		case classUnsafePath, classPublicationIndeterminate:
+			return true
+		}
+	}
+	return false
+}
+
+func committedBytesFromSummary(summary engine.ResumeSummary) int64 {
+	var total int64
+	for _, component := range summary.Components {
+		if component.CommittedBytes > 0 {
+			total += component.CommittedBytes
+		}
+	}
+	return total
 }
 
 func hasUncertainEvidence(summary engine.ResumeSummary) bool {

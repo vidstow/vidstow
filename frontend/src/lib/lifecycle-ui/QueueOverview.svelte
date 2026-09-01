@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { LifecycleJobActionEvent } from './LifecycleJobRow.svelte';
-  import { queueDisplayItems } from '../queue-view.js';
+  import { queueDisplayItems, type QueueDisplayItem } from '../queue-view.js';
   import {
     isValidCommandToken,
     lifecycleLabel,
@@ -31,6 +31,8 @@
     review: LifecycleJobEventDetail;
     open: LifecycleJobEventDetail;
     remove: LifecycleJobEventDetail;
+    discard: LifecycleJobEventDetail;
+    'change-folder': LifecycleJobEventDetail;
     'collection-action': QueueCollectionActionEvent;
   }
 
@@ -98,10 +100,17 @@
       : undefined,
   );
   const selectedChildren = $derived(
-    selectedCollection
-      ? displayItems.find((item) => item.kind === 'collection' && item.collection.id === selectedCollection.id)?.children ?? []
-      : [],
+    selectedCollection ? childrenForCollection(displayItems, selectedCollection.id) : [],
   );
+
+  function childrenForCollection(items: QueueDisplayItem[], id: string): LifecycleJobViewModel[] {
+    for (const item of items) {
+      if (item.kind === 'collection' && item.collection.id === id) {
+        return item.children;
+      }
+    }
+    return [];
+  }
 
   function queueRank(item: ReturnType<typeof queueDisplayItems>[number]): number {
     if (item.kind === 'collection') return 50;
@@ -130,6 +139,8 @@
     if (action === 'start-again') return capabilities.startAgain === true;
     if (action === 'open-source') return capabilities.openSource === true;
     if (action === 'copy-link') return capabilities.copyLink === true;
+    if (action === 'change-folder') return capabilities.changeFolder === true;
+    if (action === 'discard') return capabilities.discard === true;
     return capabilities[action] === true;
   }
 
@@ -363,11 +374,17 @@
               {#if job.capabilities?.retry !== undefined}
                 <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'retry')} onclick={() => trigger(job, 'retry')}>Retry</button>
               {/if}
+              {#if job.capabilities?.changeFolder}
+                <button type="button" class="qbtn" disabled={!jobEnabled(job, 'change-folder')} onclick={() => trigger(job, 'change-folder')}>Change</button>
+              {/if}
               {#if job.capabilities?.startAgain}
                 <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'start-again')} onclick={() => trigger(job, 'start-again')}>Start again</button>
               {/if}
             {:else if paused}
               <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'resume')} onclick={() => trigger(job, 'resume')}>Resume</button>
+              {#if job.capabilities?.discard}
+                <button type="button" class="qbtn ghost danger" disabled={!jobEnabled(job, 'discard')} onclick={() => trigger(job, 'discard')}>Discard</button>
+              {/if}
             {:else if job.lifecycle === 'action-required'}
               {#if job.capabilities?.review}
                 <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'review')} onclick={() => trigger(job, 'review')}>Review</button>

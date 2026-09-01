@@ -79,19 +79,23 @@ func TestReconcileInterruptedLifecycleMatrix(t *testing.T) {
 		wantLifecycle jobmodel.Lifecycle
 		wantPhase     jobmodel.Phase
 		wantHistory   bool
+		wantPending   bool
+		wantResume    bool
 	}{
 		{
-			name:          "pending is paused without engine inspection",
+			name:          "pending stays waiting without engine inspection",
 			job:           recoveryTestJob("pending", jobmodel.LifecyclePending, jobmodel.PhasePreparing),
-			wantLifecycle: jobmodel.LifecyclePaused,
+			wantLifecycle: jobmodel.LifecyclePending,
 			wantPhase:     jobmodel.PhasePreparing,
+			wantPending:   true,
 		},
 		{
-			name:          "active is paused with resumable evidence",
+			name:          "active is queued to continue with resumable evidence",
 			job:           recoveryTestJob("active", jobmodel.LifecycleActive, jobmodel.PhaseDownloading),
 			summary:       engine.ResumeSummary{Classification: "available", Phase: "downloading", Status: "active"},
-			wantLifecycle: jobmodel.LifecyclePaused,
+			wantLifecycle: jobmodel.LifecyclePending,
 			wantPhase:     jobmodel.PhaseDownloading,
+			wantResume:    true,
 		},
 		{
 			name:          "pausing settles to paused",
@@ -135,17 +139,24 @@ func TestReconcileInterruptedLifecycleMatrix(t *testing.T) {
 			if len(got.Jobs) != 1 || got.Jobs[0].Lifecycle != testCase.wantLifecycle || got.Jobs[0].Phase != testCase.wantPhase {
 				t.Fatalf("reconciled job = %#v; want lifecycle=%q phase=%q", got.Jobs, testCase.wantLifecycle, testCase.wantPhase)
 			}
-			if testCase.name == "pending is paused without engine inspection" && inspectCalls != 0 {
+			if testCase.name == "pending stays waiting without engine inspection" && inspectCalls != 0 {
 				t.Fatalf("pending inspection calls = %d; want 0", inspectCalls)
 			}
-			if testCase.name != "pending is paused without engine inspection" && inspectCalls != 1 {
+			if testCase.name != "pending stays waiting without engine inspection" && inspectCalls != 1 {
 				t.Fatalf("inspection calls = %d; want 1", inspectCalls)
 			}
 			if testCase.wantHistory != (len(got.History) == 1) {
 				t.Fatalf("history = %#v; want history=%t", got.History, testCase.wantHistory)
 			}
-			if store.transactions != 1 {
-				t.Fatalf("State transactions = %d; want one reconciliation commit", store.transactions)
+			if got.Jobs[0].StartupResume != testCase.wantResume {
+				t.Fatalf("startupResume = %t; want %t", got.Jobs[0].StartupResume, testCase.wantResume)
+			}
+			wantTransactions := 1
+			if testCase.wantPending {
+				wantTransactions = 0
+			}
+			if store.transactions != wantTransactions {
+				t.Fatalf("State transactions = %d; want %d", store.transactions, wantTransactions)
 			}
 		})
 	}
@@ -153,19 +164,20 @@ func TestReconcileInterruptedLifecycleMatrix(t *testing.T) {
 
 func TestReconcileFailClosedEvidenceMatrix(t *testing.T) {
 	classes := []struct {
-		name string
-		make func(*engine.ResumeSummary)
+		name          string
+		make          func(*engine.ResumeSummary)
+		wantLifecycle jobmodel.Lifecycle
 	}{
 		{name: "unavailable output root", make: func(summary *engine.ResumeSummary) {
 			summary.HasManifest = false
 			summary.Classification = "unavailable_root"
-		}},
-		{name: "unknown manifest", make: func(summary *engine.ResumeSummary) { summary.Classification = "unknown_manifest_version" }},
-		{name: "corrupt manifest", make: func(summary *engine.ResumeSummary) { summary.Classification = "corrupt_manifest" }},
-		{name: "unsafe path", make: func(summary *engine.ResumeSummary) { summary.Classification = "unsafe_path" }},
-		{name: "indeterminate publication", make: func(summary *engine.ResumeSummary) { summary.Publication = "indeterminate" }},
-		{name: "indeterminate cleanup", make: func(summary *engine.ResumeSummary) { summary.Cleanup = "indeterminate" }},
-		{name: "status needs reconciliation", make: func(summary *engine.ResumeSummary) { summary.Status = "needs_reconciliation" }},
+		}, wantLifecycle: jobmodel.LifecycleFailed},
+		{name: "unknown manifest", make: func(summary *engine.ResumeSummary) { summary.Classification = "unknown_manifest_version" }, wantLifecycle: jobmodel.LifecyclePaused},
+		{name: "corrupt manifest", make: func(summary *engine.ResumeSummary) { summary.Classification = "corrupt_manifest" }, wantLifecycle: jobmodel.LifecyclePaused},
+		{name: "unsafe path", make: func(summary *engine.ResumeSummary) { summary.Classification = "unsafe_path" }, wantLifecycle: jobmodel.LifecycleActionRequired},
+		{name: "indeterminate publication", make: func(summary *engine.ResumeSummary) { summary.Publication = "indeterminate" }, wantLifecycle: jobmodel.LifecycleActionRequired},
+		{name: "indeterminate cleanup", make: func(summary *engine.ResumeSummary) { summary.Cleanup = "indeterminate" }, wantLifecycle: jobmodel.LifecyclePaused},
+		{name: "status needs reconciliation", make: func(summary *engine.ResumeSummary) { summary.Status = "needs_reconciliation" }, wantLifecycle: jobmodel.LifecyclePaused},
 	}
 	for _, testCase := range classes {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -179,8 +191,17 @@ func TestReconcileFailClosedEvidenceMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Jobs[0].Lifecycle != jobmodel.LifecycleActionRequired || got.Jobs[0].Desired != jobmodel.DesiredPaused {
-				t.Fatalf("uncertain evidence lifecycle = %q desired=%q; want action-required/paused", got.Jobs[0].Lifecycle, got.Jobs[0].Desired)
+			if got.Jobs[0].Lifecycle != testCase.wantLifecycle {
+				t.Fatalf("uncertain evidence lifecycle = %q; want %q", got.Jobs[0].Lifecycle, testCase.wantLifecycle)
+			}
+			if testCase.wantLifecycle == jobmodel.LifecycleActionRequired && got.Jobs[0].Desired != jobmodel.DesiredPaused {
+				t.Fatalf("action-required desired = %q; want paused", got.Jobs[0].Desired)
+			}
+			if testCase.wantLifecycle == jobmodel.LifecycleFailed && got.Jobs[0].LastErrorCode != "output-root-unavailable" {
+				t.Fatalf("missing folder error = %q", got.Jobs[0].LastErrorCode)
+			}
+			if testCase.wantLifecycle == jobmodel.LifecyclePaused && got.Jobs[0].StartupResume {
+				t.Fatal("unusable leftover must not auto-start")
 			}
 		})
 	}
@@ -270,5 +291,22 @@ func TestReconcileRejectsUnavailableStateWithoutStartingAnything(t *testing.T) {
 	}
 	if store.transactions != 0 {
 		t.Fatalf("transactions = %d; invalid State must not be mutated", store.transactions)
+	}
+}
+
+func TestReconcilePausedStaysPausedWithoutStartupResume(t *testing.T) {
+	job := recoveryTestJob("paused", jobmodel.LifecyclePaused, jobmodel.PhasePreparing)
+	job.Desired = jobmodel.DesiredPaused
+	store := recoveryTestStore(job)
+	got, err := Reconcile(context.Background(), store, Options{
+		Inspect: func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+			return engine.ResumeSummary{Classification: "available", Phase: "downloading", Status: "paused"}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Jobs[0].Lifecycle != jobmodel.LifecyclePaused || got.Jobs[0].Desired != jobmodel.DesiredPaused || got.Jobs[0].StartupResume {
+		t.Fatalf("paused reconcile = %#v; want paused without auto-start", got.Jobs[0])
 	}
 }

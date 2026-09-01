@@ -27,6 +27,13 @@ export function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
+export function formatDiscardConfirm(bytes: number): string {
+  if (!bytes || bytes < 0) return 'Delete the saved data for this download?';
+  const mb = 1024 * 1024;
+  if (bytes >= mb) return `Delete ${Math.round(bytes / mb)} MB of saved data?`;
+  return `Delete ${formatBytes(bytes)} of saved data?`;
+}
+
 export function formatSpeed(bps: number): string {
   if (!bps || bps <= 0) return '';
   return `${formatBytes(bps)}/s`;

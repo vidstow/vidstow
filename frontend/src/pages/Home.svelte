@@ -25,11 +25,10 @@
     { value: '192', label: 'MP3 192' },
     { value: '256', label: 'MP3 256' },
   ];
-  const TRY_CHIPS: Array<{ kind: 'video' | 'playlist' | 'batch' | 'private'; label: string }> = [
+  const TRY_CHIPS: Array<{ kind: 'video' | 'playlist' | 'batch'; label: string }> = [
     { kind: 'video', label: 'a video' },
     { kind: 'playlist', label: 'a playlist' },
     { kind: 'batch', label: 'several links' },
-    { kind: 'private', label: 'a private link' },
   ];
   const isMacField = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -563,10 +562,9 @@
     });
   }
 
-  function fillExample(kind: 'video' | 'playlist' | 'batch' | 'private') {
+  function fillExample(kind: 'video' | 'playlist' | 'batch') {
     if (kind === 'video') applyUrl('https://www.youtube.com/watch?v=jNQXAC9IVRw');
     else if (kind === 'playlist') applyUrl('https://www.youtube.com/playlist?list=PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu');
-    else if (kind === 'private') applyUrl('https://www.youtube.com/watch?v=private');
     else applyUrl('https://www.youtube.com/watch?v=jNQXAC9IVRw\nhttps://www.youtube.com/watch?v=aqz-KE-bpKQ\nhttps://www.youtube.com/watch?v=1PZNsDFItl4');
     queueMicrotask(() => {
       urlField?.focus();
@@ -577,7 +575,7 @@
     });
   }
 
-  function onTryKey(event: KeyboardEvent, kind: 'video' | 'playlist' | 'batch' | 'private') {
+  function onTryKey(event: KeyboardEvent, kind: 'video' | 'playlist' | 'batch') {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     fillExample(kind);

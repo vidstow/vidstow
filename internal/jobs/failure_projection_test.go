@@ -11,19 +11,22 @@ import (
 
 func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 	tests := []struct {
-		name       string
-		code       string
-		category   string
-		retry      bool
-		startAgain bool
-		openSource bool
-		messageKey string
+		name         string
+		code         string
+		category     string
+		retry        bool
+		startAgain   bool
+		openSource   bool
+		changeFolder bool
+		heading      string
+		messageKey   string
 	}{
 		{name: "network", code: "network", category: "network_interrupted", retry: true, messageKey: "queue.failure.network_interrupted"},
 		{name: "authentication", code: "authentication", category: "authentication_required", openSource: true, messageKey: "queue.failure.authentication_required"},
 		{name: "unavailable", code: "unsupported", category: "resource_unavailable", openSource: true, messageKey: "queue.failure.resource_unavailable"},
-		{name: "disk full", code: "disk_full", category: "disk_full", startAgain: true, messageKey: "queue.failure.disk_full"},
-		{name: "permission", code: "permission_denied", category: "permission_denied", startAgain: true, messageKey: "queue.failure.permission_denied"},
+		{name: "disk full", code: "disk_full", category: "disk_full", startAgain: true, changeFolder: true, heading: "Not enough disk space", messageKey: "queue.failure.disk_full"},
+		{name: "permission", code: "permission_denied", category: "permission_denied", startAgain: true, changeFolder: true, heading: "Folder is not writable", messageKey: "queue.failure.permission_denied"},
+		{name: "missing folder", code: "output-root-unavailable", category: "folder_unavailable", retry: true, changeFolder: true, heading: "Save folder is missing", messageKey: "queue.failure.folder_unavailable"},
 		{name: "security", code: "security", category: "security_blocked", messageKey: "queue.failure.security_blocked"},
 		{name: "exhausted", code: retryCodeFreshDownloadRequired, category: "retry_exhausted", messageKey: "queue.failure.retry_exhausted"},
 		{name: "internal", code: "internal", category: "internal", retry: true, messageKey: "queue.failure.internal"},
@@ -42,8 +45,11 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 			if failure.Heading == "" || failure.Message == "" || failure.RecommendedAction == "" {
 				t.Fatalf("failure copy is incomplete: %#v", failure)
 			}
+			if test.heading != "" && failure.Heading != test.heading {
+				t.Fatalf("heading = %q; want %q", failure.Heading, test.heading)
+			}
 			caps := queueCapabilitiesFor(state, state.snap)
-			if caps.Retry != test.retry || caps.StartAgain != test.startAgain || caps.OpenSource != test.openSource || caps.CopyLink != test.openSource || !caps.Remove {
+			if caps.Retry != test.retry || caps.StartAgain != test.startAgain || caps.OpenSource != test.openSource || caps.CopyLink != test.openSource || caps.ChangeFolder != test.changeFolder || !caps.Remove {
 				t.Fatalf("capabilities = %#v", caps)
 			}
 		})

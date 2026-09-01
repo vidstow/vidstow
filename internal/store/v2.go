@@ -36,12 +36,14 @@ const (
 	RecoveryMigrationFailed    RecoveryReason = "migration-failed"
 	RecoveryUnsafePermissions  RecoveryReason = "unsafe-permissions"
 	RecoveryIndeterminate      RecoveryReason = "indeterminate-commit"
+	RecoveryAlreadyRunning     RecoveryReason = "already-running"
 )
 
 type StatusWarning string
 
 const (
 	WarningDurabilityUncertain StatusWarning = "durability-uncertain"
+	WarningQueueReset          StatusWarning = "queue-reset"
 )
 
 // StartupStatus is safe to pass to startup UI code. It intentionally omits
@@ -193,6 +195,14 @@ func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error)
 	if !stateLoaded {
 		state, missing, err = readStateV2(path)
 		if err != nil {
+			if errors.Is(err, errUnsafePermissions) {
+				return nil, recoveryStatus(err), nil
+			}
+			if isUnreadableQueue(err) {
+				if resetErr := s.resetUnreadableQueue(); resetErr == nil {
+					return s, s.status, nil
+				}
+			}
 			return nil, recoveryStatus(err), nil
 		}
 	}
@@ -242,6 +252,33 @@ func recoveryStatus(err error) StartupStatus {
 		reason = RecoveryUnsafePermissions
 	}
 	return StartupStatus{Mode: StartupRecoveryRequired, Reason: reason}
+}
+
+func (s *V2Store) resetUnreadableQueue() error {
+	quarantined := s.path + ".unreadable"
+	if !validPath(quarantined) {
+		return errors.New("store: unreadable-queue quarantine path is invalid")
+	}
+	_ = os.Remove(quarantined)
+	if err := os.Rename(s.path, quarantined); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	fresh := defaultStateV2()
+	if err := s.writeInitial(fresh); err != nil {
+		_ = os.Rename(quarantined, s.path)
+		return err
+	}
+	s.state = fresh
+	s.status = StartupStatus{Mode: StartupHealthy, Warning: WarningQueueReset}
+	return nil
+}
+
+func isUnreadableQueue(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "invalid state JSON") || strings.Contains(message, "empty state") || strings.Contains(message, "no valid version") || strings.Contains(message, "invalid v2 state") || strings.Contains(message, "unknown field")
 }
 
 // Snapshot returns a deep, independent state image.

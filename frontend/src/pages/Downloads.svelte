@@ -47,26 +47,18 @@
   }
 
   const open = async (entry: HistoryEntry) => {
-    if (entry.fileMissing) {
-      showBanner('warning', 'That downloaded file is no longer on disk.');
-      return;
-    }
     try {
       await api.fs.open(entry.absolutePath);
     } catch (err) {
-      showError(err, 'Could not open the downloaded file');
+      showError(err, 'That file is no longer at this path');
     }
   };
 
   const reveal = async (entry: HistoryEntry) => {
-    if (entry.fileMissing) {
-      showBanner('warning', 'That downloaded file is no longer on disk.');
-      return;
-    }
     try {
       await api.fs.reveal(entry.absolutePath);
     } catch (err) {
-      showError(err, 'Could not show the downloaded file');
+      showError(err, 'That file is no longer at this path');
     }
   };
 
@@ -135,7 +127,7 @@
     {#if filtered.length}
         <ul class="library" aria-label="Downloaded videos">
           {#each filtered as entry (entry.id)}
-            <li class="item" class:selected={selected?.id === entry.id} class:missing={entry.fileMissing}>
+            <li class="item" class:selected={selected?.id === entry.id}>
               <button
                 class="item-main"
                 type="button"
@@ -165,9 +157,6 @@
                       <span aria-hidden="true">·</span>
                       <span>{formatRelative(entry.completedAt)}</span>
                     {/if}
-                    {#if entry.fileMissing}
-                      <span class="missing-flag">File missing</span>
-                    {/if}
                   </span>
                 </span>
               </button>
@@ -177,23 +166,18 @@
                   type="button"
                   class="app-btn primary"
                   aria-label="Open downloaded file"
-                  disabled={entry.fileMissing}
                   on:click={() => open(entry)}
                 >Open</button>
                 <button
                   type="button"
                   class="app-btn"
                   aria-label="Show in Finder"
-                  disabled={entry.fileMissing}
                   on:click={() => reveal(entry)}
                 >Show in Finder</button>
               </div>
 
               {#if selected?.id === entry.id}
                 <div class="item-detail">
-                  {#if entry.fileMissing}
-                    <p class="missing-note">This file is no longer on disk. You can still remove the history entry.</p>
-                  {/if}
                   <p class="path-full" title={entry.absolutePath}>
                     {#if codecSummary(entry)}{codecSummary(entry)} · {/if}{entry.absolutePath}
                   </p>
@@ -205,7 +189,6 @@
                       type="button"
                       class="app-btn danger"
                       aria-label="Delete downloaded file"
-                      disabled={entry.fileMissing}
                       on:click={() => confirmDeleteFile(entry)}
                     >Delete file</button>
                   </div>
@@ -282,7 +265,6 @@
   }
   .item:hover { border-color: var(--border-strong); }
   .item.selected { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-ring); }
-  .item.missing { opacity: 0.92; }
 
   .item-main {
     display: grid;
@@ -338,14 +320,6 @@
     font-size: var(--fs-sm);
   }
   .channel { color: var(--text-muted); }
-  .missing-flag {
-    color: var(--status-warning);
-    background: var(--status-warning-soft);
-    border-radius: var(--r-full);
-    padding: 1px 7px;
-    font-weight: 600;
-    font-size: var(--fs-xs);
-  }
 
   .item-actions {
     display: flex;
@@ -362,7 +336,6 @@
     padding: var(--sp-3) 4px 4px;
     border-top: 1px solid var(--border-subtle);
   }
-  .missing-note { margin: 0; color: var(--status-warning); font-size: var(--fs-sm); }
   .path-full {
     margin: 0;
     min-width: 0;

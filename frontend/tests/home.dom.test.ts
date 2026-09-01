@@ -57,9 +57,9 @@ describe('Home analysis authority', () => {
     const kbd = document.querySelector('.fieldwrap .kbd');
     expect(kbd).toBeTruthy();
     expect(kbd?.textContent).toMatch(/L|Ctrl\+L/);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'a private link' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'a video' }));
     expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(
-      'https://www.youtube.com/watch?v=private',
+      'https://www.youtube.com/watch?v=jNQXAC9IVRw',
     );
   });
 

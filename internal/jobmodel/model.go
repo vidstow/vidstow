@@ -56,8 +56,8 @@ const (
 	CleanupQuarantined CleanupState = "quarantined"
 )
 
-// Settings has no restoration preference. Interrupted jobs are restored as
-// paused by the product contract, not by preference.
+// Settings has no restoration preference. The in-progress download continues
+// on launch; waiting and paused jobs stay put.
 type Settings struct {
 	DownloadFolder        string `json:"downloadFolder"`
 	FFmpegPath            string `json:"ffmpegPath"`
@@ -137,6 +137,9 @@ type DurableJob struct {
 	RetryMode          RetryMode        `json:"retryMode"`
 	ActionRequiredCode string           `json:"actionRequiredCode,omitempty"`
 	LastErrorCode      string           `json:"lastErrorCode,omitempty"`
+	// StartupResume marks the job that was downloading when VidStow last
+	// exited. Restore starts only these rows; waiting jobs stay waiting.
+	StartupResume bool `json:"startupResume,omitempty"`
 	// Retry escalation bookkeeping for mid-transfer failures. Strict-schema
 	// readers that predate these fields reject rows containing them, while
 	// this build decodes older rows as zero values and simply disables

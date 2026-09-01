@@ -44,7 +44,23 @@ var (
 	reconcileStartupState    = func(ctx context.Context, state *store.V2Store) (jobmodel.State, error) {
 		return recovery.Reconcile(ctx, state, recovery.Options{})
 	}
-	restoreStartupManager = func(manager *jobs.Manager, snapshot jobmodel.State) error { return manager.RestoreStateV2(snapshot) }
+	restoreStartupManager = func(manager *jobs.Manager, snapshot jobmodel.State) error {
+		return manager.RestoreStateV2(snapshot)
+	}
+	startInterruptedDownloads = (*jobs.Manager).StartInterruptedDownloads
+	continueMissingFolders    = (*jobs.Manager).ContinueWhenFoldersReturn
+	acquireInstanceLock       = store.AcquireInstanceLock
+	notifyAlreadyRunning      = func(ctx context.Context) {
+		if ctx == nil {
+			return
+		}
+		_, _ = wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{
+			Type:    wailsruntime.InfoDialog,
+			Title:   "VidStow is already running",
+			Message: "Another VidStow window is open. Close it before starting a second copy.",
+		})
+		wailsruntime.Quit(ctx)
+	}
 	resolveDownloadPlan   = (*jobs.Manager).ResolvePlan
 	startStartupCleanup   = recovery.StartCleanupWorkerWithReport
 	logAppErrorf          = wailsruntime.LogErrorf
@@ -90,6 +106,9 @@ type App struct {
 	quitPermit             bool
 	quitRequestOpen        bool
 	quitDeadline           time.Time
+	instanceLock           *store.InstanceGuard
+	folderWatchCancel      context.CancelFunc
+	quitSkipPause          bool
 }
 
 // NewApp constructs the App. The Wails bind() call wires every public
@@ -114,7 +133,20 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) startupAt(ctx context.Context, statePath string) {
 	a.ctx = ctx
 	a.statePath = statePath
+	guard, lockErr := acquireInstanceLock(statePath)
+	if lockErr != nil {
+		if errors.Is(lockErr, store.ErrAlreadyRunning) {
+			notifyAlreadyRunning(ctx)
+			a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryAlreadyRunning})
+			return
+		}
+		logAppErrorf(ctx, "desktop: instance lock: %v", lockErr)
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions})
+		return
+	}
+	a.instanceLock = guard
 	st, status, openErr := openStateV2(statePath)
+	queueReset := status.Warning == store.WarningQueueReset
 	if openErr == nil && status.Reason != store.RecoveryUnsafePermissions {
 		a.openLocalDiagnostics(filepath.Dir(statePath))
 		// An unset or disabled preference never leaves a stale automatic
@@ -123,7 +155,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 			_ = a.diagnosticOutbox.Clear()
 		}
 	}
-	if openErr != nil || !status.Healthy() || status.Warning != "" || st == nil {
+	if openErr != nil || !status.Healthy() || (status.Warning != "" && !queueReset) || st == nil {
 		if a.diagnostics != nil {
 			category := "state_unavailable"
 			switch {
@@ -220,6 +252,8 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 
 	settings := a.store.Settings()
 	a.jobs.SetConcurrency(settings.DownloadConcurrency)
+	startInterruptedDownloads(a.jobs)
+	a.startFolderWatch()
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	a.cleanupCancel = cleanupCancel
 	a.cleanupDone = startStartupCleanup(cleanupCtx, st, recovery.DefaultCleanupInterval, func(pass recovery.CleanupPass) {
@@ -242,7 +276,27 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 // window to exit. One deadline is shared by cleanup, workers, and manager
 // close; a stuck process cannot turn quit into an unbounded join.
 func (a *App) shutdown(ctx context.Context) {
+	a.stopFolderWatch()
 	a.stopDiagnosticUploader()
+	a.quitMu.Lock()
+	skipPause := a.quitSkipPause
+	a.quitMu.Unlock()
+	if skipPause {
+		if a.cleanupCancel != nil {
+			a.cleanupCancel()
+			a.cleanupCancel = nil
+		}
+		if err := a.closeStateV2(); err != nil {
+			logAppErrorf(ctx, "desktop: close State v2: %v", err)
+		}
+		if a.instanceLock != nil {
+			if err := a.instanceLock.Close(); err != nil {
+				logAppErrorf(ctx, "desktop: release instance lock: %v", err)
+			}
+			a.instanceLock = nil
+		}
+		return
+	}
 	shutdownCtx, cancel := a.shutdownContext(ctx)
 	defer cancel()
 	a.stopCleanup(shutdownCtx)
@@ -268,6 +322,12 @@ func (a *App) shutdown(ctx context.Context) {
 			logAppErrorf(ctx, "desktop: close State v2: %v", err)
 		}
 	}
+	if a.instanceLock != nil {
+		if err := a.instanceLock.Close(); err != nil {
+			logAppErrorf(ctx, "desktop: release instance lock: %v", err)
+		}
+		a.instanceLock = nil
+	}
 }
 
 func (a *App) closeStateV2() error {
@@ -278,6 +338,33 @@ func (a *App) closeStateV2() error {
 		return nil
 	}
 	return a.store.Close()
+}
+
+func (a *App) startFolderWatch() {
+	a.stopFolderWatch()
+	ctx, cancel := context.WithCancel(context.Background())
+	a.folderWatchCancel = cancel
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if a.jobs != nil {
+					continueMissingFolders(a.jobs)
+				}
+			}
+		}
+	}()
+}
+
+func (a *App) stopFolderWatch() {
+	if a.folderWatchCancel != nil {
+		a.folderWatchCancel()
+		a.folderWatchCancel = nil
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -812,6 +899,31 @@ func (a *App) DiscardActionRequiredQueueJob(id, token string) error {
 		return err
 	}
 	return a.jobs.QueueActionRequiredDiscard(id, token)
+}
+
+func (a *App) DiscardSavedQueueJob(id, token string) error {
+	if err := a.requireReady(); err != nil {
+		return err
+	}
+	return a.jobs.QueueDiscardSavedData(id, token)
+}
+
+func (a *App) ChangeQueueJobFolder(id, token string) error {
+	if err := a.requireReady(); err != nil {
+		return err
+	}
+	path, err := a.PickDownloadFolder()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	canonical, err := canonicalOutputRequestPath(path)
+	if err != nil {
+		return err
+	}
+	return a.jobs.QueueChangeFolder(id, token, canonical)
 }
 
 func (a *App) RetryQueueJobCleanup(id, token string) error {
@@ -1353,7 +1465,7 @@ func (a *App) requireReady() error {
 	if a.store == nil || a.jobs == nil || a.coordinator == nil || !a.startupStatusSnapshot().Healthy() {
 		return errRecoveryRequired
 	}
-	if status := a.store.Status(); status.Warning != "" {
+	if warning := a.store.Status().Warning; warning != "" && warning != store.WarningQueueReset {
 		return errRecoveryRequired
 	}
 	return nil
@@ -1540,6 +1652,20 @@ func (a *App) PauseDownloadsAndQuit() error {
 		wailsruntime.Quit(a.ctx)
 	}
 	return err
+}
+
+// QuitAndContinue leaves in-progress jobs durable as they are, the same as a
+// crash. Waiting and paused rows are untouched. PauseDownloadsAndQuit remains
+// the path that records paused intent first.
+func (a *App) QuitAndContinue() {
+	a.quitMu.Lock()
+	a.quitSkipPause = true
+	a.quitRequestOpen = false
+	a.quitPermit = true
+	a.quitMu.Unlock()
+	if a.ctx != nil {
+		wailsruntime.Quit(a.ctx)
+	}
 }
 
 // OpenDataFolder is safe in recovery-required mode and performs no State or

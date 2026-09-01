@@ -143,3 +143,64 @@ describe('Home analysis survives navigation', () => {
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
   });
 });
+
+describe('unreadable queue notice', () => {
+  beforeEach(() => {
+    route.set('home');
+    pendingUrl.set('');
+    pendingHomeFocus.set(false);
+    jobs.set([]);
+    history.set([]);
+    queueView.set(null);
+    persistence.set({ available: true, healthy: true });
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: '7.0', ffprobePath: '/usr/bin/ffprobe', message: '' });
+    settings.update((current) => ({
+      ...current,
+      downloadFolder: '/tmp/downloads',
+      automaticDiagnostics: 'enabled',
+      confirmBeforeDownload: false,
+    }));
+    installBindings();
+    const app = (window as any).go.main.App;
+    app.GetStartupStatus = vi.fn(async () => ({ mode: 'healthy', warning: 'queue-reset' }));
+    app.GetSettings = vi.fn(async () => ({
+      downloadFolder: '/tmp/downloads',
+      ffmpegPath: '',
+      windowWidth: 1180,
+      windowHeight: 760,
+      downloadConcurrency: 2,
+      perVideoSubfolder: true,
+      confirmBeforeDownload: false,
+      automaticDiagnostics: 'enabled',
+    }));
+    app.CopyDiagnostics = vi.fn(async () => 'ok');
+    app.OpenDataFolder = vi.fn(async () => {});
+  });
+
+  afterEach(() => {
+    route.set('home');
+    pendingUrl.set('');
+    pendingHomeFocus.set(false);
+  });
+
+  test('healthy startup with a reset queue shows a dismissible notice, not the recovery shell', async () => {
+    const user = userEvent.setup();
+    render(App);
+    expect(await screen.findByText('Your downloads are safe on disk. VidStow could not read its saved queue, so the Queue was reset!')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Download state needs recovery' })).not.toBeInTheDocument();
+
+    const copy = screen.getByRole('button', { name: 'Copy diagnostics' });
+    const folder = screen.getByRole('button', { name: 'Open data folder' });
+    const dismiss = screen.getByRole('button', { name: 'Dismiss' });
+    expect(copy).toHaveClass('ghost');
+    expect(copy).not.toHaveClass('quiet');
+    expect(copy.querySelector('svg')).toBeTruthy();
+    expect(folder).not.toHaveClass('ghost');
+    expect(folder.querySelector('svg')).toBeTruthy();
+    expect(dismiss).toHaveClass('ghost', 'quiet');
+    expect(dismiss.querySelector('svg')).toBeNull();
+
+    await user.click(dismiss);
+    expect(screen.queryByText(/Your downloads are safe on disk/)).not.toBeInTheDocument();
+  });
+});

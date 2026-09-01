@@ -297,12 +297,140 @@ func TestHealthyStartupReconcilesBeforeRestoringManager(t *testing.T) {
 	if len(sequence) != 4 || sequence[0] != "roots" || sequence[1] != "reconcile" || sequence[2] != "restore" || sequence[3] != "cleanup" {
 		t.Fatalf("startup order = %#v, want roots/reconcile/restore/cleanup", sequence)
 	}
+	app.stopFolderWatch()
 	app.stopCleanup(context.Background())
 	if err := app.jobs.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.store.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestQueueResetWarningStartsHealthy(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	openStateV2 = func(path string) (*store.V2Store, store.StartupStatus, error) {
+		st, status, err := store.OpenV2(path)
+		if err != nil || st == nil {
+			return st, status, err
+		}
+		status.Warning = store.WarningQueueReset
+		return st, status, err
+	}
+
+	app := NewApp()
+	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
+	status := app.GetStartupStatus()
+	if !status.Healthy() || status.Warning != store.WarningQueueReset {
+		t.Fatalf("startup = %#v; want healthy queue-reset", status)
+	}
+	if app.store == nil || app.jobs == nil {
+		t.Fatal("unreadable queue froze behind recovery")
+	}
+	app.stopFolderWatch()
+	app.stopCleanup(context.Background())
+	if err := app.jobs.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestQueueResetStartupStillAcceptsDiagnosticsConsent(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	path := filepath.Join(secureAppTempDir(t), "state.json")
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp()
+	app.startupAt(context.Background(), path)
+	defer func() {
+		app.stopFolderWatch()
+		app.stopCleanup(context.Background())
+		if app.jobs != nil {
+			_ = app.jobs.Close(context.Background())
+		}
+		if app.store != nil {
+			_ = app.store.Close()
+		}
+	}()
+	status := app.GetStartupStatus()
+	if !status.Healthy() || status.Warning != store.WarningQueueReset {
+		t.Fatalf("startup = %#v; want healthy queue-reset", status)
+	}
+	if err := app.requireReady(); err != nil {
+		t.Fatalf("queue-reset requireReady: %v", err)
+	}
+	if _, err := app.SetAutomaticDiagnostics("enabled"); err != nil {
+		t.Fatalf("Send diagnostics after queue-reset: %v", err)
+	}
+	if _, err := app.SetAutomaticDiagnostics("disabled"); err != nil {
+		t.Fatalf("Don’t send after queue-reset: %v", err)
+	}
+}
+
+func TestSecondStartupReportsAlreadyRunning(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	notified := false
+	notifyAlreadyRunning = func(context.Context) { notified = true }
+	acquireInstanceLock = store.AcquireInstanceLock
+
+	path := filepath.Join(secureAppTempDir(t), "state.json")
+	first := NewApp()
+	first.startupAt(context.Background(), path)
+	if status := first.GetStartupStatus(); !status.Healthy() {
+		t.Fatalf("first startup = %#v, want healthy", status)
+	}
+
+	second := NewApp()
+	second.startupAt(context.Background(), path)
+	if status := second.GetStartupStatus(); status.Reason != store.RecoveryAlreadyRunning {
+		t.Fatalf("second startup = %#v, want already-running", status)
+	}
+	if !notified {
+		t.Fatal("second launch did not tell the user VidStow is already running")
+	}
+	if second.store != nil || second.jobs != nil {
+		t.Fatal("second launch opened another queue")
+	}
+	first.shutdown(context.Background())
+}
+
+type recordingShutdown struct {
+	shutdowns int
+	closes    int
+}
+
+func (r *recordingShutdown) Shutdown(context.Context) error {
+	r.shutdowns++
+	return nil
+}
+
+func (r *recordingShutdown) Close(...context.Context) error {
+	r.closes++
+	return nil
+}
+
+func TestQuitAndContinueSkipsQueuePause(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	recorder := &recordingShutdown{}
+	state := &deadlineStateStore{}
+	app := NewApp()
+	app.shutdownManager = recorder
+	app.closeState = state.Close
+	app.quitSkipPause = true
+	app.shutdown(context.Background())
+	if recorder.shutdowns != 0 || recorder.closes != 0 {
+		t.Fatalf("continue-quit invoked manager shutdown/close = %d/%d", recorder.shutdowns, recorder.closes)
+	}
+	if closes, _, _ := state.snapshot(); closes != 1 {
+		t.Fatalf("State close calls = %d, want 1", closes)
 	}
 }
 
@@ -914,6 +1042,10 @@ func installAppTestSeams(t *testing.T) func() {
 	oldPrepare := prepareStartupStateRoots
 	oldReconcile := reconcileStartupState
 	oldRestore := restoreStartupManager
+	oldStartInterrupted := startInterruptedDownloads
+	oldContinueFolders := continueMissingFolders
+	oldAcquireLock := acquireInstanceLock
+	oldNotifyRunning := notifyAlreadyRunning
 	oldResolveDownloadPlan := resolveDownloadPlan
 	oldCleanup := startStartupCleanup
 	oldLog := logAppErrorf
@@ -927,12 +1059,22 @@ func installAppTestSeams(t *testing.T) func() {
 	oldBrowserOpen := browserOpenURL
 	logAppErrorf = func(context.Context, string, ...interface{}) {}
 	emitAppEvent = func(context.Context, string, ...interface{}) {}
+	notifyAlreadyRunning = func(context.Context) {}
+	acquireInstanceLock = func(string) (*store.InstanceGuard, error) {
+		return &store.InstanceGuard{}, nil
+	}
+	startInterruptedDownloads = func(*jobs.Manager) {}
+	continueMissingFolders = func(*jobs.Manager) {}
 	return func() {
 		openStateV2 = oldOpen
 		setAppSettings = oldSetAppSettings
 		prepareStartupStateRoots = oldPrepare
 		reconcileStartupState = oldReconcile
 		restoreStartupManager = oldRestore
+		startInterruptedDownloads = oldStartInterrupted
+		continueMissingFolders = oldContinueFolders
+		acquireInstanceLock = oldAcquireLock
+		notifyAlreadyRunning = oldNotifyRunning
 		resolveDownloadPlan = oldResolveDownloadPlan
 		startStartupCleanup = oldCleanup
 		logAppErrorf = oldLog

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/reservationfs"
@@ -912,4 +913,143 @@ func TestCommitOutcomeRevokesQueueAuthorityButStaleErrorsDoNot(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPausedLeftoverExposesDiscardAndRemovesSavedData(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "leftover-paused")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecyclePaused
+	store.state.Jobs[0].Desired = jobmodel.DesiredPaused
+	store.state.Jobs[0].LastErrorCode = "session-manifest-corrupt"
+	store.state.Jobs[0].LastFailureCommittedBytes = 843 * 1024 * 1024
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.prepareResumeDiscard = func(context.Context, engine.OutputRootRef, string) (*engine.ResumeDiscardHandle, error) {
+		return nil, errors.New("workspace unavailable")
+	}
+	view := manager.QueueView()
+	if len(view.Rows) != 1 || !view.Rows[0].Capabilities.Resume || !view.Rows[0].Capabilities.Discard {
+		t.Fatalf("leftover capabilities = %#v", view.Rows)
+	}
+	if view.Rows[0].SavedBytes != 843*1024*1024 {
+		t.Fatalf("savedBytes = %d; want 843 MiB", view.Rows[0].SavedBytes)
+	}
+	if err := manager.QueueDiscardSavedData("leftover-paused", view.Rows[0].CommandToken); err != nil {
+		t.Fatal(err)
+	}
+	canceled := waitForV2Job(t, store, "leftover-paused", jobmodel.LifecycleCanceled)
+	if canceled.SessionID == "" {
+		t.Fatal("discard dropped the session identity used for cleanup")
+	}
+}
+
+func TestMissingFolderFailedRowCanChangeFolderAndContinue(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "missing-folder")
+	root := setRealQueueTestRoot(t, store, t.TempDir())
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "output-root-unavailable"
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	view := manager.QueueView()
+	if len(view.Rows) != 1 || view.Rows[0].Failure == nil || view.Rows[0].Failure.Category != "folder_unavailable" || !view.Rows[0].Capabilities.ChangeFolder || !view.Rows[0].Capabilities.Retry {
+		t.Fatalf("missing-folder row = %#v", view.Rows)
+	}
+	manager.inspectResume = func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+		return engine.ResumeSummary{Classification: "unavailable_root"}, nil
+	}
+	started := make(chan struct{}, 1)
+	manager.runDownload = func(context.Context, engine.Request, engine.EventHandler) (engine.Result, error) {
+		started <- struct{}{}
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4")}, nil
+	}
+	if err := manager.QueueChangeFolder("missing-folder", view.Rows[0].CommandToken, root); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("change folder did not continue the download")
+	}
+	waitForV2Job(t, store, "missing-folder", jobmodel.LifecycleCompleted)
+}
+
+func TestContinueWhenFoldersReturnRetriesMissingFolder(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "folder-returned")
+	root := setRealQueueTestRoot(t, store, t.TempDir())
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "output-root-unavailable"
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.inspectResume = func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+		return engine.ResumeSummary{HasManifest: true, Classification: "available"}, nil
+	}
+	started := make(chan struct{}, 1)
+	manager.runDownload = func(context.Context, engine.Request, engine.EventHandler) (engine.Result, error) {
+		started <- struct{}{}
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4")}, nil
+	}
+	manager.ContinueWhenFoldersReturn()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("returned folder did not continue the download")
+	}
+	waitForV2Job(t, store, "folder-returned", jobmodel.LifecycleCompleted)
+}
+
+func TestChangeFolderContinuesReusableLeftover(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "change-reuse")
+	root := setRealQueueTestRoot(t, store, t.TempDir())
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "output-root-unavailable"
+	originalSession := store.state.Jobs[0].SessionID
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.inspectResume = func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+		return engine.ResumeSummary{HasManifest: true, Classification: "available"}, nil
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4")}, nil
+	}
+	view := manager.QueueView()
+	if err := manager.QueueChangeFolder("change-reuse", view.Rows[0].CommandToken, root); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if request.Filesystem.Resume.SessionID != originalSession {
+			t.Fatalf("session = %q; want leftover session %q", request.Filesystem.Resume.SessionID, originalSession)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("change folder did not continue leftover data")
+	}
+	waitForV2Job(t, store, "change-reuse", jobmodel.LifecycleCompleted)
 }

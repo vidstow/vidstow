@@ -26,6 +26,7 @@
   let quitOpen = false;
   let quitModel: QuitSummary = { activeDownloads: 0, waitingOrPausedDownloads: 0 };
   let recoveryModel: RecoveryRequiredViewModel = DEFAULT_RECOVERY_REQUIRED;
+  let queueResetNotice = false;
   let diagnosticChoiceOpen = false;
   let diagnosticChoiceSaving = false;
   let showFFmpegAfterDiagnosticChoice = false;
@@ -77,6 +78,9 @@
       history.set(savedHistory ?? []);
       ffmpeg.set(ffmpegStatus);
       persistence.set(persistenceStatus);
+      if (startupStatus.warning === 'queue-reset') {
+        queueResetNotice = true;
+      }
       if (!savedSettings.automaticDiagnostics) {
         diagnosticChoiceOpen = true;
         showFFmpegAfterDiagnosticChoice = !ffmpegStatus.available;
@@ -224,6 +228,15 @@
       modal.set({ kind: 'error', title: 'Could not pause downloads', message: errorMessage(err, 'Keep VidStow open and try again.') });
     }
   }
+
+  async function quitAndContinue() {
+    try {
+      await api.app.quitAndContinue();
+      quitOpen = false;
+    } catch (err) {
+      modal.set({ kind: 'error', title: 'Could not quit', message: errorMessage(err, 'Keep VidStow open and try again.') });
+    }
+  }
 </script>
 
 <svelte:window on:keydown={onWindowKeydown} on:dragover={acceptDrop} on:drop={handleDrop} on:error={reportFrontendFailure} on:unhandledrejection={reportFrontendFailure} />
@@ -251,6 +264,25 @@
 
     <main class="main">
       <div class="scroll">
+        {#if queueResetNotice}
+          <aside class="queue-reset-notice" role="status">
+            <span class="notice-icon" aria-hidden="true">!</span>
+            <div class="notice-body">
+              <p>Your downloads are safe on disk. VidStow could not read its saved queue, so the Queue was reset!</p>
+              <div class="queue-reset-actions">
+                <button type="button" class="btn sm ghost" onclick={copyRecoveryDiagnostics}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
+                  Copy diagnostics
+                </button>
+                <button type="button" class="btn sm" onclick={openRecoveryDataFolder}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>
+                  Open data folder
+                </button>
+                <button type="button" class="btn sm ghost quiet" onclick={() => (queueResetNotice = false)}>Dismiss</button>
+              </div>
+            </div>
+          </aside>
+        {/if}
         <!-- Analysis lives in Home. Destroying the page on Queue, Downloads, or Settings would throw it away. -->
         <div class="home-host" hidden={$route !== 'home'} inert={$route !== 'home'}>
           <Home on:goto={(e) => navigate(e.detail)} />
@@ -286,6 +318,7 @@
   onClose={keepWorking}
   onKeepWorking={keepWorking}
   onPauseAndQuit={pauseAndQuit}
+  onQuit={quitAndContinue}
 />
 
 <style>
@@ -335,6 +368,78 @@
     border-top-color: var(--accent-400);
     border-radius: 50%;
     animation: startup-spin 0.8s linear infinite;
+  }
+  .queue-reset-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    margin: var(--sp-4) var(--sp-5) 0;
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid rgba(176, 118, 7, 0.4);
+    border-radius: var(--r-md);
+    background: var(--status-warning-soft);
+  }
+  .notice-icon {
+    display: grid;
+    place-content: center;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin-top: 1px;
+    border: 1.5px solid var(--status-warning);
+    border-radius: 50%;
+    color: var(--status-warning);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .notice-body {
+    min-width: 0;
+    flex: 1;
+  }
+  .queue-reset-notice p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    line-height: 1.45;
+  }
+  .queue-reset-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: var(--sp-3);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .btn:hover:not(:disabled) { background: var(--surface-hover); }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+  .btn.quiet {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+  }
+  .btn.quiet:hover:not(:disabled) {
+    background: transparent;
+    color: var(--text-primary);
+  }
+  .queue-reset-actions .btn svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
   }
   @keyframes startup-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
