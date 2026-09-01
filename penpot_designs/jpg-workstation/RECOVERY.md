@@ -29,6 +29,27 @@ Safe resolution rules, in order:
 4. **Never block** on a question the app can answer safely later
    (missing drive, another instance, cleanup).
 
+## The delivery boundary
+
+VidStow is a courier, not a file manager. Responsibility for a file begins
+when the user hands it a URL and ends at the atomic rename that places the
+file in the destination folder. After that, the file is the user's.
+
+- The Downloads page is a **receipt log**, not an inventory: "delivered X to
+  Y on Z." It is never checked against the filesystem, corrected, or expired.
+- Reveal and Open are **best-effort conveniences** — they take you to where
+  *we put it*. If the file has since been moved, renamed, or deleted, they
+  say so plainly ("no longer at that path") with no diagnosis, retry, or
+  recovery concept attached.
+- **No post-delivery existence checks, ever.** No missing-file badges, no
+  verification, no re-association.
+- **Delivery is proven by the file's presence.** A crash between rename and
+  journal write resolves itself: the file exists at the destination → mark
+  delivered, write the receipt. Nothing to reconcile.
+- Everything recovery-related lives *inside* the window: staged data,
+  checkpoints, the journal's intent records, the orphan scan, discard
+  confirms, housekeeping. Outside it: the user's files are theirs.
+
 ## The eight bad days
 
 | # | Bad day | Stateless handling |
@@ -69,7 +90,7 @@ Safe resolution rules, in order:
 
 | Old action-required code | Automatic resolution |
 |--------------------------|----------------------|
-| publication / reconciliation family | Try no-replace re-publish → collision means already published → mark completed |
+| publication / reconciliation family | File present at destination → delivered, write receipt. Otherwise re-deliver; no-replace collision → unique-name suffix. No durable publication record. |
 | session-lease-contended | Single-instance makes this impossible; belt-and-braces: row waits and re-checks |
 | output-root-unavailable | Row waits for the volume; resumes on reconnect |
 | session-manifest-corrupt / version-unknown | Discard session, restart download automatically |
@@ -123,12 +144,26 @@ Safe resolution rules, in order:
 never asks the user to be its auditor, and every claim it makes is
 verifiable in Finder.
 
+## Explicit non-goals
+
+- **No post-delivery existence checks.** The app's responsibility ends at
+  the atomic rename; whether the file still exists, or where, is the
+  user's business.
+- Downloads is a receipt log, not a filesystem mirror. If the user deletes
+  a file, the row stays (like every browser).
+- **No auto-deletion, ever, of anything.** Space reclamation is always one
+  explicit confirm away.
+- **No cross-machine guarantees.** Copied data dirs get the
+  volume-identity fallthrough — a restart, not an investigation.
+
 ## Engine notes (what actually changes in code)
 
 - `ytdlp-go` session/lease/publication machinery stays as engine
   internals — it is correct and load-bearing for checkpoint resume. What
   changes is the **escalation policy in vidstow**: `actionRequiredReview`
-  and its capability gates are replaced by the auto-resolution table.
+  and its capability gates are replaced by the auto-resolution table, and
+  durable publication evidence is demoted to an engine implementation
+  detail — post-delivery, the file's presence is the only proof we consult.
 - `recovery.Reconcile` degrades from a UI-event producer to a silent
   classifier feeding the prompt and row states.
 - Add a single-instance lock at app start (Wails v3 single-instance or a
