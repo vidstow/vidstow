@@ -1225,19 +1225,19 @@
         const head = `<div class="drow grp" data-grp="${g.id}" tabindex="0" title="${open ? 'Hide episodes' : 'Show episodes'}">
           <span class="chev">${open ? '▾' : '▸'}</span><img src="${g.thumb}" alt="">
           <div><b>${g.title}</b><span>Playlist · ${g.items.length} episodes · ${g.fmt} · ${fmtSize(total)}</span></div>
-          <div class="dact"><button class="btn sm ghost" data-rev-grp="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Reveal</button><button class="btn sm ghost" data-open-grp="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M9.5 5H6.5A2.5 2.5 0 0 0 4 7.5v9A2.5 2.5 0 0 0 6.5 19h9a2.5 2.5 0 0 0 2.5-2.5v-3"/></svg>Open</button></div>
+          <div class="dact"><button class="btn sm ghost" data-rev-grp="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button><button class="btn sm ghost" data-open-grp="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button></div>
         </div>`;
         if (!open) return head;
         return head + g.items.map(d => `
           <div class="drow sub"><span class="epx">EP ${String(d.idx).padStart(2, '0')}</span><img src="${d.item.thumb}" alt="">
             <div><b>${d.item.title}</b><span>${d.item.dur} · ${fmtSize(d.sizeMB)}</span></div>
-            <div class="dact"><button class="btn sm ghost" data-rev="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Reveal</button><button class="btn sm ghost" data-open="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M9.5 5H6.5A2.5 2.5 0 0 0 4 7.5v9A2.5 2.5 0 0 0 6.5 19h9a2.5 2.5 0 0 0 2.5-2.5v-3"/></svg>Open</button></div>
+            <div class="dact"><button class="btn sm ghost" data-rev="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button><button class="btn sm ghost" data-open="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button></div>
           </div>`).join('');
       }).join('');
       html += items.map(d => `
         <div class="drow"><img src="${d.item.thumb}" alt="">
           <div><b>${d.item.title}</b><span>${d.fmt} · ${fmtSize(d.sizeMB)} · ${d.item.channel}</span></div>
-          <div class="dact"><button class="btn sm ghost" data-rev="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>Reveal</button><button class="btn sm ghost" data-open="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M9.5 5H6.5A2.5 2.5 0 0 0 4 7.5v9A2.5 2.5 0 0 0 6.5 19h9a2.5 2.5 0 0 0 2.5-2.5v-3"/></svg>Open</button></div>
+          <div class="dact"><button class="btn sm ghost" data-rev="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button><button class="btn sm ghost" data-open="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button></div>
         </div>`).join('');
     }
     $('#dlist').innerHTML = html || `<div class="dgroup">No downloads yet</div>`;
