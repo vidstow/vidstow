@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>VidStow — what chrome means, and what playlist-dock shipped</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Geist+Mono:wght@450;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #09090B; --sidebar: #0C0C0E; --base: #111113; --raised: #18181B;
+      --hover: #1F1F23; --border: #27272A; --text: #FAFAFA; --secondary: #A1A1AA;
+      --muted: #71717A; --accent: #3B82F6; --accent-2: #2563EB; --green: #22C55E;
+      --amber: #F59E0B; --red: #EF4444;
+      --sans: Geist, ui-sans-serif, system-ui, sans-serif;
+      --mono: "Geist Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 64px; overflow-x: clip; }
+    body {
+      margin: 0; background: #050506; color: var(--text);
+      font-family: var(--sans); font-size: 15px; line-height: 1.55;
+      -webkit-font-smoothing: antialiased; overflow-x: clip;
+    }
+    a { color: #93C5FD; }
+    .top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      min-height: 52px; padding: 8px 24px;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, #0C0C0E 90%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .mark {
+      width: 20px; height: 20px; display: grid; place-items: center;
+      border-radius: 6px; background: #1D4ED8;
+    }
+    .mark svg {
+      width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .top strong { font-size: 13px; font-weight: 600; }
+    .top nav { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .top nav a {
+      padding: 5px 8px; border-radius: 6px; color: var(--secondary);
+      text-decoration: none; font-size: 11.5px; font-weight: 500;
+    }
+    .top nav a:hover { color: var(--text); background: #18181B; }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 36px 0 80px; }
+    .lede h1 { margin: 0 0 14px; font-size: 28px; font-weight: 650; letter-spacing: -0.04em; }
+    .lede p { margin: 0 0 12px; max-width: 74ch; color: var(--secondary); }
+    .lede b, .why b, .keep b, .legend b, .callout b { color: var(--text); font-weight: 600; }
+    .lede code, .why code, .keep code {
+      font-family: var(--mono); font-size: 0.86em; color: #93C5FD;
+      background: #18181B; padding: 0.08em 0.38em; border-radius: 4px;
+    }
+    .key { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 22px; }
+    .key span {
+      display: inline-flex; align-items: center; gap: 8px;
+      height: 28px; padding: 0 12px; border-radius: 99px;
+      border: 1px solid var(--border); background: var(--raised);
+      color: var(--secondary); font-size: 12.5px; font-weight: 500;
+    }
+    .key i { width: 8px; height: 8px; border-radius: 99px; display: block; }
+    .key .now i { background: #F87171; }
+    .key .next i { background: #4ADE80; }
+    .key .keep i { background: #93C5FD; }
+    .ship { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 22px; padding: 0; list-style: none; max-width: 78ch; }
+    .ship li {
+      padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--raised); color: var(--text); font-size: 12.5px; font-weight: 500;
+    }
+    .lede-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
+    .callout { padding: 16px 18px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--raised); }
+    .callout h2 { margin: 0 0 10px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+    .callout p { margin: 0; max-width: none; font-size: 14.5px; line-height: 1.55; }
+    .callout p + p { margin-top: 10px; }
+    .callout.in { border-color: rgba(34, 197, 94, 0.35); background: rgba(34, 197, 94, 0.06); }
+    .callout.in h2 { color: #86EFAC; }
+    .callout.out { border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.06); }
+    .callout.out h2 { color: #FCA5A5; }
+    .toc { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 28px 0 48px; }
+    .toc a {
+      padding: 12px; border: 1px solid var(--border); border-radius: 10px;
+      background: var(--raised); color: var(--text); text-decoration: none;
+    }
+    .toc a:hover { border-color: #3F3F46; }
+    .toc b { display: block; font-size: 13px; }
+    .toc span { color: var(--muted); font-size: 11.5px; }
+    section.prop { margin-bottom: 72px; }
+    section.prop > h2 { margin: 0 0 10px; font-size: 20px; font-weight: 650; letter-spacing: -0.03em; }
+    .why { max-width: 74ch; margin: 0 0 22px; color: var(--secondary); font-size: 15px; }
+    .why p { margin: 0 0 12px; }
+    .why > p:last-child { margin-bottom: 0; }
+    .why .case {
+      margin-top: 14px; padding: 12px 14px 12px 16px;
+      border: 1px solid var(--border); border-left: 3px solid #3F3F46;
+      border-radius: 10px; background: var(--raised);
+    }
+    .why .case h3 { margin: 0 0 8px; font-size: 13.5px; font-weight: 650; letter-spacing: -0.02em; color: var(--text); }
+    .why .case p:last-child { margin-bottom: 0; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .col h3 { margin: 0 0 8px; font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+    .col.now h3 { color: #FCA5A5; }
+    .col.next h3 { color: #86EFAC; }
+    .col.keep h3 { color: #93C5FD; }
+    .stage { position: relative; min-width: 0; border: 1px solid var(--border); border-radius: 12px; background: #070708; overflow: hidden; }
+    .legend { margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .legend li {
+      display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; align-items: start;
+      list-style: none; color: var(--secondary); font-size: 13.5px; line-height: 1.5;
+    }
+    .n, .pin { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700; }
+    .now .n, .pin.bad { background: #B45309; }
+    .next .n, .pin.good { background: #15803D; }
+    .pin.frame { background: #1D4ED8; }
+    .pin { position: absolute; z-index: 5; pointer-events: none; }
+    .ring-hit, .ring-ok, .ring-frame { position: absolute; z-index: 4; pointer-events: none; border-radius: 8px; }
+    .ring-hit { border: 1.5px dashed rgba(245, 158, 11, 0.85); }
+    .ring-ok { border: 1.5px dashed rgba(34, 197, 94, 0.7); }
+    .ring-frame { border: 1.5px dashed rgba(59, 130, 246, 0.75); }
+    .mw {
+      width: 100%; min-width: 0; height: 390px;
+      display: grid; grid-template-rows: 26px 1fr 22px;
+      background: var(--bg); font-family: var(--sans); font-size: 11px;
+      user-select: none;
+    }
+    .mw.short { height: 300px; }
+    .tb { display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--border); background: var(--sidebar); }
+    .dots { display: flex; gap: 5px; }
+    .dots i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+    .dots i:nth-child(1) { background: #EF4444; }
+    .dots i:nth-child(2) { background: #F59E0B; }
+    .dots i:nth-child(3) { background: #22C55E; }
+    .crumb { color: var(--muted); font-size: 10px; }
+    .crumb b { color: var(--text); font-weight: 600; }
+    .body { display: grid; min-height: 0; }
+    .body.wide { grid-template-columns: 118px 1fr; }
+    .body.narrow { grid-template-columns: 86px 1fr; }
+    .sb { display: flex; flex-direction: column; gap: 2px; padding: 8px 6px; border-right: 1px solid var(--border); }
+    .sb.dark { background: #0C0C0E; }
+    .sb.lift { background: #18181B; }
+    .brand { display: flex; align-items: center; gap: 6px; margin: 0 4px 8px; font-weight: 650; font-size: 11px; }
+    .brand .v { width: 14px; height: 14px; display: grid; place-items: center; border-radius: 4px; background: #1D4ED8; }
+    .brand .v svg { width: 8px; height: 8px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .ni { position: relative; display: flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px 0 8px; border-radius: 6px; color: var(--secondary); font-size: 10px; }
+    .ni svg { width: 10px; height: 10px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .ni.on { background: #18181B; color: #fff; }
+    .ni.on.wash { background: rgba(59,130,246,0.16); }
+    .ni.on::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 1.5px; border-radius: 99px; background: var(--accent); }
+    .ni.well { background: #27272A; color: #fff; margin-top: auto; }
+    .ni .bdge { margin-left: auto; min-width: 14px; height: 14px; padding: 0 4px; display: grid; place-items: center; border-radius: 99px; background: #27272A; font-size: 8px; }
+    .ni .bdge.loud { background: var(--accent-2); color: #fff; }
+    .util { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+    .mn { position: relative; min-width: 0; overflow: hidden; }
+    .mn.pad32 { padding: 18px 22px; background: #09090B; }
+    .mn.pad16 { padding: 14px 12px; background: #121212; }
+    .st { display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-top: 1px solid var(--border); background: #0A0A0C; color: var(--muted); font-size: 9px; font-family: var(--mono); line-height: 1; }
+    .st .live { color: #60A5FA; }
+    .st .quiet { color: #52525B; }
+    .field { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 5px 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--base); color: var(--muted); }
+    .field .url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; }
+    .field .go { margin-left: auto; height: 18px; padding: 0 8px; border: 0; border-radius: 5px; background: var(--accent-2); color: #fff; font-size: 9px; font-weight: 600; white-space: nowrap; }
+    .hint { margin: 6px 0 10px; color: var(--muted); font-size: 8.5px; }
+    .hint u { color: #93C5FD; text-decoration: underline dotted; text-underline-offset: 2px; }
+    .dock2m { border: 1px solid var(--border); border-radius: 10px; background: var(--raised); padding: 10px; }
+    .drow2 { display: grid; grid-template-columns: 84px minmax(0,1fr) auto; gap: 10px; align-items: stretch; }
+    .th.md { width: 84px; height: 48px; border-radius: 4px; background: #152033; }
+    .dtop2 b { font-size: 11px; font-weight: 600; }
+    .dmeta2 { display: block; color: var(--secondary); font-size: 9px; margin-top: 2px; }
+    .modeseg { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; justify-self: end; }
+    .modeseg i { height: 15px; padding: 0 7px; font-size: 8px; color: var(--muted); background: var(--base); font-style: normal; display: grid; place-items: center; }
+    .modeseg i + i { border-left: 1px solid var(--border); }
+    .modeseg i.on { background: rgba(59,130,246,0.12); color: #93C5FD; }
+    .chips { display: flex; gap: 3px; margin-top: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .chip { height: 15px; padding: 0 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--base); color: var(--secondary); font-size: 8px; display: grid; place-items: center; }
+    .chip.on { border-color: rgba(59,130,246,0.55); background: rgba(59,130,246,0.12); color: #93C5FD; }
+    .dfoot { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--border); background: var(--base); margin: 10px -10px -10px; border-radius: 0 0 9px 9px; }
+    .dpath { min-width: 0; flex: 1; font-family: var(--mono); font-size: 8px; line-height: 18px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .b { height: 18px; padding: 0 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--raised); color: #E4E4E7; font-size: 8px; display: inline-grid; place-items: center; white-space: nowrap; flex-shrink: 0; }
+    .b.pri { border-color: var(--accent-2); background: var(--accent-2); color: #fff; }
+    .b.ghost { background: transparent; }
+    .notice { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border: 1px solid rgba(245,158,11,0.4); border-radius: 8px; background: rgba(245,158,11,0.08); margin-bottom: 10px; }
+    .bang { width: 16px; height: 16px; border-radius: 50%; background: #B45309; color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; flex-shrink: 0; }
+    .notice p { margin: 0; font-size: 9px; color: var(--secondary); }
+    .notice .acts { display: flex; gap: 4px; margin-top: 6px; }
+    .qrow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 7px; align-items: center; height: 28px; padding: 0 8px; border-radius: 6px; }
+    .qrow.fail { outline: 1px solid rgba(239,68,68,0.45); }
+    .qt { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qbar { display: block; height: 2px; margin-top: 3px; border-radius: 99px; background: #26262C; overflow: hidden; }
+    .qbar i { display: block; height: 100%; width: 42%; background: var(--accent); }
+    .qtail { font-family: var(--mono); font-size: 8px; color: var(--secondary); }
+    .tag { height: 12px; padding: 0 5px; border-radius: 4px; background: #27272A; color: var(--secondary); font-size: 7.5px; font-weight: 650; }
+    .keep { padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: var(--raised); color: var(--secondary); max-width: 78ch; }
+    .keep h2 { margin: 0 0 6px; color: var(--text); font-size: 16px; }
+    .keep p { margin: 0 0 12px; }
+    .keep ul { margin: 8px 0 0; padding-left: 18px; }
+    .keep li { margin: 0 0 6px; }
+    @media (max-width: 900px) { .pair, .toc, .lede-split { grid-template-columns: 1fr; } .top nav { display: none; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/></svg></span>
+    <strong>Playlist-dock · chrome vs the page</strong>
+    <nav>
+      <a href="p2.html">Open p2</a>
+      <a href="#frame">The frame</a>
+      <a href="#missing">The missing commit</a>
+      <a href="#home">Home already shipped</a>
+      <a href="#recovery">Recovery already copied</a>
+      <a href="#parked">Still parked</a>
+    </nav>
+  </header>
+
+  <div class="wrap">
+    <div class="lede">
+      <h1>Chrome is the frame around the page. It is not Home, Queue, or Recovery.</h1>
+      <p>
+        When I said the remaining playlist-dock work is <b>chrome</b>, I meant the last commit on that branch: <code>3b087126</code>. It does not add a playlist dock, a reset notice, or a new Queue. It changes the window around those pages: the left rail, the empty space next to it, the selected-row wash, the Settings well, and how loud the footer path is.
+      </p>
+      <p>
+        Downloads/Settings already sits on the Home-dock commit <code>44b44be7</code>, and it already has Recovery from <code>4efc5c11</code>. What it still has is the older frame: a <b>196px</b> rail and a <b>32px</b> gutter, on near-black zinc.
+      </p>
+      <div class="key" role="note">
+        <span class="keep"><i></i> Blue is the frame. That is chrome.</span>
+        <span class="now"><i></i> Orange is Downloads/Settings today.</span>
+        <span class="next"><i></i> Green is playlist-dock after the tighten.</span>
+      </div>
+      <ul class="ship">
+        <li>Already in Downloads/Settings: Home docks</li>
+        <li>Already in Downloads/Settings: Recovery continue-on-relaunch</li>
+        <li>Missing: 160px rail, 16px gutter, quieter zinc</li>
+        <li>Parked: window size, playlist search, 1080p counts</li>
+      </ul>
+      <div class="lede-split">
+        <article class="callout in">
+          <h2>Already in the Downloads/Settings tree</h2>
+          <p>Paste decides. Playlist duration and channel. Analysis stays when you leave Home. <b>Change</b> left of the path. Horizontal resolution chips. <b>Download 43 videos</b>. Crash and Quit continue the active job.</p>
+        </article>
+        <article class="callout out">
+          <h2>Not in that tree yet</h2>
+          <p>The narrower rail, the closer gutter, Home’s blue wash, Settings sitting in a gray well, and a quieter <b>Path</b> in the footer. That is all <code>3b087126</code>.</p>
+        </article>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <a href="#frame"><b>The window has a frame and a page.</b><span>Sidebar, gutter, and Path are chrome. The dock is the page.</span></a>
+      <a href="#missing"><b>The missing commit only tightens that frame.</b><span>196px becomes 160px. 32px padding becomes 16px.</span></a>
+      <a href="#home"><b>Home docks already shipped in both trees.</b><span>Do not rebuild the playlist card to get chrome.</span></a>
+      <a href="#recovery"><b>Recovery is already copied.</b><span>The active job continues. The notice has no Rescan.</span></a>
+    </nav>
+
+    <section class="prop" id="frame">
+      <h2>The window has a frame and a page.</h2>
+      <div class="why">
+        <p>
+          Chrome is the stuff that is still there when you switch from <b>Home</b> to <b>Queue</b>. The native title bar. The left rail. The padding between that rail and the first control. The footer that shows the save folder and <b>Idle</b>.
+        </p>
+        <p>
+          The playlist card, <b>Analyze</b>, <b>Download 43 videos</b>, and the reset notice are not chrome. They live in the working pane. That is why a chrome commit can leave Home alone.
+        </p>
+      </div>
+      <div class="stage" style="max-width: 720px;">
+        <div class="mw">
+          <div class="tb"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="crumb"><b>VidStow</b></span></div>
+          <div class="body wide">
+            <aside class="sb dark">
+              <div class="brand"><span class="v"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/></svg></span>VidStow</div>
+              <div class="ni on"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20H3Z"/></svg>Home</div>
+              <div class="ni"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="bdge loud">1</span></div>
+              <div class="ni"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4Z"/></svg>Downloads</div>
+              <div class="util"><div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2"/></svg>Settings</div></div>
+            </aside>
+            <div class="mn pad32">
+              <div class="field"><span class="url">Paste a YouTube URL</span><span class="go">Analyze</span></div>
+              <p class="hint">The paste decides. Try: <u>a video</u> · <u>a playlist</u> · <u>several links</u></p>
+              <div class="dock2m">
+                <div class="drow2">
+                  <div class="th md"></div>
+                  <div>
+                    <div class="dtop2"><b>Costa Rica in 4K</b></div>
+                    <span class="dmeta2">14:22 · Nature Walks</span>
+                  </div>
+                  <div>
+                    <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                    <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span></div>
+                  </div>
+                </div>
+                <div class="dfoot"><span class="b ghost">Change</span><span class="dpath">/Users/tejas/Movies</span><span class="b pri">Download</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="st"><span>Path · /Users/tejas/Movies</span><span class="live">2.6 MB/s · 1/2 slots</span></div>
+        </div>
+        <span class="pin frame" style="left: 18px; top: 118px;">1</span>
+        <span class="ring-frame" style="left: 10px; top: 40px; width: 118px; height: 300px;"></span>
+        <span class="pin frame" style="left: 132px; top: 86px;">2</span>
+        <span class="ring-frame" style="left: 128px; top: 40px; width: 22px; height: 300px;"></span>
+        <span class="pin bad" style="left: 210px; top: 168px;">3</span>
+        <span class="ring-hit" style="left: 156px; top: 118px; width: 68%; height: 168px;"></span>
+        <span class="pin frame" style="left: 18px; top: 352px;">4</span>
+      </div>
+      <ol class="legend">
+        <li><span class="n" style="background:#1D4ED8;">1</span><span>The <b>rail</b>. Home, Queue, Downloads, Settings. This is chrome. Width is the main fight: 196px today, 160px in the missing commit.</span></li>
+        <li><span class="n" style="background:#1D4ED8;">2</span><span>The <b>gutter</b>. Empty space between the rail and <b>Paste a YouTube URL</b>. You asked to shrink this. That is also chrome.</span></li>
+        <li><span class="n">3</span><span>The <b>page</b>. Field, dock, <b>Change</b>, <b>Download</b>. Already shipped. Not in the chrome commit.</span></li>
+        <li><span class="n" style="background:#1D4ED8;">4</span><span>The <b>status bar</b>. Path on the left, speed and slots on the right. Chrome. The missing commit only recedes the path color.</span></li>
+      </ol>
+    </section>
+
+    <section class="prop" id="missing">
+      <h2>The missing commit only tightens that frame.</h2>
+      <div class="why">
+        <p>
+          Playlist-dock’s last commit is <code>3b087126</code>. Five files: <b>global.css</b>, <b>Sidebar.svelte</b>, <b>StatusBar.svelte</b>, the chrome tests, and <b>PRODUCT.md</b>. No Home.svelte.
+        </p>
+        <p>
+          You asked for less space between the field and the rail, a narrower menu, a slightly lifted zinc, Home selected as a soft wash, and Settings in a gray well. That is the whole delta.
+        </p>
+        <div class="case">
+          <h3>What you actually click does not move.</h3>
+          <p><b>Analyze</b> still analyzes. <b>Download 43 videos</b> still admits. Queue still continues after Quit. The change is how close those controls sit to the rail, and how loud the frame is.</p>
+        </div>
+      </div>
+      <div class="pair">
+        <div class="col now">
+          <h3>Downloads/Settings today</h3>
+          <div class="stage">
+            <div class="mw">
+              <div class="tb"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="crumb"><b>VidStow</b></span></div>
+              <div class="body wide">
+                <aside class="sb dark">
+                  <div class="brand"><span class="v"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/></svg></span>VidStow</div>
+                  <div class="ni on"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20H3Z"/></svg>Home</div>
+                  <div class="ni"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="bdge loud">1</span></div>
+                  <div class="ni"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4Z"/></svg>Downloads</div>
+                  <div class="util"><div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2"/></svg>Settings</div></div>
+                </aside>
+                <div class="mn pad32">
+                  <div class="field"><span class="url">Paste a YouTube URL</span><span class="go">Analyze</span></div>
+                  <p class="hint">The paste decides.</p>
+                </div>
+              </div>
+              <div class="st"><span>Path · /Users/tejas/Movies</span><span class="live">Idle</span></div>
+            </div>
+            <span class="pin bad" style="left: 8px; top: 48px;">1</span>
+            <span class="ring-hit" style="left: 8px; top: 36px; width: 118px; height: 300px;"></span>
+            <span class="pin bad" style="left: 128px; top: 92px;">2</span>
+            <span class="ring-hit" style="left: 126px; top: 40px; width: 28px; height: 280px;"></span>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span><b>196px</b> rail, darker than the pane, Home selected as a raised zinc row.</span></li>
+            <li><span class="n">2</span><span><b>32px</b> page padding. That is the gap you pointed at between the field and the menu.</span></li>
+            <li><span class="n">3</span><span>Canvas <code>#09090B</code>. Path in the footer uses secondary gray, so it competes with the pane.</span></li>
+          </ol>
+        </div>
+        <div class="col next">
+          <h3>Playlist-dock after 3b087126</h3>
+          <div class="stage">
+            <div class="mw">
+              <div class="tb"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="crumb"><b>VidStow</b></span></div>
+              <div class="body narrow">
+                <aside class="sb lift">
+                  <div class="brand"><span class="v"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/></svg></span>VidStow</div>
+                  <div class="ni on wash"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20H3Z"/></svg>Home</div>
+                  <div class="ni"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="bdge loud">1</span></div>
+                  <div class="ni"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4Z"/></svg>Downloads</div>
+                  <div class="util"><div class="ni well"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v2M12 19v2"/></svg>Settings</div></div>
+                </aside>
+                <div class="mn pad16">
+                  <div class="field"><span class="url">Paste a YouTube URL</span><span class="go">Analyze</span></div>
+                  <p class="hint">The paste decides.</p>
+                </div>
+              </div>
+              <div class="st"><span class="quiet">Path · /Users/tejas/Movies</span><span class="live">Idle</span></div>
+            </div>
+            <span class="pin good" style="left: 8px; top: 48px;">1</span>
+            <span class="ring-ok" style="left: 8px; top: 36px; width: 86px; height: 300px;"></span>
+            <span class="pin good" style="left: 96px; top: 92px;">2</span>
+            <span class="ring-ok" style="left: 94px; top: 40px; width: 18px; height: 280px;"></span>
+          </div>
+          <ol class="legend">
+            <li><span class="n">1</span><span><b>160px</b> rail, slightly raised. Home selected is a blue wash. Settings sits in a gray well.</span></li>
+            <li><span class="n">2</span><span><b>16px</b> gutter. The field starts closer to the menu, which is what you asked for at 10:46pm.</span></li>
+            <li><span class="n">3</span><span>Canvas <code>#121212</code>. Path uses muted gray so the working pane stays denser.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="home">
+      <h2>Home docks already shipped in both trees.</h2>
+      <div class="why">
+        <p>
+          That work is <code>44b44be7</code>. Downloads/Settings was branched from it. Copying playlist-dock again would not invent this card. It is already the page inside the older frame.
+        </p>
+      </div>
+      <div class="pair">
+        <div class="col keep">
+          <h3>Already in both apps</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="crumb"><b>VidStow</b></span></div>
+              <div class="body wide">
+                <aside class="sb dark">
+                  <div class="brand"><span class="v"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/></svg></span>VidStow</div>
+                  <div class="ni on"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20H3Z"/></svg>Home</div>
+                  <div class="ni">Queue</div>
+                </aside>
+                <div class="mn pad32">
+                  <div class="dock2m">
+                    <div class="drow2">
+                      <div class="th md"></div>
+                      <div>
+                        <div class="dtop2"><b>Concurrency in Go</b> <span class="tag">Playlist</span></div>
+                        <span class="dmeta2">24 videos · 6h 45m · TechCraft</span>
+                      </div>
+                      <div>
+                        <div class="modeseg"><i class="on">Video</i><i>Audio</i></div>
+                        <div class="chips"><span class="chip on">1080p</span><span class="chip">720p</span><span class="chip">480p</span></div>
+                      </div>
+                    </div>
+                    <div class="dfoot"><span class="b ghost">Change</span><span class="dpath">/Users/tejas/Movies/Concurrency</span><span class="b pri">Download 24 videos</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>Path · /Users/tejas/Movies</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n" style="background:#1D4ED8;">1</span><span><b>Change</b> left of the folder. Video/Audio on the right. Chips wrap horizontally.</span></li>
+            <li><span class="n" style="background:#1D4ED8;">2</span><span>Playlist line is count, duration, channel. Not 1080p coverage, not 8.5 GB.</span></li>
+            <li><span class="n" style="background:#1D4ED8;">3</span><span>Footer is one row: folder plus <b>Download 24 videos</b>. A single video says <b>Download</b>.</span></li>
+          </ol>
+        </div>
+        <div class="col keep">
+          <h3>Decided in that chat, already coded</h3>
+          <div class="why" style="margin:0;">
+            <div class="case">
+              <h3>Paste decides. No Batch toggle.</h3>
+              <p>One field. A playlist URL opens the playlist dock. A video-in-playlist URL can switch to the playlist and back. There is no <b>Video in a playlist</b> option on empty Home.</p>
+            </div>
+            <div class="case">
+              <h3>Analysis survives a trip to Queue.</h3>
+              <p>Home is hidden, not destroyed. Coming back still shows the dock.</p>
+            </div>
+            <div class="case">
+              <h3>All and None rewrite the range field.</h3>
+              <p>Range stayed. Search in the playlist list was dropped from p2 that day. You said you would come back to search.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="recovery">
+      <h2>Recovery is already copied.</h2>
+      <div class="why">
+        <p>
+          That is <code>4efc5c11</code>. It is in the Downloads/Settings tree. Native check: Quit while Costa Rica was downloading, and kill mid-download. Both reopened with that job already running. Confirm did not appear.
+        </p>
+        <p>
+          <b>Rescan download folders</b> is in the spec note. It is not in the commit. The notice is <b>Copy diagnostics</b>, <b>Open data folder</b>, <b>Dismiss</b>.
+        </p>
+      </div>
+      <div class="pair">
+        <div class="col keep">
+          <h3>Queue after a missing folder</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="crumb"><b>VidStow</b></span></div>
+              <div class="body wide">
+                <aside class="sb dark">
+                  <div class="brand"><span class="v"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/></svg></span>VidStow</div>
+                  <div class="ni"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5V20H3Z"/></svg>Home</div>
+                  <div class="ni on"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Queue<span class="bdge loud">1</span></div>
+                </aside>
+                <div class="mn pad32">
+                  <div class="qrow fail">
+                    <div class="th md" style="width:34px;height:20px;"></div>
+                    <div><div class="qt">Concurrency in Go — EP 5</div><span class="qtail" style="color:#FCA5A5;">Save folder is missing</span></div>
+                    <span class="b ghost">Change</span>
+                  </div>
+                </div>
+              </div>
+              <div class="st"><span>Path · /Volumes/Sandisk</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n" style="background:#1D4ED8;">1</span><span>Failed row, not an amber wait, not Action required. Same path coming back continues by itself.</span></li>
+          </ol>
+        </div>
+        <div class="col keep">
+          <h3>Unreadable saved queue</h3>
+          <div class="stage">
+            <div class="mw short">
+              <div class="tb"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="crumb"><b>VidStow</b></span></div>
+              <div class="body wide">
+                <aside class="sb dark">
+                  <div class="brand"><span class="v"><svg viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/></svg></span>VidStow</div>
+                  <div class="ni on">Home</div>
+                </aside>
+                <div class="mn pad32">
+                  <div class="notice">
+                    <span class="bang">!</span>
+                    <div>
+                      <p>Your downloads are safe on disk. VidStow could not read its saved queue, so the Queue was reset.</p>
+                      <div class="acts"><span class="b ghost">Copy diagnostics</span><span class="b">Open data folder</span><span class="b ghost">Dismiss</span></div>
+                    </div>
+                  </div>
+                  <div class="field"><span class="url">Paste a YouTube URL</span><span class="go">Analyze</span></div>
+                </div>
+              </div>
+              <div class="st"><span>Path · /Users/tejas/Movies</span><span>Idle</span></div>
+            </div>
+          </div>
+          <ol class="legend">
+            <li><span class="n" style="background:#1D4ED8;">1</span><span>Healthy start. Queue emptied. Files on disk stay. No full-screen Recovery halt for this case.</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="prop" id="parked">
+      <h2>A few things from that chat were never committed.</h2>
+      <div class="keep">
+        <h2>Still parked</h2>
+        <p>These were discussed in the playlist-dock chat and left on purpose. They are not hiding inside the chrome commit.</p>
+        <ul>
+          <li><b>Default window size.</b> You asked twice. They talked. No new default shipped.</li>
+          <li><b>Playlist search.</b> Range stayed. Search was dropped from p2 that day.</li>
+          <li><b>1080p coverage and full playlist size.</b> Engine can do more later. Duration and channel only, for now.</li>
+          <li><b>Download button icon.</b> Sketches only.</li>
+          <li><b>Rescan</b> on the reset notice. Spec only.</li>
+          <li>p2’s unfinished-downloads card, and the amber wait-for-drive row. You rejected both.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

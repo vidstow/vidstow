@@ -193,10 +193,11 @@
     .dpolhint { font-size: 10.5px; color: var(--muted); margin-top: 4px; }
     .dtop { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .dtop b { font-size: 15px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .modeseg { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex-shrink: 0; }
-    .modeseg button { height: 24px; padding: 0 11px; font-size: 11.5px; color: var(--muted); background: var(--base); }
-    .modeseg button + button { border-left: 1px solid var(--border); }
-    .modeseg button.on { background: var(--accent-soft); color: #93C5FD; }
+    .modeseg { display: flex; flex-shrink: 0; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--base); }
+    .modeseg button { height: 20px; padding: 0 9px; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 500; }
+    .modeseg button + button { border-left: 0; }
+    .modeseg button.on { background: var(--raised); color: var(--text); }
+    .modeseg button:hover:not(.on) { color: var(--secondary); }
     .dmain2 .dmeta { display: block; color: var(--secondary); font-size: 12px; margin-top: 3px; }
     .seg.rec::after { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 99px; background: var(--accent-2); margin-left: 5px; vertical-align: 1px; }
     .ddisc { display: flex; align-items: baseline; gap: 10px; margin: auto -8px 0; border: 0; background: none; padding: 5px 8px; border-radius: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); width: 100%; text-align: left; flex-wrap: wrap; row-gap: 2px; }
@@ -326,6 +327,18 @@
     .orphan .oact { display: flex; gap: 6px; align-items: center; }
     .orphan .oact .btn.sm { height: 24px; padding: 0 8px; font-size: 11px; }
     .orphan .oconfirm { font-family: var(--mono); font-size: 10.5px; color: var(--amber); }
+    .subpanel { border-top: 1px dashed var(--border); margin: 12px 0 0; padding: 10px 2px 12px; display: flex; flex-direction: column; gap: 9px; }
+    .sprow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .splab { font-family: var(--mono); font-size: 10px; color: var(--muted); width: 72px; flex-shrink: 0; letter-spacing: 0.05em; }
+    .segs.sm { gap: 4px; }
+    .segs.sm .seg { height: 22px; padding: 0 9px; font-size: 11px; }
+    .ckgrp { display: flex; gap: 16px; flex-wrap: wrap; }
+    .ck { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--secondary); cursor: pointer; }
+    .ck i { width: 13px; height: 13px; border: 1px solid var(--border-strong); border-radius: 4px; display: inline-grid; place-items: center; font-size: 9px; font-style: normal; }
+    .ck.on { color: var(--text); }
+    .ck.on i { background: var(--accent-soft); border-color: rgba(59,130,246,0.55); color: #93C5FD; }
+    .ck.on i::after { content: '✓'; }
+    .spnote { font-family: var(--mono); font-size: 10.5px; color: var(--amber); }
     .orphan .btn:has(> svg) { display: inline-flex; align-items: center; gap: 5px; }
     .orphan .btn:has(> svg) svg { width: 12px; height: 12px; flex-shrink: 0; }
     .odim { opacity: 0.55; }
@@ -692,7 +705,17 @@
         const mode = p.mode || 'video';
         const list = mode === 'audio' ? p.audioPlans : p.plans;
         const sel = list.find(x => x.label === p.sel) || list.find(x => x.rec) || list[0];
-        const size = sel.sizeMB >= 1000 ? (sel.sizeMB / 1000).toFixed(1) + ' GB' : sel.sizeMB + ' MB';
+        const o = p.out || { subs: 'off', lang: 'English' };
+        const subOn = mode === 'video' && o.subs !== 'off';
+        const langLabel = o.lang === 'auto' ? 'English · auto' : o.lang;
+        let odetail = sel.detail;
+        let oMB = sel.sizeMB;
+        if (subOn) {
+          odetail += ` · subs ${langLabel}${o.subs === 'sidecar' ? ' sidecar' : ''}`;
+          oMB += o.subs === 'embedded' ? 2 : 0.1;
+          if (o.subs === 'embedded' && o.lang === 'auto' && odetail.startsWith('MP4')) odetail = 'MKV' + odetail.slice(3);
+        }
+        const size = oMB >= 1000 ? (oMB / 1000).toFixed(1) + ' GB' : (subOn ? Math.round(oMB) : oMB) + ' MB';
         const cav = /MP3/.test(sel.label) ? ' · requires FFmpeg' : '';
         slot.innerHTML = `
           <div class="dock2">
@@ -702,13 +725,15 @@
                 <div class="dtop"><b>${p.item.title}</b></div>
                 <span class="dmeta">${p.item.channel} · ${p.item.dur}</span>
                 ${p.origin ? `<button class="swapline" data-act="swap">Part of playlist: <b>Concurrency in Go · ${PLAYLIST_EPS.length} videos</b> <span class="arr">→</span></button>` : ''}
-                <div class="doutcome"><span>${sel.detail}</span><span class="dcost">${size}</span></div>
+                <div class="doutcome"><span>${odetail}</span><span class="dcost">${size}</span></div>
+                ${mode === 'video' ? `<button class="ddisc has" data-act="subs" aria-expanded="${!!o.open}"><span class="chev">${o.open ? '▾' : '▸'}</span><span class="dlnk">Subtitles & details</span>${subOn ? `<span class="cov">${o.subs === 'embedded' ? 'embedded' : 'sidecar'} · ${langLabel}</span>` : ''}</button>` : ''}
               </div>
               <div class="dchoice">
                 <div class="modeseg"><button class="${mode === 'video' ? 'on' : ''}" data-mode="video">Video</button><button class="${mode === 'audio' ? 'on' : ''}" data-mode="audio">Audio</button></div>
                 <div class="segs">${list.map(pl => `<button class="seg ${pl.label === sel.label ? 'on' : ''}${pl.rec ? ' rec' : ''}" data-plan="${pl.label}" title="${pl.rec ? 'Recommended' : ''}">${pl.label}</button>`).join('')}</div>
               </div>
             </div>
+            ${mode === 'video' && o.open ? subsPanel(o, sel) : ''}
             <div class="dfoot">${footFolder('')}<button class="btn pri" data-act="add">Add to Queue</button></div>
           </div>`;
       } else if (p.type === 'playlist') {
@@ -805,6 +830,25 @@
       }).join('')}</div>
     </div>`;
   }
+  function subsPanel(o, sel) {
+    const langs = [{ v: 'English', t: 'English' }, { v: 'Spanish', t: 'Spanish' }, { v: 'auto', t: 'English · auto' }];
+    if (!langs.some(l => l.v === o.lang)) o.lang = 'English';
+    const mkv = o.subs === 'embedded' && o.lang === 'auto' && sel.detail.startsWith('MP4');
+    return `<div class="subpanel">
+      <div class="sprow"><span class="splab">SUBTITLES</span>
+        <div class="modeseg"><button class="${o.subs === 'off' ? 'on' : ''}" data-sub="off">Off</button><button class="${o.subs === 'sidecar' ? 'on' : ''}" data-sub="sidecar">Sidecar .srt</button><button class="${o.subs === 'embedded' ? 'on' : ''}" data-sub="embedded">Embedded</button></div>
+        <div class="segs sm">${langs.map(l => `<button class="seg ${o.lang === l.v ? 'on' : ''}" data-lang="${l.v}">${l.t}</button>`).join('')}</div>
+      </div>
+      <div class="sprow"><span class="splab">DETAILS</span>
+        <div class="ckgrp">
+          <span class="ck ${o.art ? 'on' : ''}" data-ck="art"><i></i>Thumbnail artwork</span>
+          <span class="ck ${o.chapters ? 'on' : ''}" data-ck="chapters"><i></i>Chapter markers</span>
+          <span class="ck ${o.meta ? 'on' : ''}" data-ck="meta"><i></i>Title & channel metadata</span>
+        </div>
+      </div>
+      ${mkv ? `<div class="spnote">Container becomes MKV — auto-caption tracks cannot embed in MP4.</div>` : ''}
+    </div>`;
+  }
   function onSlotClick(e) {
     if (state.folderOpen && !e.target.closest('.fpop') && !e.target.closest('[data-act="folder"]')) { state.folderOpen = false; renderSlot(); }
     const crum = e.target.closest('[data-crum]');
@@ -832,9 +876,16 @@
     if (plan && state.payload && state.payload.type === 'video') { state.payload.sel = plan.dataset.plan; renderSlot(); return; }
     const seg = e.target.closest('.seg[data-fmt]');
     if (seg && state.payload) { state.payload.fmt = seg.dataset.fmt; renderSlot(); return; }
+    const sb = e.target.closest('[data-sub]');
+    if (sb && state.payload && state.payload.out) { state.payload.out.subs = sb.dataset.sub; renderSlot(); return; }
+    const lg = e.target.closest('[data-lang]');
+    if (lg && state.payload && state.payload.out) { state.payload.out.lang = lg.dataset.lang; renderSlot(); return; }
+    const ck = e.target.closest('[data-ck]');
+    if (ck && state.payload && state.payload.out) { state.payload.out[ck.dataset.ck] = !state.payload.out[ck.dataset.ck]; renderSlot(); return; }
     const act = e.target.closest('[data-act]');
     if (act) {
       if (act.dataset.act === 'add') commitAdd();
+      if (act.dataset.act === 'subs') { state.payload.out.open = !state.payload.out.open; renderSlot(); }
       if (act.dataset.act === 'review') { state.payload.reviewOpen = !state.payload.reviewOpen; renderSlot(); }
       if (act.dataset.act === 'details') { state.payload.detailsOpen = !state.payload.detailsOpen; renderSlot(); }
       if (act.dataset.act === 'folder') {
@@ -867,7 +918,7 @@
     const it = item || state.scopeItem;
     const org = origin || it;
     state.payload = kind === 'video'
-      ? { type: 'video', item: it, plans: plansFor(it), audioPlans: audioPlans(it), mode: 'video', sel: null, detailsOpen: false, origin: org }
+      ? { type: 'video', item: it, plans: plansFor(it), audioPlans: audioPlans(it), mode: 'video', sel: null, detailsOpen: false, origin: org, out: { ...OUT, open: false } }
       : { type: 'playlist', mode: 'video', fmt: '1080p', detailsOpen: false, sel: new Set(PLAYLIST_EPS.map((_, i) => i)), origin: org };
     state.homePhase = 'result'; renderSlot();
   }
@@ -910,7 +961,7 @@
         state.payload = { type: 'batch', items, mode: 'video', fmt: '1080p', reviewOpen: false };
       } else {
         const item = pickItem(v);
-        state.payload = { type: 'video', item, plans: plansFor(item), audioPlans: audioPlans(item), mode: 'video', sel: null, detailsOpen: false };
+        state.payload = { type: 'video', item, plans: plansFor(item), audioPlans: audioPlans(item), mode: 'video', sel: null, detailsOpen: false, out: { ...OUT, open: false } };
       }
       state.homePhase = state.payload.type === 'error' ? 'error' : state.payload.type === 'scope' ? 'scope' : 'result'; renderSlot();
     }, 1200 + Math.random() * 800);
@@ -1254,6 +1305,7 @@
   /* ---------- SETTINGS (merged with About) ---------- */
   const sEl = $('#scr-settings');
   const settings = { subfolder: true, confirm: false, concurrency: 2 };
+  const OUT = { subs: 'off', lang: 'English', art: true, chapters: true, meta: true };
   function renderSettings() {
     sEl.innerHTML = `<div class="spage"><div class="scol">
       <h1>Settings</h1>
@@ -1267,6 +1319,16 @@
         <div class="srow"><div class="scopy"><strong>Concurrent downloads</strong><span>How many jobs transfer at once.</span></div>
           <div class="sact"><button class="btn sm ghost" data-set="dec">−</button><b>${settings.concurrency}</b><button class="btn sm ghost" data-set="inc">+</button></div></div>
         ${settings.concurrency > 4 ? `<p class="swarn">More than 4 concurrent downloads may trigger YouTube rate limits (HTTP 429).</p>` : ''}
+      </div>
+      <div class="sgroup"><h2>Output defaults</h2>
+        <div class="srow"><div class="scopy"><strong>Subtitles</strong><span>Off keeps finished files plain — no subtitle track. Change it per download from its card.</span></div>
+          <div class="sact"><div class="modeseg"><button class="${OUT.subs === 'off' ? 'on' : ''}" data-out="subs:off">Off</button><button class="${OUT.subs === 'sidecar' ? 'on' : ''}" data-out="subs:sidecar">Sidecar</button><button class="${OUT.subs === 'embedded' ? 'on' : ''}" data-out="subs:embedded">Embedded</button></div></div></div>
+        <div class="srow"><div class="scopy"><strong>Thumbnail artwork</strong><span>Embeds the video thumbnail so players and Finder show the right picture.</span></div>
+          <div class="sact"><button class="toggle ${OUT.art ? 'on' : ''}" data-out="art">${OUT.art ? 'On' : 'Off'}</button></div></div>
+        <div class="srow"><div class="scopy"><strong>Chapter markers</strong><span>Keeps chapters in the finished file where the video has them.</span></div>
+          <div class="sact"><button class="toggle ${OUT.chapters ? 'on' : ''}" data-out="chapters">${OUT.chapters ? 'On' : 'Off'}</button></div></div>
+        <div class="srow"><div class="scopy"><strong>Title & channel metadata</strong><span>Writes the video title and channel into the file.</span></div>
+          <div class="sact"><button class="toggle ${OUT.meta ? 'on' : ''}" data-out="meta">${OUT.meta ? 'On' : 'Off'}</button></div></div>
       </div>
       <div class="sgroup"><h2>Engine</h2>
         <div class="srow"><div class="scopy"><strong>FFmpeg</strong><span>Version 7.1 · ready for merging and MP3 conversion.</span></div>
@@ -1290,6 +1352,13 @@
     </div></div>`;
   }
   sEl.addEventListener('click', e => {
+    const ot = e.target.closest('[data-out]');
+    if (ot) {
+      const [k, v] = ot.dataset.out.split(':');
+      OUT[k] = v || !OUT[k];
+      renderSettings();
+      return;
+    }
     const t = e.target.closest('[data-set]');
     if (!t) return;
     const k = t.dataset.set;
