@@ -6,16 +6,16 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
 test('design tokens match the zinc shell contract', async () => {
   const css = await read('../src/styles/global.css');
-  assert.match(css, /--surface-bg:\s+#09090B/);
+  assert.match(css, /--surface-bg:\s+#121212/);
   assert.match(css, /--surface-base:\s+#111113/);
-  assert.match(css, /--surface-sidebar:\s+#0C0C0E/);
+  assert.match(css, /--surface-sidebar:\s+#18181B/);
   assert.match(css, /--text-secondary:\s+#A1A1AA/);
   assert.match(css, /--text-muted:\s+#71717A/);
   assert.match(css, /--accent-500:\s+#3B82F6/);
   assert.match(css, /--text-primary:\s+#FAFAFA/);
-  assert.match(css, /--sidebar-w:\s+196px/);
+  assert.match(css, /--sidebar-w:\s+160px/);
   assert.match(css, /--statusbar-h:\s+22px/);
-  assert.match(css, /--page-pad-x:\s+32px/);
+  assert.match(css, /--page-pad-x:\s+16px/);
   assert.match(css, /--page-pad-y:\s+28px/);
   assert.match(css, /\.page \{/);
   assert.match(css, /\.page-header h1 \{/);

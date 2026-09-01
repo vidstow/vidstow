@@ -112,7 +112,7 @@ Layout, top to bottom:
 
 ### Sidebar
 
-Fixed width, 196px. Darker than the main pane. Order:
+Fixed width, 160px. Slightly raised against the main pane. Order:
 
 - Brand: download-into-tray mark plus the wordmark `VidStow`. Clicking it goes Home. The mark is a small blue tray glyph, not a decorative logo lockup.
 - Primary nav: Home, Queue, Downloads.
@@ -120,7 +120,7 @@ Fixed width, 196px. Darker than the main pane. Order:
 
 FFmpeg readiness does not live in the rail. It belongs on Settings under Engine.
 
-Queue shows an accent badge for active + pending/paused jobs. Downloads shows a quieter badge for history count. Active nav uses a raised row and a 2px left accent bar, not a colored pill that looks like a website tab.
+Queue shows an accent badge for active + pending/paused jobs. Downloads shows a quieter badge for history count. Active nav uses a soft accent wash and a 2px left accent bar.
 
 ### Status bar
 
@@ -133,7 +133,7 @@ Engine and FFmpeg names do not belong here.
 
 ### Main pane
 
-Each route has a 32px page header strip (title plus one muted sentence), then the working surface. Home is the exception: its header is the analyze bar itself.
+Each route has a 16px page gutter, then the working surface. Home’s header is the analyze bar itself.
 
 ### Global overlays
 
@@ -340,8 +340,8 @@ The shipped look is a zinc-dark workstation with a blue accent. A redesign may r
 
 | Token | Value | Role |
 | --- | --- | --- |
-| Surface background | `#09090B` | App canvas |
-| Surface sidebar | `#0C0C0E` | Nav |
+| Surface background | `#121212` | App canvas |
+| Surface sidebar | `#18181B` | Nav |
 | Surface base | `#111113` | Cards, lists |
 | Surface raised | `#18181B` | Dialogs, hover |
 | Surface sunken | `#0C0C0E` / `#0C0C0E` | Inputs, header strips |

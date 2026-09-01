@@ -51,7 +51,7 @@
   .path .label { flex-shrink: 0; }
   .path strong {
     overflow: hidden;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-family: inherit;
     font-size: inherit;
     font-weight: 500;
