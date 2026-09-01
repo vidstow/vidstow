@@ -158,6 +158,16 @@
 
       <div class="srow">
         <div class="scopy">
+          <strong>Interrupted jobs</strong>
+          <span>The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.</span>
+        </div>
+        <div class="sact">
+          <span class="sfixed">In progress continues</span>
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
           <strong>Concurrent downloads</strong>
           <span>How many jobs transfer at once.</span>
         </div>
@@ -273,13 +283,11 @@
 
 <style>
   .settings-page {
-    padding: 18px 18px 28px;
     overflow-y: auto;
     height: 100%;
-    box-sizing: border-box;
   }
   .settings-page h1 {
-    margin: 0 0 16px;
+    margin: 0 0 8px;
     font-size: 17px;
     font-weight: 650;
     letter-spacing: -0.02em;
@@ -288,7 +296,7 @@
     max-width: 680px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
   }
   .sgroup {
     border: 1px solid var(--border-default);
@@ -298,7 +306,7 @@
   }
   .sgroup h2 {
     margin: 0;
-    padding: 12px 0 4px;
+    padding: 8px 0 2px;
     font-size: 11px;
     font-weight: 650;
     letter-spacing: 0.08em;
@@ -310,9 +318,9 @@
     align-items: center;
     justify-content: space-between;
     gap: 24px;
-    padding: 11px 0;
+    padding: 6px 0;
     border-top: 1px solid #1F1F23;
-    min-height: 48px;
+    min-height: 36px;
   }
   .sgroup h2 + .srow { border-top: 0; }
   .scopy { min-width: 0; flex: 1; }
@@ -349,6 +357,12 @@
     font-size: 13px;
     min-width: 16px;
     text-align: center;
+  }
+  .sfixed {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
   }
   .sbadge {
     padding: 3px 10px;
@@ -418,7 +432,7 @@
     grid-template-columns: 1fr auto;
     gap: 8px 16px;
     align-items: center;
-    padding: 16px 18px;
+    padding: 10px 14px;
     border: 1px solid var(--border-default);
     border-radius: 10px;
     background: var(--surface-raised);
@@ -447,7 +461,7 @@
   .cact { display: flex; gap: 6px; }
   .cbuilt {
     grid-column: 1 / -1;
-    padding-top: 10px;
+    padding-top: 8px;
     border-top: 1px solid #1F1F23;
     color: var(--text-muted);
     font-size: 11px;

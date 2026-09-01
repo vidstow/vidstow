@@ -7,6 +7,7 @@
     close: void;
     'keep-working': void;
     'pause-and-quit': void;
+    quit: void;
   }
 
   interface Props {
@@ -15,9 +16,10 @@
     onClose?: () => void;
     onKeepWorking?: () => void;
     onPauseAndQuit?: () => void;
+    onQuit?: () => void;
   }
 
-  let { open, model, onClose, onKeepWorking, onPauseAndQuit }: Props = $props();
+  let { open, model, onClose, onKeepWorking, onPauseAndQuit, onQuit }: Props = $props();
   const dispatch = createEventDispatcher<QuitConfirmationEvents>();
 
   function close(): void {
@@ -33,6 +35,11 @@
   function pauseAndQuit(): void {
     dispatch('pause-and-quit');
     onPauseAndQuit?.();
+  }
+
+  function quitAndContinue(): void {
+    dispatch('quit');
+    onQuit?.();
   }
 
   const activeDownloadsLabel = $derived(
@@ -70,14 +77,14 @@
       </header>
 
       <div class="dialog-body">
-        <p id="lifecycle-quit-description" class="lead">
-          {activeDownloadsLabel} will be paused before VidStow quits.
+		<p id="lifecycle-quit-description" class="lead">
+          {activeDownloadsLabel} will continue the next time VidStow opens.
         </p>
 
         <dl class="summary-list">
           <div>
             <dt>Active downloads</dt>
-            <dd>{model.activeDownloads} · Will be paused</dd>
+            <dd>{model.activeDownloads} · Will continue on reopen</dd>
           </div>
           <div>
             <dt>Waiting or paused</dt>
@@ -85,12 +92,13 @@
           </div>
         </dl>
 
-        <p class="preservation-copy">Saved progress will be restored as paused the next time VidStow opens.</p>
+        <p class="preservation-copy">The download that was in progress will continue the next time VidStow opens. Waiting and paused jobs stay as they are.</p>
       </div>
 
       <footer class="dialog-footer">
         <button type="button" class="app-btn" data-autofocus onclick={keepWorking}>Keep working</button>
-        <button type="button" class="app-btn primary" onclick={pauseAndQuit}>Pause downloads and quit</button>
+        <button type="button" class="app-btn" onclick={pauseAndQuit}>Pause downloads and quit</button>
+        <button type="button" class="app-btn primary" onclick={quitAndContinue}>Quit</button>
       </footer>
     </div>
   </div>

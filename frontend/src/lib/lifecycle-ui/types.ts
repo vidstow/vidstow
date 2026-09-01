@@ -40,7 +40,9 @@ export type LifecycleJobAction =
   | 'copy-link'
   | 'review'
   | 'open'
-  | 'remove';
+  | 'remove'
+  | 'discard'
+  | 'change-folder';
 
 export interface LifecycleJobCapabilities {
   pause?: boolean;
@@ -54,6 +56,8 @@ export interface LifecycleJobCapabilities {
   review?: boolean;
   open?: boolean;
   remove?: boolean;
+  discard?: boolean;
+  changeFolder?: boolean;
 }
 
 export interface QueueFailureViewModel {
@@ -88,6 +92,7 @@ export interface LifecycleJobViewModel {
   etaLabel?: string;
   message?: string;
   failure?: QueueFailureViewModel;
+  savedBytes?: number;
   queuePosition?: number;
   queueLabel?: string;
   capabilities?: LifecycleJobCapabilities;
@@ -232,7 +237,9 @@ export type LifecycleJobEventName =
   | 'copy-link'
   | 'review'
   | 'open'
-  | 'remove';
+  | 'remove'
+  | 'discard'
+  | 'change-folder';
 
 export const MIN_CONCURRENCY = 1;
 export const MAX_CONCURRENCY = 10;

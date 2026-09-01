@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import type { LifecycleJobActionEvent } from './LifecycleJobRow.svelte';
-  import { queueDisplayItems } from '../queue-view.js';
+  import PageEmpty from '../components/PageEmpty.svelte';
+  import { queueDisplayItems, type QueueDisplayItem } from '../queue-view.js';
   import {
     isValidCommandToken,
     lifecycleLabel,
@@ -31,6 +32,8 @@
     review: LifecycleJobEventDetail;
     open: LifecycleJobEventDetail;
     remove: LifecycleJobEventDetail;
+    discard: LifecycleJobEventDetail;
+    'change-folder': LifecycleJobEventDetail;
     'collection-action': QueueCollectionActionEvent;
   }
 
@@ -98,10 +101,17 @@
       : undefined,
   );
   const selectedChildren = $derived(
-    selectedCollection
-      ? displayItems.find((item) => item.kind === 'collection' && item.collection.id === selectedCollection.id)?.children ?? []
-      : [],
+    selectedCollection ? childrenForCollection(displayItems, selectedCollection.id) : [],
   );
+
+  function childrenForCollection(items: QueueDisplayItem[], id: string): LifecycleJobViewModel[] {
+    for (const item of items) {
+      if (item.kind === 'collection' && item.collection.id === id) {
+        return item.children;
+      }
+    }
+    return [];
+  }
 
   function queueRank(item: ReturnType<typeof queueDisplayItems>[number]): number {
     if (item.kind === 'collection') return 50;
@@ -130,6 +140,8 @@
     if (action === 'start-again') return capabilities.startAgain === true;
     if (action === 'open-source') return capabilities.openSource === true;
     if (action === 'copy-link') return capabilities.copyLink === true;
+    if (action === 'change-folder') return capabilities.changeFolder === true;
+    if (action === 'discard') return capabilities.discard === true;
     return capabilities[action] === true;
   }
 
@@ -234,11 +246,16 @@
 
 <section class="page queue-page" aria-labelledby="lifecycle-queue-title">
   {#if displayItems.length === 0}
-    <div class="qempty">
-      <div class="t">Nothing in the queue</div>
-      <div class="s">Paste a link on Home and downloads start here.</div>
-      <button class="qbtn pri" type="button" onclick={goHome}>Go to Home</button>
-    </div>
+    <header class="qhead">
+      <h1 id="lifecycle-queue-title">{title}</h1>
+    </header>
+    <PageEmpty
+      icon="queue"
+      title="Nothing here yet"
+      message={"Paste a link on Home.\nIn-progress downloads show up here."}
+      action="Go to Home"
+      onAction={goHome}
+    />
   {:else}
     <div class="qwrap">
       <div class="qmaster">
@@ -363,11 +380,17 @@
               {#if job.capabilities?.retry !== undefined}
                 <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'retry')} onclick={() => trigger(job, 'retry')}>Retry</button>
               {/if}
+              {#if job.capabilities?.changeFolder}
+                <button type="button" class="qbtn" disabled={!jobEnabled(job, 'change-folder')} onclick={() => trigger(job, 'change-folder')}>Change</button>
+              {/if}
               {#if job.capabilities?.startAgain}
                 <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'start-again')} onclick={() => trigger(job, 'start-again')}>Start again</button>
               {/if}
             {:else if paused}
               <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'resume')} onclick={() => trigger(job, 'resume')}>Resume</button>
+              {#if job.capabilities?.discard}
+                <button type="button" class="qbtn ghost danger" disabled={!jobEnabled(job, 'discard')} onclick={() => trigger(job, 'discard')}>Discard</button>
+              {/if}
             {:else if job.lifecycle === 'action-required'}
               {#if job.capabilities?.review}
                 <button type="button" class="qbtn pri" disabled={!jobEnabled(job, 'review')} onclick={() => trigger(job, 'review')}>Review</button>
@@ -497,7 +520,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 18px 18px 10px;
+    gap: 14px;
+    flex-shrink: 0;
+    min-height: calc(var(--page-pad-y) + 28px + 16px);
+    padding: var(--page-pad-y) var(--page-pad-x) 16px;
   }
   .qhead h1 {
     margin: 0;
@@ -509,7 +535,7 @@
   .qlist {
     flex: 1;
     overflow-y: auto;
-    padding: 0 10px 14px;
+    padding: 0 calc(var(--page-pad-x) - 8px) 16px;
   }
   .qrow {
     display: grid;
@@ -577,21 +603,10 @@
   }
   .qtail.err { color: #FCA5A5; }
 
-  .qempty {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-  .qempty .t { font-size: 14px; font-weight: 600; }
-  .qempty .s { color: var(--text-muted); font-size: 12.5px; margin-bottom: 10px; }
-
   .qinsp {
     border-left: 1px solid var(--border-default);
     background: #0D0D0F;
-    padding: 18px 16px;
+    padding: var(--page-pad-y) var(--page-pad-x) 18px;
     overflow-y: auto;
   }
   .qinsp h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; }

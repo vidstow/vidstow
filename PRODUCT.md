@@ -112,7 +112,7 @@ Layout, top to bottom:
 
 ### Sidebar
 
-Fixed width, 196px. Darker than the main pane. Order:
+Fixed width, 160px. Slightly raised against the main pane. Order:
 
 - Brand: download-into-tray mark plus the wordmark `VidStow`. Clicking it goes Home. The mark is a small blue tray glyph, not a decorative logo lockup.
 - Primary nav: Home, Queue, Downloads.
@@ -120,7 +120,7 @@ Fixed width, 196px. Darker than the main pane. Order:
 
 FFmpeg readiness does not live in the rail. It belongs on Settings under Engine.
 
-Queue shows an accent badge for active + pending/paused jobs. Downloads shows a quieter badge for history count. Active nav uses a raised row and a 2px left accent bar, not a colored pill that looks like a website tab.
+Queue shows an accent badge for active + pending/paused jobs. Downloads shows a quieter badge for history count. Active nav uses a soft accent wash and a 2px left accent bar.
 
 ### Status bar
 
@@ -133,7 +133,7 @@ Engine and FFmpeg names do not belong here.
 
 ### Main pane
 
-Each route has a 32px page header strip (title plus one muted sentence), then the working surface. Home is the exception: its header is the analyze bar itself.
+Each route starts on the **Home** nav row: 24px from the rail. Home’s header is the analyze bar itself. Queue, Downloads, and Settings titles sit on that same line.
 
 ### Global overlays
 
@@ -152,7 +152,7 @@ File-manager labels must be platform-aware: Show in Finder on macOS, Show in Exp
 
 Home is intake. It is the only place work is analyzed and admitted. A live analysis stays for the rest of this window session. Opening Queue, Downloads, Settings, or About does not discard it. Coming back shows the same field, dock, and selection. An edited URL, a new Analyze, a dropped URL, or Start over from Home replaces it.
 
-**One field.** No page title. No Single URL / Batch URLs switch. Placeholder: `Paste a YouTube URL`. A `⌘L` / `Ctrl+L` hint sits left of Analyze and focuses the field. Under the empty field, two lines: the paste sentence, then **Try:** with dotted chips for a video, a playlist, several links, and a private link. Those chips fill the field. Analyze is the only submit. A watch URL that also has a list id is not a Try chip. Paste it and Home asks before any dock.
+**One field.** No page title. No Single URL / Batch URLs switch. Placeholder: `Paste a YouTube URL`. Enter submits Analyze. Paste still accepts several lines. Under the empty field, two lines: the paste sentence, then **Try:** with dotted chips for a video, a playlist, and several links. Those chips fill the field. Analyze is the only submit. A watch URL that also has a list id is not a Try chip. Paste it and Home asks before any dock.
 
 Paste count chooses the path. One URL goes to `ValidateURL`. Two to twenty go to `AnalyzeBatchURLs`. A playlist URL is still a playlist. Playlist URLs do not belong in a batch. The 2 to 20 and 500 caps stay.
 
@@ -162,14 +162,14 @@ The URL field stays pinned to the top of Home, empty or after Analyze. The dock,
 
 **Single video after analysis.**
 
-Three-column dock: thumbnail, identity, then format controls on the right.
+The dock is three columns: thumbnail, title and meta, then **Type** plus format chips hugging the right. Leftover width goes to the title. Footer under that. Subtitles and extras are not on the dock yet. When they ship they sit in a row under this header, not beside the quality chips.
 
 - Thumbnail is a 160×90 cover crop so a Short cannot stretch the dock. Title, channel, optional Short badge, duration, view count
 - If the original link also contained a playlist: a swap line `Part of playlist: <title> · N videos →`
-- Outcome line for the selected plan: muted container · codecs, then the size in secondary. No “best available up to” line.
-- Right column: **Video / Audio**, then backend-authored plan chips in a wrapping column capped at 220px so a long plan list cannot eat the title
+- **Type** is a dropdown (Video / Audio) stacked above compact bluish chips (`1440p`, `M4A (Original)`). Chips hug their labels and wrap inside that right column; they do not stretch across the card.
 - Title uses a two-line clamp. Hover still shows the full name. Same clamp on playlist titles
-- Footer: **Change**, the path, then **Download**. No Save to label
+- Under the channel line: muted container · codecs, then size, in the UI sans. No chip, no highlight, no mono. Updates with the selected chip.
+- Footer: **Change**, the path, **Download**. No Save to label. Success: banner `Queued for download`. The dock clears; the URL stays.
 
 Changing the URL clears analysis.
 
@@ -177,8 +177,7 @@ Changing the URL clears analysis.
 
 Same dock, adapted:
 
-- Thumbnail, title, Playlist · N videos · duration · channel, unavailable count. Duration is the sum of available entry lengths when every available video reported one. Channel comes from the playlist, or the first child that named one. No invented 1080p coverage or playlist file-size total.
-- Format chips shared by every selected child (`1080p`, `720p`)
+- Thumbnail, title, Playlist · N videos · duration · channel, unavailable count. Duration is the sum of available entry lengths when every available video reported one. Channel comes from the playlist, or the first child that named one. **Type** is the same dropdown; **Format** is chips (`1080p`, `720p`, original audio, MP3). No invented 1080p coverage or playlist file-size total.
 - Disclosure: episode count and the chosen policy. Cap note when 500 entries were returned. The list stays collapsed until that disclosure is opened
 - Episode review: `N of M selected`, All, None, Range as two position fields plus Apply. All fills the fields with first–last index. None clears them. Rows are checkbox, title, duration. Unavailable rows are visible, dimmed, not selectable. Search is not on this list yet
 - Range Apply with an invalid span shows `Enter positions from N to M` on the header. Selection is by original index
@@ -192,7 +191,7 @@ Before any dock, Home shows `This link includes a playlist` / `Choose what to do
 
 Reached by pasting 2 to 20 lines or comma-separated watch URLs, not by flipping a mode. Review list: line number, thumbnail, title or raw input, URL, channel · duration, status chip (Ready, Duplicate, Invalid URL, Analysis failed) plus a reason when not ready. Summary such as `12 videos ready to download` or `10 ready · 2 duplicate`. Expired review (30 minutes): `This review expired. Edit the lines and review them again.`
 
-Shared format chips for every ready item, in a wrapping row in the right column with **Video / Audio** and **Download N videos**. Outcome names the shared policy. The title list opens from an underlined `{N} titles` hint, not from invented coverage or a size total. Footer: **Change** then the path, **Edit URLs**. N is ready count, not pasted count. Disabled unless the token is still valid, ready ≥ 2, and a folder is set. Success navigates to Queue. Edit URLs returns to the field without losing the text.
+Shared **Type** dropdown and format chips for every ready item. The title list opens from an underlined `{N} titles` hint, not from invented coverage or a size total. Footer: **Change**, the path, **Edit URLs**, **Download N videos**. N is ready count, not pasted count. Disabled unless the token is still valid, ready ≥ 2, and a folder is set. Success navigates to Queue. Edit URLs returns to the field without losing the text.
 
 **Output option rules.**
 
@@ -202,7 +201,7 @@ Artwork and chapters stay on for video. Audio tab hides extras. Video admission 
 
 Queue is operations. Master-detail, matching **p2.html**: 36px rows on the left, a 300px inspector on the right.
 
-**Empty.** Centered copy `Nothing in the queue` / `Paste a link on Home and downloads start here.` and **Go to Home**. No header chrome.
+**Empty.** Header `Queue` stays. Empty well: list mark, left-aligned `Nothing here yet` / `Paste a link on Home.` / `In-progress downloads show up here.`, and **Go to Home** with a home mark. Pause all and Resume all wait until there is a list.
 
 **Master (left).** Header `Queue` with ghost tool buttons **Pause all** and **Resume all**. Pause all is enabled only when the queue view authorizes it. Resume all is enabled when any visible job or collection authorizes Resume. Optional persistence warning banner. Then:
 
@@ -266,11 +265,11 @@ History of completed files. Header `Downloads` / `View your recently downloaded 
 
 Search across title, channel, filename, quality, container, delivery note. When more than 10 entries exist, Recent (10) and All tabs, plus `Show all N downloads` under the recent list.
 
-Each row: thumbnail with duration, title, channel · quality · container · size · relative time. Open and Show in `<file manager>` on the row. Clicking the main area expands details: optional missing-file note, delivery note, codecs and absolute path (monospace), Remove (history only), Delete file (history + disk + matching queue row).
+Each row: thumbnail with duration, title, channel · quality · container · size · relative time. Open and Show in `<file manager>` on the row. Clicking the main area expands details: delivery note, codecs and absolute path (monospace), Remove (history only), Delete file (history + disk + matching queue row).
 
-Missing files stay in the list, dimmed, with a File missing chip. Open and Show and Delete file disable. Remove from history still works.
+A finished row whose file is gone stays in the list. Open, Reveal, and Delete file stay enabled. If the path is gone, VidStow says that file is no longer at this path.
 
-Empty: `No downloads yet.` / `Finished downloads will show up here.` Search miss: `No downloads match your search.`
+Empty: header `Downloads` and search stay. Empty well matches Queue: tray mark, `Nothing here yet` / `Paste a link on Home.` / `Finished files show up here.`, and **Go to Home** with a home mark. Search miss: `No matching downloads` / `Try a different title, channel, or filename.` and **Clear search**.
 
 Confirmations:
 
@@ -285,7 +284,7 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 
 - Default download folder, Show in file manager, Change…
 - Create a subfolder for each download (all artifacts for one video together). Playlist admission still uses a playlist folder under that root. Batch children may use distinct roots when this is on.
-- Queue and recovery: Interrupted jobs are a fixed value, `Restored as paused`. Nothing auto-starts on launch. Concurrent downloads 1-10, default 2, FIFO. Reducing the limit waits for active jobs. It does not pause them. Warn when concurrency is greater than 4: stability and rate limits.
+- Queue and recovery: Interrupted jobs are a fixed value, `In progress continues`. The download that was in progress continues on launch. Waiting stays waiting. Paused stays paused. Concurrent downloads 1-10, default 2, FIFO. Reducing the limit waits for active jobs. It does not pause them. Warn when concurrency is greater than 4: stability and rate limits.
 
 **Video files**
 
@@ -322,7 +321,7 @@ Never display the string `yt-dlp` as the engine name. The branded engine is `ytd
 
 **Diagnostic consent (first launch).** `Help improve VidStow?` Don't send / Send diagnostics. Closing without a choice leaves automatic sending off. Privacy notice link. No preselected radio in Settings until the user has chosen.
 
-**Quit.** `Quit VidStow?` Active downloads will be paused. Summary list: active (will be paused), waiting or paused (already safe). `Saved progress will be restored as paused the next time VidStow opens.` Keep working / Pause downloads and quit.
+**Quit.** `Quit VidStow?` Active downloads will continue on reopen. Summary list: active (will continue on reopen), waiting or paused (already safe). `The download that was in progress will continue the next time VidStow opens. Waiting and paused jobs stay as they are.` Keep working / Pause downloads and quit / Quit. Pause downloads and quit records paused intent first, so those jobs stay paused.
 
 **Destination conflict.** `Choose a new filename`. VidStow will not replace the existing file. Read-only unavailable name and proposed name, Available chip when the proposal is free. Cancel download / Use new name. Authority is the opaque conflict token, never the displayed filename.
 
@@ -340,8 +339,8 @@ The shipped look is a zinc-dark workstation with a blue accent. A redesign may r
 
 | Token | Value | Role |
 | --- | --- | --- |
-| Surface background | `#09090B` | App canvas |
-| Surface sidebar | `#0C0C0E` | Nav |
+| Surface background | `#121212` | App canvas |
+| Surface sidebar | `#18181B` | Nav |
 | Surface base | `#111113` | Cards, lists |
 | Surface raised | `#18181B` | Dialogs, hover |
 | Surface sunken | `#0C0C0E` / `#0C0C0E` | Inputs, header strips |
@@ -350,7 +349,7 @@ The shipped look is a zinc-dark workstation with a blue accent. A redesign may r
 | Border strong | `#3F3F46` | Emphasis, dialogs |
 | Text primary | `#FAFAFA` | Titles, values |
 | Text secondary | `#A1A1AA` | Supporting |
-| Text muted | `#71717A` | Meta, placeholders |
+| Text muted | `#8A8A93` | Meta, placeholders |
 | Accent | `#3B82F6` / `#60A5FA` | Primary buttons, selection, progress |
 | Accent soft | `rgba(59, 130, 246, 0.13)` | Selected plan, active tab count |
 | Success | `#22C55E` | Ready, completed |
@@ -377,7 +376,7 @@ Control height: 24-32px. Icon buttons 24×24. Sidebar items 32px. Do not use lar
 
 Thumbnails: 16:9, 2-4px radius, sunken fill if missing. Video analyze header ~72px wide. Playlist entries ~64px. Queue rows ~36×28. History ~80px.
 
-Spacing scale: 4 / 8 / 12 / 16 / 20 / 24 / 32. Page padding ~20×18. Home workspace is a single bordered card inset 10-12px from the pane, not a stack of marketing cards.
+Spacing scale: 4 / 8 / 12 / 16 / 20 / 24 / 32. The workspace on every route starts on the Home nav row, 24px from the rail, so the Home field, Queue, Downloads, and Settings titles share one line. Home workspace is a single bordered card inset 10-12px from that canvas, not a stack of marketing cards.
 
 ### Motion
 
@@ -391,9 +390,11 @@ Stroke icons, 1.5-1.8 width, round caps. 13-14px in chrome, 16px in search field
 
 ## Interaction patterns
 
-**Segmented controls** for binary modes (Video/Audio, Off/On subtitles, Recent/All). Active segment is a raised inner chip, not a filled primary button.
+**Segmented controls** for binary modes (Off/On subtitles, Recent/All). Active segment is a raised inner chip, not a filled primary button.
 
-**Primary button** is blue, used once per working surface (**Download**, **Download N videos**, Pause downloads and quit). **Analyze** is the light query chip in the URL field: same 24px body, cream fill, dark type. It is not a second blue. The playlist footer hugs **Change** and **Download N videos** (`5px 6px 5px 10px`); it does not keep a padded empty band around them. Destructive actions are outline/danger text, never the only primary in a footer unless the dialog is itself destructive.
+**Select menus** for binary lists that should stay closed until chosen. On Home, **Type** chooses Video or Audio and sits with the format chips on the right of the dock. Plans for that kind are compact bluish chips. Container, codecs, and size sit under the channel line, not next to **Download**.
+
+**Primary button** is blue, used once per working surface (**Download**, **Download N videos**, Pause downloads and quit). **Analyze** is the light query chip in the URL field: same 24px body, cream fill, dark type. It is not a second blue. The playlist footer hugs **Change** and **Download N videos** (`8px 10px 8px 16px`); it does not keep a padded empty band around them. Destructive actions are outline/danger text, never the only primary in a footer unless the dialog is itself destructive.
 
 **Lists are the product.** Rows are the scan unit. Keep thumbnail + title + one meta line + trailing status/actions. Do not turn jobs into large cards.
 

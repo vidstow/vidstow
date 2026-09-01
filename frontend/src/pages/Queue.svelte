@@ -5,6 +5,7 @@
   import QueueOverview from '../lib/lifecycle-ui/QueueOverview.svelte';
   import type { ActionRequiredReviewViewModel, LifecycleJobEventDetail, QueueCollectionActionEvent, QueueOverviewViewModel, QueueView } from '../lib/lifecycle-ui/types.js';
   import { newestQueueView } from '../lib/queue-view.js';
+  import { formatDiscardConfirm } from '../lib/format.js';
 
   function modelFrom(view: QueueView | null): QueueOverviewViewModel {
     const persistence = view?.persistence;
@@ -76,6 +77,29 @@
       await refresh().catch(() => undefined);
       showError(err, 'Could not start this item again');
     }
+  }
+
+  function discardSaved(detail: LifecycleJobEventDetail) {
+    const job = model.jobs.find((candidate) => candidate.id === detail.jobId);
+    modal.set({
+      kind: 'confirm',
+      title: 'Delete saved data?',
+      message: formatDiscardConfirm(job?.savedBytes ?? 0),
+      actions: [{
+        label: 'Discard',
+        primary: true,
+        action: async () => {
+          try {
+            await api.queue.discardSavedData(detail.jobId, detail.commandToken);
+            await refresh();
+            showBanner('info', 'Saved temporary data was discarded or scheduled for safe cleanup.');
+          } catch (err) {
+            await refresh().catch(() => undefined);
+            showError(err, 'Saved data could not be discarded safely');
+          }
+        },
+      }],
+    });
   }
 
   async function reviewActionRequired(detail: LifecycleJobEventDetail) {
@@ -293,6 +317,8 @@
     else if (event.action === 'review') reviewActionRequired(event);
     else if (event.action === 'open') action(event, api.queue.open, 'Could not open the downloaded file');
     else if (event.action === 'remove') action(event, api.queue.remove, 'Could not remove the download');
+    else if (event.action === 'change-folder') action(event, api.queue.changeFolder, 'Could not change the folder');
+    else if (event.action === 'discard') discardSaved(event);
   }}
 />
 

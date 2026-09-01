@@ -92,10 +92,13 @@
     border-right: 1px solid var(--border-default);
     display: flex;
     flex-direction: column;
-    /* Keep navigation below the native macOS traffic-light/titlebar region. */
-    padding: 38px 8px 12px;
+    /* Traffic lights, then the VidStow mark. First nav row is --page-pad-y. */
+    padding: var(--rail-pad-top) 6px 12px;
+    overflow: visible;
+    z-index: 30;
   }
 
+  /* 2 + 20px mark + 14 = --brand-stack */
   .brand {
     display: flex;
     align-items: center;
@@ -121,11 +124,18 @@
     letter-spacing: -0.01em;
   }
 
-  nav { flex: 1; padding-top: 2px; }
+  nav { flex: 1; padding-top: var(--nav-first-gap); }
   nav.utility {
     flex: 0;
     padding-top: 8px;
     border-top: 1px solid var(--border-default);
+  }
+  nav.utility .nav-item {
+    background: var(--surface-active);
+    color: var(--text-primary);
+  }
+  nav.utility .nav-item:hover {
+    background: #3F3F46;
   }
   nav ul {
     list-style: none;
@@ -141,9 +151,9 @@
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 9px;
+    gap: 8px;
     min-height: 30px;
-    padding: 0 9px 0 11px;
+    padding: 0 8px 0 10px;
     border-radius: 7px;
     color: var(--text-secondary);
     font-size: 13px;
@@ -156,8 +166,11 @@
   }
 
   .nav-item.active {
-    background: var(--surface-raised);
+    background: var(--accent-soft);
     color: var(--text-primary);
+  }
+  nav.utility .nav-item.active {
+    background: var(--accent-soft);
   }
   .nav-item.active::before {
     content: "";

@@ -6,6 +6,7 @@ import {
   episodeLabel,
   historyDayKey,
   historySubtitle,
+  episodeSubtitle,
 } from '../src/lib/download-history.js';
 import type { HistoryEntry } from '../src/lib/types.js';
 
@@ -109,5 +110,19 @@ describe('historySubtitle', () => {
     expect(historySubtitle(entry({
       id: 'a', title: 'Go', quality: '2160p', sizeBytes: 1_690_000_000, channel: 'Gopher Talks',
     }))).toBe('2160p · 1.6 GB · Gopher Talks');
+  });
+
+  test('does not append a File missing chip', () => {
+    expect(historySubtitle(entry({
+      id: 'gone', title: 'Finished video', fileMissing: true, channel: 'Creator',
+    }))).toBe('1080p · 22.0 MB · Creator');
+  });
+});
+
+describe('episodeSubtitle', () => {
+  test('joins duration and size only', () => {
+    expect(episodeSubtitle(entry({
+      id: 'ep', title: 'Introduction', durationLabel: '12:04', sizeBytes: 22 * 1024 * 1024, channel: 'Steve Hook',
+    }))).toBe('12:04 · 22.0 MB');
   });
 });

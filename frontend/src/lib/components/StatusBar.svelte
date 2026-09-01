@@ -15,7 +15,6 @@
 
 <footer class="status-bar" aria-label="Application status">
   <div class="path" title={downloadPath}>
-    <span class="label">Path</span>
     <strong>{downloadPath}</strong>
   </div>
   <div class="occupancy" class:live={active > 0} aria-label={occupancy}>
@@ -46,12 +45,10 @@
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 8px;
   }
-  .path .label { flex-shrink: 0; }
   .path strong {
     overflow: hidden;
-    color: var(--text-secondary);
+    color: var(--text-muted);
     font-family: inherit;
     font-size: inherit;
     font-weight: 500;

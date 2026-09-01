@@ -28,6 +28,21 @@ func acquireStateLock(path string) (*stateLock, error) {
 	return &stateLock{file: f}, nil
 }
 
+func acquireExclusiveNonBlocking(path string) (*stateLock, error) {
+	f, err := openPrivateLock(path)
+	if err != nil {
+		return nil, fmt.Errorf("store: open instance lock: %w", err)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+			return nil, ErrAlreadyRunning
+		}
+		return nil, fmt.Errorf("store: lock instance: %w", err)
+	}
+	return &stateLock{file: f}, nil
+}
+
 func (l *stateLock) Close() error {
 	if l == nil {
 		return nil

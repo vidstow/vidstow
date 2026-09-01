@@ -1,8 +1,9 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { api } from '../lib/api.js';
-  import { errorMessage, ffmpeg, modal, pendingHomeFocus, pendingUrl, settings, showBanner } from '../lib/stores.js';
-  import { formatBytes, formatViewCount, shortTitle } from '../lib/format.js';
+  import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
+  import { formatBytes, formatPlanSize, formatViewCount, shortTitle } from '../lib/format.js';
+  import FormatPicker from '../lib/components/FormatPicker.svelte';
   import type { BatchAnalysisView, InfoSummary, OutputPlan, PlaylistSummary, Quality, UrlCheckResult } from '../lib/types.js';
 
   const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'downloads' | 'settings' | 'about' }>();
@@ -25,13 +26,15 @@
     { value: '192', label: 'MP3 192' },
     { value: '256', label: 'MP3 256' },
   ];
-  const TRY_CHIPS: Array<{ kind: 'video' | 'playlist' | 'batch' | 'private'; label: string }> = [
+  const KIND_OPTIONS = [
+    { id: 'video', label: 'Video' },
+    { id: 'audio', label: 'Audio' },
+  ];
+  const TRY_CHIPS: Array<{ kind: 'video' | 'playlist' | 'batch'; label: string }> = [
     { kind: 'video', label: 'a video' },
     { kind: 'playlist', label: 'a playlist' },
     { kind: 'batch', label: 'several links' },
-    { kind: 'private', label: 'a private link' },
   ];
-  const isMacField = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   function downloadVideosLabel(count: number): string {
     return `Download ${count} ${count === 1 ? 'video' : 'videos'}`;
@@ -77,8 +80,27 @@
 
   $: folder = $settings.downloadFolder || folder;
   $: plans = preview?.plans ?? [];
-  $: visiblePlans = plans.filter((plan) => plan.kind === tab);
   $: selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
+  $: visiblePlans = plans.filter((plan) => plan.available && plan.kind === tab);
+  $: kindOptions = (
+    [
+      plans.some((plan) => plan.available && plan.kind === 'video') ? { id: 'video', label: 'Video' } : null,
+      plans.some((plan) => plan.available && plan.kind === 'audio') ? { id: 'audio', label: 'Audio' } : null,
+    ] as Array<{ id: string; label: string } | null>
+  ).filter((option): option is { id: string; label: string } => option !== null);
+  $: videoPlanOptions = visiblePlans.map((plan) => ({
+    id: plan.id,
+    label: plan.label,
+    size: plan.approxBytes ? `${plan.sizeIsApproximate ? '~' : ''}${formatBytes(plan.approxBytes)}` : undefined,
+  }));
+  $: playlistPlanOptions = playlistTab === 'audio'
+    ? AUDIO_CHOICES.map((option) => ({ id: option.value, label: option.label }))
+    : PLAYLIST_VIDEO_QUALITIES.map((option) => ({ id: option.value, label: option.label }));
+  $: batchPlanOptions = batchTab === 'audio'
+    ? AUDIO_CHOICES.map((option) => ({ id: option.value, label: option.label }))
+    : VIDEO_QUALITIES.map((option) => ({ id: option.value, label: option.label }));
+  $: playlistFormatValue = playlistTab === 'audio' ? audioChoice : playlistQuality;
+  $: batchFormatValue = batchTab === 'audio' ? batchAudioChoice : batchQuality;
   $: availableCount = playlist?.available ?? 0;
   $: playlistFirstIndex = playlist?.entries[0]?.index ?? 1;
   $: playlistLastIndex = playlist?.entries.at(-1)?.index ?? playlist?.entryCount ?? 1;
@@ -123,14 +145,6 @@
     submitPaste();
   }
 
-  $: if ($pendingHomeFocus) {
-    pendingHomeFocus.set(false);
-    queueMicrotask(() => {
-      urlField?.focus();
-      urlField?.select();
-    });
-  }
-
   const batchReviewSummary = (review: BatchAnalysisView) => {
     const { pasted, ready, duplicate, invalid, analysisFailed } = review.counts;
     if (ready === pasted && duplicate === 0 && invalid === 0 && analysisFailed === 0) {
@@ -164,18 +178,9 @@
     return { link, detail: label === 'Best available' ? 'best available' : `up to ${label}` };
   }
 
-  function batchPolicyOutcome(): string {
-    if (batchTab === 'audio') {
-      if (batchAudioChoice === 'original') return 'Original audio';
-      return `MP3 ${batchAudioChoice} · converted with FFmpeg`;
-    }
-    const label = qualityChipLabel(batchQuality);
-    return label === 'Best available' ? 'best available each' : `up to ${label} each`;
-  }
-
   function planSizeCopy(plan: OutputPlan): string {
     if (!plan.approxBytes) return '';
-    return `${plan.sizeIsApproximate ? '~' : ''}${formatBytes(plan.approxBytes)}`;
+    return formatPlanSize(plan.approxBytes, !!plan.sizeIsApproximate);
   }
 
   function pasteItems(raw: string): string[] {
@@ -230,6 +235,12 @@
 
   function updatePaste(event: Event) {
     applyUrl((event.currentTarget as HTMLTextAreaElement).value);
+  }
+
+  function onUrlKey(event: KeyboardEvent) {
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    void submitPaste();
   }
 
   async function submitPaste() {
@@ -486,14 +497,29 @@
     }
   }
 
-  function choose(plan: OutputPlan) {
-    selectedPlanId = plan.id;
-  }
-
   function setTab(kind: 'video' | 'audio') {
     tab = kind;
-    const compatible = plans.find((plan) => plan.kind === kind && plan.recommended) ?? plans.find((plan) => plan.kind === kind);
+    const compatible = plans.find((plan) => plan.kind === kind && plan.available && plan.recommended)
+      ?? plans.find((plan) => plan.kind === kind && plan.available);
     selectedPlanId = compatible?.id ?? '';
+  }
+
+  function setPlaylistTab(kind: string) {
+    playlistTab = kind === 'audio' ? 'audio' : 'video';
+  }
+
+  function setBatchTab(kind: string) {
+    batchTab = kind === 'audio' ? 'audio' : 'video';
+  }
+
+  function setPlaylistFormat(id: string) {
+    if (playlistTab === 'audio') audioChoice = id;
+    else playlistQuality = id as Quality;
+  }
+
+  function setBatchFormat(id: string) {
+    if (batchTab === 'audio') batchAudioChoice = id;
+    else batchQuality = id as Quality;
   }
 
   function planDetail(plan: OutputPlan) {
@@ -563,10 +589,9 @@
     });
   }
 
-  function fillExample(kind: 'video' | 'playlist' | 'batch' | 'private') {
+  function fillExample(kind: 'video' | 'playlist' | 'batch') {
     if (kind === 'video') applyUrl('https://www.youtube.com/watch?v=jNQXAC9IVRw');
     else if (kind === 'playlist') applyUrl('https://www.youtube.com/playlist?list=PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu');
-    else if (kind === 'private') applyUrl('https://www.youtube.com/watch?v=private');
     else applyUrl('https://www.youtube.com/watch?v=jNQXAC9IVRw\nhttps://www.youtube.com/watch?v=aqz-KE-bpKQ\nhttps://www.youtube.com/watch?v=1PZNsDFItl4');
     queueMicrotask(() => {
       urlField?.focus();
@@ -577,7 +602,7 @@
     });
   }
 
-  function onTryKey(event: KeyboardEvent, kind: 'video' | 'playlist' | 'batch' | 'private') {
+  function onTryKey(event: KeyboardEvent, kind: 'video' | 'playlist' | 'batch') {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     fillExample(kind);
@@ -601,7 +626,8 @@
           duration: preview!.duration,
           thumbnail: preview!.thumbnail,
         });
-        showBanner('success', 'Added to queue');
+        showBanner('success', 'Queued for download');
+        clearAnalysis();
       } catch (err) {
         modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
       }
@@ -632,14 +658,20 @@
     }
     const start = async () => {
       try {
-        await api.jobs.startPlaylist({
+        const result = await api.jobs.startPlaylist({
           url: playlist!.url,
           playlistId: playlist!.id,
           quality,
           audioBitrate,
           selectedItems: [...selectedItems].sort((a, b) => a - b),
         });
-        showBanner('success', `Added ${selectedItems.size} videos to queue`);
+        const admittedLabel = `${result.admitted} ${result.admitted === 1 ? 'video' : 'videos'}`;
+        if (result.skipped) {
+          const skippedLabel = `${result.skipped} selected ${result.skipped === 1 ? 'video' : 'videos'}`;
+          showBanner('warning', `Added ${admittedLabel} to queue. ${skippedLabel} could not be downloaded.`);
+        } else {
+          showBanner('success', `Added ${admittedLabel} to queue`);
+        }
       } catch (err) {
         modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
       }
@@ -659,6 +691,14 @@
 
 <svelte:window on:keydown={onHomeKey} />
 
+{#snippet searchMark()}
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20.5 20.5-3.8-3.8"/></svg>
+{/snippet}
+
+{#snippet downloadMark()}
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+{/snippet}
+
 <section class="page home" class:fill={hasDock} aria-label="Home">
   <form class="composer" on:submit|preventDefault={submitPaste}>
     <div class="fieldwrap">
@@ -669,15 +709,19 @@
         value={url}
         on:input={updatePaste}
         on:change={updatePaste}
+        on:keydown={onUrlKey}
         placeholder="Paste a YouTube URL"
         autocomplete="off"
         spellcheck="false"
         rows="1"
-        aria-keyshortcuts="Meta+L Control+L"
       ></textarea>
-      <span class="kbd" class:ctrl={!isMacField} aria-hidden="true">{#if isMacField}<svg class="cmdkey" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg>L{:else}Ctrl+L{/if}</span>
-      <button class="dbtn query" type="submit" disabled={busy || batchBusy || !url.trim() || !!scopeChoice}>
-        {busy || batchBusy ? 'Analyzing…' : 'Analyze'}
+      <button class="dbtn query" type="submit" disabled={busy || batchBusy || !url.trim() || !!scopeChoice} aria-busy={busy || batchBusy}>
+        {#if busy || batchBusy}
+          <span class="query-spin" aria-hidden="true"></span>
+        {:else}
+          {@render searchMark()}
+        {/if}
+        Analyze
       </button>
     </div>
   </form>
@@ -698,7 +742,7 @@
     <div class="errslot" role="alert">
       <b>{analyzeError.title}</b>
       <span>{analyzeError.message}</span>
-      <button type="button" class="app-btn primary" on:click={pasteAnotherLink}>Paste another link</button>
+      <button type="button" class="dbtn query" on:click={pasteAnotherLink}>Paste another link</button>
     </div>
   {/if}
 
@@ -764,31 +808,29 @@
               <span class="arr" aria-hidden="true">→</span>
             </button>
           {/if}
-          <button type="button" class="ddisc has" aria-expanded={detailsOpen} on:click={() => detailsOpen = !detailsOpen}>
-            <span class="chev">▸</span>
-            <span class="dlnk">{policy.link}</span>
-            <span class="dp">{policy.detail}</span>
-            {#if playlistAtCap}<span class="cov part">VidStow can review up to {PLAYLIST_ADMIT_CAP} videos from a playlist.</span>{/if}
-          </button>
         </div>
-        <div class="dchoice">
-          <div class="modeseg" aria-label="Output type">
-            <button type="button" class:on={playlistTab === 'video'} on:click={() => playlistTab = 'video'}>Video</button>
-            <button type="button" class:on={playlistTab === 'audio'} on:click={() => playlistTab = 'audio'}>Audio</button>
-          </div>
-          <div class="segs">
-            {#if playlistTab === 'video'}
-              {#each PLAYLIST_VIDEO_QUALITIES as option}
-                <button type="button" class="seg" class:on={playlistQuality === option.value} on:click={() => playlistQuality = option.value}>{option.label}</button>
-              {/each}
-            {:else}
-              {#each AUDIO_CHOICES as option}
-                <button type="button" class="seg" class:on={audioChoice === option.value} on:click={() => audioChoice = option.value}>{option.label}</button>
-              {/each}
-            {/if}
+        <div class="dformat">
+          <FormatPicker label="Type" options={KIND_OPTIONS} value={playlistTab} onChange={setPlaylistTab} />
+          <div class="chips" role="radiogroup" aria-label="Format">
+            {#each playlistPlanOptions as option (option.id)}
+              <button
+                type="button"
+                class="seg"
+                class:on={playlistFormatValue === option.id}
+                role="radio"
+                aria-checked={playlistFormatValue === option.id}
+                on:click={() => setPlaylistFormat(option.id)}
+              >{option.label}</button>
+            {/each}
           </div>
         </div>
       </div>
+      <button type="button" class="ddisc has" aria-expanded={detailsOpen} on:click={() => detailsOpen = !detailsOpen}>
+        <span class="chev">▸</span>
+        <span class="dlnk">{policy.link}</span>
+        <span class="dp">{policy.detail}</span>
+        {#if playlistAtCap}<span class="cov part">VidStow can review up to {PLAYLIST_ADMIT_CAP} videos from a playlist.</span>{/if}
+      </button>
       <footer class="dfoot">
         <span class="dleft">
           <button type="button" class="dbtn" on:click={pickFolder}>Change</button>
@@ -796,7 +838,7 @@
         </span>
         {#if !detailsOpen}
           <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder}>
-            {selectedItems.size ? downloadVideosLabel(selectedItems.size) : 'Nothing selected'}
+            {#if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
           </button>
         {/if}
       </footer>
@@ -843,7 +885,7 @@
         <div class="epcommit">
           <span>{selectedItems.size} selected · {policy.detail}</span>
           <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder}>
-            {selectedItems.size ? downloadVideosLabel(selectedItems.size) : 'Nothing selected'}
+            {#if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
           </button>
         </div>
       </div>
@@ -864,6 +906,12 @@
             {preview.channel || 'YouTube'}{#if preview.mediaType === 'short'} · <em>Short</em>{/if}
             · {preview.duration || 'Duration unavailable'}{preview.viewCount ? ` · ${formatViewCount(preview.viewCount)} views` : ''}
           </span>
+          {#if selectedPlan && (planDetail(selectedPlan) || planSizeCopy(selectedPlan))}
+            <div class="dplan">
+              {#if planDetail(selectedPlan)}<span class="dcodec">{planDetail(selectedPlan)}</span>{/if}
+              {#if planSizeCopy(selectedPlan)}<span class="dcost">{planSizeCopy(selectedPlan)}</span>{/if}
+            </div>
+          {/if}
           {#if linkedSwap}
             <button type="button" class="swapline" on:click={swapLinkedScope}>
               Part of playlist:{' '}
@@ -871,46 +919,37 @@
               <span class="arr" aria-hidden="true">→</span>
             </button>
           {/if}
-          {#if selectedPlan}
-            <div class="doutcome">
-              <span>{planDetail(selectedPlan) || selectedPlan.container}</span>
-              {#if planSizeCopy(selectedPlan)}<span class="dcost">{planSizeCopy(selectedPlan)}</span>{/if}
-            </div>
-          {:else}
-            <span class="dmeta">No {tab} outputs were reported for this video.</span>
-          {/if}
         </div>
-        <div class="dchoice">
-          <div class="col">
-            <div class="modeseg" aria-label="Output type">
-              <button type="button" class:on={tab === 'video'} on:click={() => setTab('video')}>Video</button>
-              <button type="button" class:on={tab === 'audio'} on:click={() => setTab('audio')}>Audio</button>
-            </div>
-            {#if visiblePlans.length}
-              <div class="chips" role="radiogroup" aria-label={`${tab} output options`}>
-                {#each visiblePlans as plan (plan.id)}
+        {#if kindOptions.length}
+          <div class="dformat">
+            <FormatPicker label="Type" options={kindOptions} value={tab} onChange={(kind) => setTab(kind === 'audio' ? 'audio' : 'video')} />
+            {#if videoPlanOptions.length}
+              <div class="chips" role="radiogroup" aria-label="Format">
+                {#each videoPlanOptions as plan (plan.id)}
                   <button
                     type="button"
                     class="seg"
                     class:on={selectedPlanId === plan.id}
-                    class:rec={plan.recommended}
                     role="radio"
                     aria-checked={selectedPlanId === plan.id}
-                    title={plan.recommended ? 'Recommended' : ''}
-                    on:click={() => choose(plan)}
+                    on:click={() => selectedPlanId = plan.id}
                   >{plan.label}</button>
                 {/each}
               </div>
+            {:else}
+              <span class="dmeta">No {tab} outputs were reported for this video.</span>
             {/if}
           </div>
-        </div>
+        {:else}
+          <span class="dformat dmeta">No outputs were reported for this video.</span>
+        {/if}
       </div>
       <footer class="dfoot">
         <span class="dleft">
           <button type="button" class="dbtn" on:click={pickFolder}>Change</button>
           <span class="dpath" title={folder}>{folder ? folder : 'Choose a download folder'}</span>
         </span>
-        <button type="button" class="dbtn pri" on:click={enqueueVideo} disabled={!selectedPlan || !folder}>Download</button>
+        <button type="button" class="dbtn pri" on:click={enqueueVideo} disabled={!selectedPlan || !folder}>{@render downloadMark()}Download</button>
       </footer>
     </section>
   {:else if batchReview}
@@ -923,33 +962,25 @@
           </div>
           <span class="dmeta" aria-live="polite">{batchReviewSummary(batchReview)}</span>
           {#if !batchTokenValid}<span class="dmeta expired" role="alert">This review expired. Edit the lines and review them again.</span>{/if}
-          <div class="doutcome"><span>{batchPolicyOutcome()}</span></div>
           <div class="dpolhint">
             {#if batchTab === 'audio' && batchAudioChoice !== 'original'}MP3 conversion requires FFmpeg · {/if}
             <button type="button" class="tlink" on:click={() => detailsOpen = !detailsOpen}>{batchReview.items.length} titles</button>
           </div>
         </div>
-        <div class="dchoice stack">
-          <div class="col">
-            <div class="modeseg" aria-label="Batch output type">
-              <button type="button" class:on={batchTab === 'video'} on:click={() => batchTab = 'video'}>Video</button>
-              <button type="button" class:on={batchTab === 'audio'} on:click={() => batchTab = 'audio'}>Audio</button>
-            </div>
-            <div class="chips">
-              {#if batchTab === 'video'}
-                {#each VIDEO_QUALITIES as option}
-                  <button type="button" class="seg" class:on={batchQuality === option.value} on:click={() => batchQuality = option.value}>{option.label}</button>
-                {/each}
-              {:else}
-                {#each AUDIO_CHOICES as option}
-                  <button type="button" class="seg" class:on={batchAudioChoice === option.value} on:click={() => batchAudioChoice = option.value}>{option.label}</button>
-                {/each}
-              {/if}
-            </div>
+        <div class="dformat">
+          <FormatPicker label="Type" options={KIND_OPTIONS} value={batchTab} onChange={setBatchTab} />
+          <div class="chips" role="radiogroup" aria-label="Format">
+            {#each batchPlanOptions as option (option.id)}
+              <button
+                type="button"
+                class="seg"
+                class:on={batchFormatValue === option.id}
+                role="radio"
+                aria-checked={batchFormatValue === option.id}
+                on:click={() => setBatchFormat(option.id)}
+              >{option.label}</button>
+            {/each}
           </div>
-          <button type="button" class="dbtn pri" on:click={enqueueBatch} disabled={!batchCanStart}>
-            {downloadVideosLabel(batchReadyCount)}
-          </button>
         </div>
       </div>
       {#if detailsOpen}
@@ -986,6 +1017,9 @@
         </span>
         <div class="dacts">
           <button type="button" class="dbtn" on:click={editBatchURLs} disabled={batchBusy}>Edit URLs</button>
+          <button type="button" class="dbtn pri" on:click={enqueueBatch} disabled={!batchCanStart}>
+            {@render downloadMark()}{downloadVideosLabel(batchReadyCount)}
+          </button>
         </div>
       </footer>
     </section>
@@ -1060,36 +1094,21 @@
     outline-offset: 0;
     background: none;
   }
-  .fieldwrap .kbd {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    flex: 0 0 auto;
-    min-width: 28px;
-    min-height: 18px;
-    padding: 2px 6px;
-    border: 1px solid var(--border-strong);
-    border-bottom-width: 2px;
-    border-radius: 5px;
-    background: var(--surface-raised);
-    color: #A1A1AA;
-    -webkit-text-fill-color: #A1A1AA;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1;
-    white-space: nowrap;
-    overflow: visible;
-    font-variation-settings: normal;
-  }
-  .fieldwrap .kbd .cmdkey {
-    width: 10px;
-    height: 10px;
-    display: block;
-    flex-shrink: 0;
-  }
   .fieldwrap .dbtn { flex-shrink: 0; align-self: center; }
+  .fieldwrap .dbtn.query { gap: 5px; }
+  .fieldwrap .dbtn.query svg,
+  .fieldwrap .dbtn.query .query-spin { width: 12px; height: 12px; flex-shrink: 0; }
+  .query-spin {
+    box-sizing: border-box;
+    border: 1.5px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 99px;
+    animation: query-spin 0.7s linear infinite;
+  }
+  @keyframes query-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .query-spin { animation: none; border-right-color: currentColor; opacity: 0.45; }
+  }
 
   .hint {
     width: min(780px, 100%);
@@ -1222,7 +1241,7 @@
     border: 1px solid var(--border-default);
     border-radius: 10px;
     background: var(--surface-raised);
-    overflow: hidden;
+    overflow: visible;
   }
   .drow {
     display: grid;
@@ -1232,12 +1251,15 @@
     padding: 12px 14px 0;
   }
   .drow2 {
-    grid-template-columns: 160px minmax(0, 1fr) minmax(168px, 220px);
-    gap: 16px;
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr) auto;
+    grid-template-areas: 'thumb identity format';
+    gap: 10px 14px;
     align-items: start;
     padding: 16px 16px 0;
   }
   .drow2 .thumb {
+    grid-area: thumb;
     width: 160px;
     height: 90px;
     max-height: 90px;
@@ -1286,29 +1308,50 @@
   .dmain2 {
     display: flex;
     flex-direction: column;
-    align-self: stretch;
+    grid-area: identity;
     min-width: 0;
     padding-bottom: 8px;
   }
-  .dmain2 .ddisc { margin: auto -8px 0; }
-  .dchoice {
+  .dformat {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    grid-area: format;
     align-items: stretch;
-    justify-self: stretch;
-    width: 100%;
-    min-width: 0;
-    padding-top: 1px;
+    gap: 6px;
+    width: max-content;
+    min-width: 148px;
+    max-width: 240px;
+    justify-self: end;
+    padding-bottom: 8px;
   }
-  .dchoice .segs {
-    margin-top: 0;
-    justify-content: flex-end;
+  .dformat :global(.fmt) {
+    width: 100%;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    min-width: 0;
+  }
+  .seg {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: var(--surface-base);
+    color: var(--text-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+    transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+  }
+  .seg:hover { border-color: var(--border-strong); color: var(--text-primary); }
+  .seg.on {
+    border-color: rgba(59, 130, 246, 0.55);
+    background: var(--accent-soft);
+    color: #93C5FD;
   }
   .drow2.v2 {
-    grid-template-columns: 160px minmax(0, 1fr) minmax(168px, 220px);
-    align-items: stretch;
-    padding: 16px 16px 0;
+    align-items: start;
   }
   .drow2.v2 .thumb {
     width: 160px;
@@ -1318,41 +1361,6 @@
     align-self: start;
   }
   .drow2.v2 .thumb.count { font-size: 28px; }
-  .dchoice.stack {
-    gap: 12px;
-    align-self: stretch;
-    justify-content: space-between;
-  }
-  .dchoice .col {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    align-items: stretch;
-    min-width: 0;
-  }
-  .dchoice .modeseg { align-self: flex-end; }
-  .dchoice .chips {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 4px;
-    width: 100%;
-  }
-  .dchoice.stack .dbtn.pri { width: 100%; }
-  .doutcome {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 10px;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 11px;
-  }
-  .doutcome .dcost {
-    color: var(--text-secondary);
-    font-weight: 600;
-  }
   .dpolhint {
     margin-top: 4px;
     color: var(--text-muted);
@@ -1367,16 +1375,6 @@
     text-decoration: underline;
     cursor: pointer;
   }
-  .seg.rec::after {
-    content: '';
-    display: inline-block;
-    width: 4px;
-    height: 4px;
-    margin-left: 5px;
-    border-radius: 99px;
-    background: var(--accent-400);
-    vertical-align: 1px;
-  }
   .dtop {
     display: flex;
     align-items: center;
@@ -1390,7 +1388,7 @@
     line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     line-height: 1.35;
   }
@@ -1398,58 +1396,16 @@
     display: block;
     margin-top: 3px;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 13px;
   }
   .dmeta em { font-style: normal; font-weight: 650; }
   .dmeta.expired { color: var(--status-danger); }
-  .modeseg {
-    display: flex;
-    flex-shrink: 0;
-    align-self: flex-end;
-    gap: 2px;
-    padding: 2px;
-    border: 1px solid var(--border-default);
-    border-radius: 8px;
-    background: var(--surface-sunken);
-  }
-  .modeseg button {
-    height: 20px;
-    padding: 0 9px;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 500;
-  }
-  .modeseg button + button { border-left: 0; }
-  .modeseg button.on {
-    background: var(--surface-raised);
-    color: var(--text-primary);
-  }
-  .modeseg button:hover:not(.on) { color: var(--text-secondary); }
-  .segs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 9px;
-  }
-  .seg {
-    height: 26px;
-    padding: 0 11px;
-    border: 1px solid var(--border-default);
-    border-radius: 7px;
-    background: var(--surface-base);
-    color: var(--text-secondary);
-    font-size: 12px;
-  }
-  .seg:hover { border-color: var(--border-strong); color: var(--text-primary); }
-  .seg.on { border-color: rgba(59, 130, 246, 0.55); background: var(--accent-soft); color: #93C5FD; }
   .ddisc {
     display: flex;
     align-items: baseline;
     gap: 10px;
-    width: 100%;
-    margin: 8px -8px 0;
+    width: auto;
+    margin: 2px 16px 0;
     padding: 5px 8px;
     border-radius: 6px;
     color: var(--text-muted);
@@ -1475,8 +1431,8 @@
     justify-content: space-between;
     gap: 12px;
     margin-top: 8px;
-    padding: 5px 6px 5px 10px;
-    border-top: 1px solid var(--border-default);
+    padding: 8px 10px 8px 16px;
+    border-top: 1px solid var(--border-subtle);
     background: var(--surface-base);
   }
   .dpath {
@@ -1497,7 +1453,34 @@
   }
   .dleft .dbtn { flex-shrink: 0; }
   .dfoot > .dbtn { flex-shrink: 0; }
-  .dacts { display: flex; flex-shrink: 0; gap: 6px; }
+  .dacts { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
+  .dplan {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    margin-top: 5px;
+    min-width: 0;
+    background: none;
+  }
+  .dcodec,
+  .dcost {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+  }
   .dbtn {
     display: inline-flex;
     align-items: center;
@@ -1516,6 +1499,8 @@
   .dbtn:disabled { opacity: 0.4; cursor: default; }
   .dbtn.pri { background: var(--accent-600); border-color: var(--accent-600); color: #fff; }
   .dbtn.pri:hover:not(:disabled) { background: #1D4ED8; }
+  .dbtn.pri:has(> svg) { gap: 5px; }
+  .dbtn.pri:has(> svg) svg { width: 12px; height: 12px; flex-shrink: 0; }
   .dbtn.query {
     background: #FAFAFA;
     border-color: #FAFAFA;
@@ -1713,13 +1698,20 @@
 
   @media (max-width: 860px) {
     .drow { grid-template-columns: 72px 1fr; }
-    .drow2 { grid-template-columns: 96px minmax(0, 1fr); }
-    .drow2.v2 { grid-template-columns: 96px minmax(0, 1fr); }
+    .drow2,
+    .drow2.v2 {
+      grid-template-columns: 96px minmax(0, 1fr);
+      grid-template-areas:
+        'thumb identity'
+        'thumb format';
+    }
     .drow2 .thumb { width: 96px; height: 54px; }
     .drow2.v2 .thumb { width: 96px; height: 54px; max-height: 54px; min-height: 0; }
-    .dchoice { grid-column: 2; align-items: flex-start; }
-    .dchoice .col { align-items: stretch; }
-    .dchoice .chips { justify-content: flex-start; }
+    .dformat {
+      justify-self: stretch;
+      width: auto;
+      max-width: none;
+    }
   }
   @media (max-width: 720px) {
     .batch-line { grid-template-columns: 28px 72px minmax(0, 1fr); }

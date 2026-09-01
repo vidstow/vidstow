@@ -30,6 +30,12 @@ type StartPlaylistRequest struct {
 	SelectedItems []int        `json:"selectedItems"`
 }
 
+type PlaylistStartResult struct {
+	CollectionID string `json:"collectionId"`
+	Admitted     int    `json:"admitted"`
+	Skipped      int    `json:"skipped,omitempty"`
+}
+
 type playlistChildAnalyzer interface {
 	AnalyzeForAdmission(context.Context, string) (jobs.InfoSummary, []outputplan.Plan, error)
 }
@@ -43,35 +49,35 @@ type analyzedPlaylistChild struct {
 // StartPlaylistDownload resolves the renderer's bounded index selection
 // through the trusted preview, analyzes every canonical child on the backend,
 // chooses curated plans, then delegates one atomic collection to State v2.
-func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
+func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (PlaylistStartResult, error) {
 	if err := a.requireReady(); err != nil {
-		return "", err
+		return PlaylistStartResult{}, err
 	}
 	a.playlistMu.Lock()
 	defer a.playlistMu.Unlock()
 	if err := a.requireReady(); err != nil {
-		return "", err
+		return PlaylistStartResult{}, err
 	}
 	validated, err := urlcheck.Validate(req.URL)
 	if err != nil {
-		return "", err
+		return PlaylistStartResult{}, err
 	}
 	if validated.Kind != urlcheck.KindPlaylist || validated.PlaylistID == "" || validated.PlaylistID != req.PlaylistID {
-		return "", errors.New("playlist identity does not match the analyzed preview")
+		return PlaylistStartResult{}, errors.New("playlist identity does not match the analyzed preview")
 	}
 	policy, err := validatePlaylistPolicy(req.Quality, req.AudioBitrate)
 	if err != nil {
-		return "", err
+		return PlaylistStartResult{}, err
 	}
 	if req.Quality == jobs.QualityAudioOnly && req.AudioBitrate != 0 && !a.ffmpegStatus().Available {
-		return "", errors.New("MP3 conversion needs FFmpeg; choose original audio or configure FFmpeg")
+		return PlaylistStartResult{}, errors.New("MP3 conversion needs FFmpeg; choose original audio or configure FFmpeg")
 	}
 	preview, entries, err := a.jobs.ResolvePlaylistSelection(validated.PlaylistID, req.SelectedItems)
 	if err != nil {
-		return "", err
+		return PlaylistStartResult{}, err
 	}
 	if preview.ID != validated.PlaylistID || preview.URL != validated.PlaylistURL {
-		return "", errors.New("playlist preview identity is no longer valid")
+		return PlaylistStartResult{}, errors.New("playlist preview identity is no longer valid")
 	}
 
 	ctx, cancel := context.WithCancel(a.ctx)
@@ -79,22 +85,25 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 	children, err := analyzePlaylistChildren(ctx, a.jobs, entries, req.Quality, req.AudioBitrate)
 	if err != nil {
 		logAppErrorf(a.ctx, "desktop: analyze playlist children: %v", err)
-		return "", errors.New(friendlyAnalyzeError(err))
+		return PlaylistStartResult{}, errors.New(friendlyPlaylistStartError(err))
+	}
+	if len(children) == 0 {
+		return PlaylistStartResult{}, errors.New(friendlyPlaylistStartError(nil))
 	}
 	for _, child := range children {
 		if child.plan.RequiresFFmpeg && !a.ffmpegStatus().Available {
-			return "", errors.New("this playlist output needs FFmpeg; install FFmpeg or choose original audio")
+			return PlaylistStartResult{}, errors.New("this playlist output needs FFmpeg; install FFmpeg or choose original audio")
 		}
 	}
 
 	outputDir := filepath.Join(a.store.Settings().DownloadFolder, playlistSubfolder(preview.Title, preview.ID))
 	outputDir, err = canonicalOutputRequestPath(outputDir)
 	if err != nil {
-		return "", err
+		return PlaylistStartResult{}, err
 	}
 	root, err := reservationfs.EnsureOpenRoot(outputDir)
 	if err != nil {
-		return "", fmt.Errorf("could not create playlist output folder: %w", err)
+		return PlaylistStartResult{}, fmt.Errorf("could not create playlist output folder: %w", err)
 	}
 	defer root.Close()
 
@@ -121,13 +130,17 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (string, error) {
 		Children: admissionChildren,
 	})
 	if err != nil {
-		return "", err
+		return PlaylistStartResult{}, err
 	}
-	return result.Collection.ID, nil
+	skipped := len(entries) - len(children)
+	if skipped > 0 {
+		logAppErrorf(a.ctx, "desktop: playlist start skipped %d of %d selected videos", skipped, len(entries))
+	}
+	return PlaylistStartResult{CollectionID: result.Collection.ID, Admitted: len(children), Skipped: skipped}, nil
 }
 
 func analyzePlaylistChildren(ctx context.Context, analyzer playlistChildAnalyzer, entries []jobs.PlaylistEntrySummary, quality jobs.Quality, bitrate int) ([]analyzedPlaylistChild, error) {
-	results := make([]analyzedPlaylistChild, len(entries))
+	results := make([]*analyzedPlaylistChild, len(entries))
 	work := make(chan int)
 	workerCount := playlistAnalysisConcurrency
 	if len(entries) < workerCount {
@@ -138,8 +151,8 @@ func analyzePlaylistChildren(ctx context.Context, analyzer playlistChildAnalyzer
 	var wait sync.WaitGroup
 	var firstErr error
 	var errorOnce sync.Once
-	fail := func(err error) {
-		errorOnce.Do(func() { firstErr = err; cancel() })
+	record := func(err error) {
+		errorOnce.Do(func() { firstErr = err })
 	}
 	for worker := 0; worker < workerCount; worker++ {
 		wait.Add(1)
@@ -151,12 +164,12 @@ func analyzePlaylistChildren(ctx context.Context, analyzer playlistChildAnalyzer
 				summary, privatePlans, err := analyzer.AnalyzeForAdmission(childCtx, entry.URL)
 				childCancel()
 				if err != nil {
-					fail(fmt.Errorf("analyze playlist item %d: %w", entry.Index, err))
-					return
+					record(fmt.Errorf("analyze playlist item %d: %w", entry.Index, err))
+					continue
 				}
 				if summary.VideoID != entry.VideoID || summary.URL != entry.URL {
-					fail(fmt.Errorf("analyze playlist item %d: video identity mismatch", entry.Index))
-					return
+					record(fmt.Errorf("analyze playlist item %d: video identity mismatch", entry.Index))
+					continue
 				}
 				if strings.TrimSpace(summary.Title) == "" {
 					summary.Title = entry.Title
@@ -172,10 +185,10 @@ func analyzePlaylistChildren(ctx context.Context, analyzer playlistChildAnalyzer
 				}
 				plan, err := choosePlaylistPlan(privatePlans, quality, bitrate)
 				if err != nil {
-					fail(fmt.Errorf("analyze playlist item %d: %w", entry.Index, err))
-					return
+					record(fmt.Errorf("analyze playlist item %d: %w", entry.Index, err))
+					continue
 				}
-				results[index] = analyzedPlaylistChild{entry: entry, summary: summary, plan: plan}
+				results[index] = &analyzedPlaylistChild{entry: entry, summary: summary, plan: plan}
 			}
 		}()
 	}
@@ -190,13 +203,23 @@ func analyzePlaylistChildren(ctx context.Context, analyzer playlistChildAnalyzer
 		}
 	}()
 	wait.Wait()
-	if firstErr != nil {
-		return nil, firstErr
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return results, nil
+	children := make([]analyzedPlaylistChild, 0, len(entries))
+	for _, child := range results {
+		if child == nil {
+			continue
+		}
+		children = append(children, *child)
+	}
+	if len(children) == 0 {
+		if firstErr != nil {
+			return nil, firstErr
+		}
+		return nil, errors.New("none of the selected videos could be downloaded")
+	}
+	return children, nil
 }
 
 func validatePlaylistPolicy(quality jobs.Quality, bitrate int) (string, error) {

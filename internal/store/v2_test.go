@@ -41,6 +41,33 @@ func TestOpenV2CreatesPrivateStateAndLock(t *testing.T) {
 	}
 }
 
+func TestV2HistoryKeepsReceiptWhenFileIsGone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	s, status, err := OpenV2(path)
+	if err != nil || s == nil || !status.Healthy() {
+		t.Fatalf("OpenV2 = %v, %#v, %v", s, status, err)
+	}
+	defer s.Close()
+
+	media := filepath.Join(t.TempDir(), "gone.mp4")
+	if err := os.WriteFile(media, []byte("media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendHistory(HistoryEntry{
+		ID: "gone", Title: "Finished video", Filename: "gone.mp4", AbsolutePath: media,
+		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(media); err != nil {
+		t.Fatal(err)
+	}
+	history := s.History()
+	if len(history) != 1 || history[0].ID != "gone" || history[0].Title != "Finished video" || history[0].FileMissing {
+		t.Fatalf("history = %#v; want a receipt that is not File missing", history)
+	}
+}
+
 func TestOpenV2HealsMarkerForProvablyCommittedTarget(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	initial, status, err := OpenV2(path)
@@ -179,6 +206,18 @@ func TestOpenV2FailsClosedForCorruptUnknownAndUnsafeState(t *testing.T) {
 				t.Fatal(err)
 			}
 			s, status, err := OpenV2(path)
+			if tc.reason == RecoveryCorruptState {
+				if err != nil || s == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+					t.Fatalf("corrupt OpenV2 = %v, %#v, %v; want healthy queue-reset", s, status, err)
+				}
+				if _, statErr := os.Stat(path + ".unreadable"); statErr != nil {
+					t.Fatalf("corrupt state was not quarantined: %v", statErr)
+				}
+				if len(s.Snapshot().Jobs) != 0 {
+					t.Fatalf("queue-reset left jobs: %#v", s.Snapshot().Jobs)
+				}
+				return
+			}
 			if err != nil || s != nil || status.Mode != StartupRecoveryRequired || status.Reason != tc.reason {
 				t.Fatalf("OpenV2 = %v, %#v, %v", s, status, err)
 			}
@@ -228,8 +267,8 @@ func TestOpenV2StrictlyRejectsUnknownSchemaFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, status, err := OpenV2(path)
-	if err != nil || s != nil || status.Reason != RecoveryCorruptState {
-		t.Fatalf("unknown-field load = %v, %#v, %v", s, status, err)
+	if err != nil || s == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+		t.Fatalf("unknown-field load = %v, %#v, %v; want healthy queue-reset", s, status, err)
 	}
 }
 
@@ -321,7 +360,7 @@ func TestOpenV2RejectsOversizedAndInvalidInvariantImages(t *testing.T) {
 				t.Fatal(err)
 			}
 			s, status, err := OpenV2(path)
-			if err != nil || s != nil || status.Reason != RecoveryCorruptState {
+			if err != nil || s != nil || status.Reason != RecoveryCorruptState || status.Warning != "" {
 				t.Fatalf("invalid image = %v %#v %v", s, status, err)
 			}
 		})

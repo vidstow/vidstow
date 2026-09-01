@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import App from '../src/App.svelte';
-import { ffmpeg, history, jobs, pendingHomeFocus, pendingUrl, persistence, queueView, route, settings } from '../src/lib/stores.js';
+import { ffmpeg, history, jobs, pendingUrl, persistence, queueView, route, settings } from '../src/lib/stores.js';
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
@@ -91,7 +91,6 @@ describe('Home analysis survives navigation', () => {
   beforeEach(() => {
     route.set('home');
     pendingUrl.set('');
-    pendingHomeFocus.set(false);
     jobs.set([]);
     history.set([]);
     queueView.set(null);
@@ -109,7 +108,6 @@ describe('Home analysis survives navigation', () => {
   afterEach(() => {
     route.set('home');
     pendingUrl.set('');
-    pendingHomeFocus.set(false);
   });
 
   test('returning from Queue, Downloads, and Settings keeps the analyzed dock', async () => {
@@ -122,7 +120,9 @@ describe('Home analysis survives navigation', () => {
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Queue' }));
-    expect(await screen.findByText('Nothing in the queue')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Queue' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Go to Home' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Analyze' })).not.toBeInTheDocument();
     expect(document.querySelector('.home-host[hidden]')).toBeTruthy();
     expect(document.querySelector('.home-host[hidden] b')).toHaveTextContent('Fixture video');
@@ -133,7 +133,10 @@ describe('Home analysis survives navigation', () => {
     expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(firstURL);
 
     await user.click(screen.getByRole('button', { name: 'Downloads' }));
-    expect(await screen.findByText('No downloads yet')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Downloads' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
+    expect(screen.getByText(/Paste a link on Home/)).toBeInTheDocument();
+    expect(screen.getByText(/Finished files show up here/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Home' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
@@ -144,5 +147,77 @@ describe('Home analysis survives navigation', () => {
     await user.click(screen.getByRole('button', { name: 'Home' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  });
+
+  test('the status bar has no Path label', async () => {
+    render(App);
+    await waitForHome();
+
+    expect(document.querySelector('.status-bar .path')?.textContent?.trim()).toBe('/tmp/downloads');
+    expect(document.querySelector('.status-bar .label')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Downloads' }).getAttribute('data-tip')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('data-tip')).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Downloads' }));
+    expect(await screen.findByRole('heading', { name: 'Downloads' })).toBeInTheDocument();
+  });
+});
+
+describe('unreadable queue notice', () => {
+  beforeEach(() => {
+    route.set('home');
+    pendingUrl.set('');
+    jobs.set([]);
+    history.set([]);
+    queueView.set(null);
+    persistence.set({ available: true, healthy: true });
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: '7.0', ffprobePath: '/usr/bin/ffprobe', message: '' });
+    settings.update((current) => ({
+      ...current,
+      downloadFolder: '/tmp/downloads',
+      automaticDiagnostics: 'enabled',
+      confirmBeforeDownload: false,
+    }));
+    installBindings();
+    const app = (window as any).go.main.App;
+    app.GetStartupStatus = vi.fn(async () => ({ mode: 'healthy', warning: 'queue-reset' }));
+    app.GetSettings = vi.fn(async () => ({
+      downloadFolder: '/tmp/downloads',
+      ffmpegPath: '',
+      windowWidth: 1180,
+      windowHeight: 760,
+      downloadConcurrency: 2,
+      perVideoSubfolder: true,
+      confirmBeforeDownload: false,
+      automaticDiagnostics: 'enabled',
+    }));
+    app.CopyDiagnostics = vi.fn(async () => 'ok');
+    app.OpenDataFolder = vi.fn(async () => {});
+  });
+
+  afterEach(() => {
+    route.set('home');
+    pendingUrl.set('');
+  });
+
+  test('healthy startup with a reset queue shows a dismissible notice, not the recovery shell', async () => {
+    const user = userEvent.setup();
+    render(App);
+    expect(await screen.findByText('Your downloads are safe on disk. VidStow could not read its saved queue, so the Queue was reset!')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Download state needs recovery' })).not.toBeInTheDocument();
+
+    const copy = screen.getByRole('button', { name: 'Copy diagnostics' });
+    const folder = screen.getByRole('button', { name: 'Open data folder' });
+    const dismiss = screen.getByRole('button', { name: 'Dismiss' });
+    expect(copy).toHaveClass('ghost');
+    expect(copy).not.toHaveClass('quiet');
+    expect(copy.querySelector('svg')).toBeTruthy();
+    expect(folder).not.toHaveClass('ghost');
+    expect(folder.querySelector('svg')).toBeTruthy();
+    expect(dismiss).toHaveClass('ghost', 'quiet');
+    expect(dismiss.querySelector('svg')).toBeNull();
+
+    await user.click(dismiss);
+    expect(screen.queryByText(/Your downloads are safe on disk/)).not.toBeInTheDocument();
   });
 });

@@ -23,6 +23,8 @@
     review: LifecycleJobEventDetail;
     open: LifecycleJobEventDetail;
     remove: LifecycleJobEventDetail;
+    discard: LifecycleJobEventDetail;
+    'change-folder': LifecycleJobEventDetail;
   }
 
   export interface LifecycleJobActionEvent extends LifecycleJobEventDetail {
@@ -67,6 +69,10 @@
         return capabilities.openSource === true;
       case 'copy-link':
         return capabilities.copyLink === true;
+      case 'change-folder':
+        return capabilities.changeFolder === true;
+      case 'discard':
+        return capabilities.discard === true;
       default:
         return capabilities[action] === true;
     }

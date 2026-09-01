@@ -77,6 +77,9 @@ describe('Settings page', () => {
     expect(screen.getByRole('button', { name: 'Show in Finder' })).toBeInTheDocument();
     expect(screen.getByText('Create a subfolder for each download')).toBeInTheDocument();
     expect(screen.getByText('Confirm before starting downloads')).toBeInTheDocument();
+    expect(screen.getByText('Interrupted jobs')).toBeInTheDocument();
+    expect(screen.getByText('In progress continues')).toBeInTheDocument();
+    expect(screen.getByText('The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.')).toBeInTheDocument();
     expect(screen.getByText('Concurrent downloads')).toBeInTheDocument();
     expect(screen.queryByText(/HTTP 429/)).not.toBeInTheDocument();
 

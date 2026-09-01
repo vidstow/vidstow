@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 import Downloads from '../src/pages/Downloads.svelte';
-import { history, modal } from '../src/lib/stores.js';
+import { history, modal, banner, route } from '../src/lib/stores.js';
 import type { HistoryEntry } from '../src/lib/types.js';
 
 function daysAgo(days: number): string {
@@ -34,6 +34,8 @@ describe('Downloads page', () => {
   beforeEach(() => {
     history.set([]);
     modal.set(null);
+    banner.set(null);
+    route.set('downloads');
     (window as any).go = { main: { App: {
       OpenFile: vi.fn(async () => {}),
       RevealInFinder: vi.fn(async () => {}),
@@ -42,11 +44,16 @@ describe('Downloads page', () => {
     } } };
   });
 
-  test('empty history shows No downloads yet', () => {
+  test('empty history shows a Queue-style empty state', async () => {
+    const user = userEvent.setup();
     render(Downloads);
     expect(screen.getByRole('heading', { name: 'Downloads' })).toBeInTheDocument();
     expect(screen.getByLabelText('Search downloads')).toBeInTheDocument();
-    expect(screen.getByText('No downloads yet')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
+    expect(screen.getByText(/Paste a link on Home/)).toBeInTheDocument();
+    expect(screen.getByText(/Finished files show up here/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Go to Home' }));
+    expect(get(route)).toBe('home');
   });
 
   test('date-groups individual rows and does not invent playlist groups', () => {
@@ -62,8 +69,10 @@ describe('Downloads page', () => {
     expect(screen.getByText('Go 2026')).toBeInTheDocument();
     expect(screen.getByText('Tracing')).toBeInTheDocument();
     expect(screen.queryByText(/Playlist ·/)).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Show in Finder' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Open downloaded file' }).length).toBeGreaterThan(0);
+    const reveal = screen.getAllByRole('button', { name: 'Show in Finder' })[0];
+    const open = screen.getAllByRole('button', { name: 'Open downloaded file' })[0];
+    expect(reveal.querySelector('svg')).not.toBeNull();
+    expect(open.querySelector('svg')).not.toBeNull();
   });
 
   test('expands a playlist group only when history carries collection identity', async () => {
@@ -82,11 +91,17 @@ describe('Downloads page', () => {
     expect(screen.getByText('Concurrency in Go')).toBeInTheDocument();
     expect(screen.getByText(/Playlist · 2 episodes · 1080p/)).toBeInTheDocument();
     expect(screen.queryByText('Introduction')).not.toBeInTheDocument();
+    const groupReveal = screen.getByRole('button', { name: 'Reveal' });
+    const groupOpen = screen.getByRole('button', { name: 'Open' });
+    expect(groupReveal.querySelector('svg')).not.toBeNull();
+    expect(groupOpen.querySelector('svg')).not.toBeNull();
 
     await user.click(screen.getByText('Concurrency in Go'));
     expect(screen.getByText('Introduction')).toBeInTheDocument();
     expect(screen.getByText('EP 01')).toBeInTheDocument();
     expect(screen.getByText('WaitGroups')).toBeInTheDocument();
+    expect(screen.getAllByText('12:00 · 22.0 MB')).toHaveLength(2);
+    expect(screen.queryByText(/12:00 · 1080p/)).not.toBeInTheDocument();
   });
 
   test('search filters rows and Open calls the existing file API', async () => {
@@ -104,18 +119,35 @@ describe('Downloads page', () => {
     expect((window as any).go.main.App.OpenFile).toHaveBeenCalledWith('/tmp/keep.mp4');
   });
 
-  test('missing files disable Open and Reveal and still allow remove from history', async () => {
+  test('search with no matches offers Clear search', async () => {
     const user = userEvent.setup();
     history.set([
-      entry({ id: 'gone', title: 'Missing clip', fileMissing: true }),
+      entry({ id: 'keep', title: 'Go 2026' }),
     ]);
     render(Downloads);
-    expect(screen.getByText(/File missing/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open downloaded file' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Show in Finder' })).toBeDisabled();
+    await user.type(screen.getByLabelText('Search downloads'), 'zzzz');
+    expect(screen.getByText('No matching downloads')).toBeInTheDocument();
+    expect(screen.getByText('Try a different title, channel, or filename.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go to Home' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(screen.getByText('Go 2026')).toBeInTheDocument();
+    expect(screen.queryByText('No matching downloads')).not.toBeInTheDocument();
+  });
 
-    await user.click(screen.getByLabelText('Show details for Missing clip'));
-    await user.click(screen.getByRole('button', { name: 'Remove from history' }));
-    expect(get(modal)).toMatchObject({ kind: 'confirm', title: 'Remove from history?' });
+  test('keeps a receipt without a File missing chip and says the path is gone on Open', async () => {
+    const user = userEvent.setup();
+    (window as any).go.main.App.OpenFile = vi.fn(async () => {
+      throw new Error('That file is no longer at this path');
+    });
+    history.set([
+      entry({ id: 'gone', title: 'Finished video' }),
+    ]);
+    render(Downloads);
+    expect(screen.getByText('Finished video')).toBeInTheDocument();
+    expect(screen.queryByText(/File missing/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open downloaded file' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Show in Finder' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Open downloaded file' }));
+    expect(get(banner)).toMatchObject({ kind: 'danger', message: 'That file is no longer at this path' });
   });
 });

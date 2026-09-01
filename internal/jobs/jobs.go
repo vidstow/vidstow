@@ -29,6 +29,7 @@ import (
 
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/outputplan"
+	"github.com/tejasa97/vidstow/internal/recovery"
 	"github.com/tejasa97/vidstow/internal/reservation"
 	"github.com/tejasa97/vidstow/internal/reservationfs"
 	"github.com/tejasa97/ytdlp-go/engine"
@@ -236,6 +237,8 @@ type QueueJobCapabilities struct {
 	Review        bool `json:"review"`
 	Open          bool `json:"open"`
 	Remove        bool `json:"remove"`
+	Discard       bool `json:"discard"`
+	ChangeFolder  bool `json:"changeFolder"`
 }
 
 // QueueFailure is stable, backend-authored failure copy. Retryable explains
@@ -270,6 +273,7 @@ type QueueRow struct {
 	ETALabel        string                `json:"etaLabel,omitempty"`
 	Message         string                `json:"message,omitempty"`
 	Failure         *QueueFailure         `json:"failure,omitempty"`
+	SavedBytes      int64                 `json:"savedBytes,omitempty"`
 	Capabilities    QueueJobCapabilities  `json:"capabilities"`
 	CommandToken    string                `json:"commandToken,omitempty"`
 }
@@ -462,6 +466,7 @@ type Manager struct {
 	playlistCache        map[string]cachedPlaylist
 	collectionAuthority  map[string]collectionAuthority
 	collectionCommanding map[string]bool
+	holdRestoredWaiting  bool
 	persistence          Persistence
 	persistenceDurable   bool
 	persistMu            sync.Mutex
@@ -522,6 +527,7 @@ type jobState struct {
 	authoritySig       string
 	authorityRevision  uint64
 	authorityAttemptID string
+	forceStart         bool
 	startBps           time.Time
 	startByt           int64
 }
@@ -596,8 +602,9 @@ func (m *Manager) SetStateStore(stateStore StateStore) error {
 }
 
 // RestoreStateV2 reconstructs the existing FIFO manager from a committed,
-// already-reconciled State v2 snapshot. It deliberately does not enqueue or
-// start anything: startup restoration is always paused and active is empty.
+// already-reconciled State v2 snapshot. Waiting pending jobs are restored in
+// ordinal order but are not started. Rows marked StartupResume are started
+// later by StartInterruptedDownloads, up to concurrency.
 func (m *Manager) RestoreStateV2(snapshot jobmodel.State) error {
 	if snapshot.Version != jobmodel.StateVersion {
 		return errors.New("jobs: invalid State v2 restore snapshot")
@@ -613,9 +620,14 @@ func (m *Manager) RestoreStateV2(snapshot jobmodel.State) error {
 	if len(m.all) != 0 || len(m.active) != 0 || len(m.order) != 0 {
 		return errors.New("jobs: manager already contains queue state")
 	}
+	type pendingRef struct {
+		id      string
+		ordinal uint64
+	}
+	pending := make([]pendingRef, 0, len(snapshot.Jobs))
 	for _, durable := range snapshot.Jobs {
 		switch durable.Lifecycle {
-		case jobmodel.LifecyclePending, jobmodel.LifecycleActive, jobmodel.LifecyclePausing, jobmodel.LifecycleCanceling:
+		case jobmodel.LifecycleActive, jobmodel.LifecyclePausing, jobmodel.LifecycleCanceling:
 			return fmt.Errorf("jobs: unreconciled transitional job %q", durable.ID)
 		}
 		state, err := stateFromDurable(durable)
@@ -623,14 +635,39 @@ func (m *Manager) RestoreStateV2(snapshot jobmodel.State) error {
 			return err
 		}
 		m.all[durable.ID] = state
+		if durable.Lifecycle == jobmodel.LifecyclePending {
+			pending = append(pending, pendingRef{id: durable.ID, ordinal: durable.QueueOrdinal})
+		}
+	}
+	sort.SliceStable(pending, func(i, j int) bool { return pending[i].ordinal < pending[j].ordinal })
+	for _, item := range pending {
+		m.order = append(m.order, item.id)
+	}
+	m.holdRestoredWaiting = false
+	for _, durable := range snapshot.Jobs {
+		if durable.StartupResume {
+			m.holdRestoredWaiting = true
+			break
+		}
 	}
 	m.persistStatus = PersistenceStatus{Available: true, Healthy: true}
 	return nil
 }
 
+// StartInterruptedDownloads starts only the jobs that were downloading when
+// VidStow last exited, up to the current concurrency. Waiting jobs stay in
+// FIFO order and start later when a slot frees.
+func (m *Manager) StartInterruptedDownloads() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.maybeStartNextLocked()
+}
+
 func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 	status := StatusPaused
 	switch durable.Lifecycle {
+	case jobmodel.LifecyclePending:
+		status = StatusPending
 	case jobmodel.LifecyclePaused:
 		status = StatusPaused
 	case jobmodel.LifecycleFailed:
@@ -679,8 +716,13 @@ func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 		Filename: filename, AbsolutePath: absolutePath, ErrorReason: durable.LastErrorCode,
 	}
 	switch status {
+	case StatusPending:
+		snapshot.Message = "Waiting"
 	case StatusPaused:
-		snapshot.Message = "Paused after app restart"
+		snapshot.Message = "Paused"
+		if leftoverUnusableCode(durable.LastErrorCode) {
+			snapshot.Message = "Saved data cannot be continued from here. Resume to try again, or Discard to delete it."
+		}
 	case StatusFailed:
 		snapshot.Message = "Failed"
 		if durable.LastErrorCode == retryCodeFreshDownloadRequired {
@@ -1670,6 +1712,7 @@ func (m *Manager) submit(id string, req Request, admittedPlan *outputplan.Plan, 
 		return "", errors.New("jobs: duplicate admitted job id")
 	}
 	m.all[id] = state
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -1738,6 +1781,7 @@ func (m *Manager) queueViewLocked() QueueView {
 			Lifecycle: lifecycle, Phase: snap.Phase, Desired: snap.Desired,
 			OccupiesSlot: m.active[snap.ID] != nil, QueuePosition: positions[snap.ID],
 			Progress: snap.Progress, Message: snap.Message,
+			SavedBytes:   savedBytesFor(state, snap),
 			Capabilities: m.queueCapabilitiesLocked(state, snap),
 		}
 		if lifecycle == jobmodel.LifecycleFailed {
@@ -1909,11 +1953,11 @@ func (m *Manager) refreshQueueAuthorityLocked() {
 		}
 		caps := m.queueCapabilitiesLocked(state, state.snap)
 		cleanupPresent, cleanupQuarantined := m.cleanupStatusLocked(id)
-		sig := fmt.Sprintf("%s|%s|%s|%s|%d|%t|%d|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t",
+		sig := fmt.Sprintf("%s|%s|%s|%s|%d|%t|%d|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t",
 			state.snap.Status, state.snap.Lifecycle, state.snap.Phase, state.snap.Desired,
 			state.authorityRevision, m.active[id] != nil, positions[id], m.closing, m.closed,
 			caps.Pause, caps.Cancel, caps.Resume, caps.Retry, caps.DownloadAgain, caps.StartAgain,
-			caps.OpenSource, caps.CopyLink, caps.Review, caps.Open, caps.Remove,
+			caps.OpenSource, caps.CopyLink, caps.Review, caps.Open, caps.Remove, caps.Discard, caps.ChangeFolder,
 		)
 		// Attempt identity and cleanup disposition are authority boundaries even
 		// when the presentation lifecycle happens to be unchanged.
@@ -2022,12 +2066,17 @@ func queueCapabilitiesFor(state *jobState, snap JobSnapshot) QueueJobCapabilitie
 	case StatusActive:
 		return QueueJobCapabilities{Pause: snap.CanPause && !snap.Processing, Cancel: true}
 	case StatusPaused:
-		return QueueJobCapabilities{Resume: true, Cancel: true}
+		caps := QueueJobCapabilities{Resume: true, Cancel: true}
+		if leftoverUnusableCode(snap.ErrorReason) || (state != nil && leftoverUnusableCode(state.durable.LastErrorCode)) {
+			caps.Discard = true
+		}
+		return caps
 	case StatusFailed:
 		failure := queueFailureFor(state, snap)
 		caps := QueueJobCapabilities{Remove: true}
 		caps.Retry = failure.Retryable && !retryExhausted(state)
 		caps.StartAgain = failure.Category == "disk_full" || failure.Category == "permission_denied"
+		caps.ChangeFolder = failure.Category == "folder_unavailable" || failure.Category == "disk_full" || failure.Category == "permission_denied"
 		caps.OpenSource = snap.URL != "" && (failure.Category == "authentication_required" || failure.Category == "resource_unavailable")
 		caps.CopyLink = caps.OpenSource
 		return caps
@@ -2080,12 +2129,18 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		failure.MessageKey = "queue.failure.disk_full"
 		failure.Heading = "Not enough disk space"
 		failure.Message = "VidStow could not finish writing this download."
-		failure.RecommendedAction = "Free space or change the default folder, then start this item again."
+		failure.RecommendedAction = "Free space or change the folder, then start this item again."
 	case "permission_denied":
 		failure.MessageKey = "queue.failure.permission_denied"
 		failure.Heading = "Folder is not writable"
 		failure.Message = "VidStow does not have permission to write this download."
-		failure.RecommendedAction = "Fix access or change the default folder, then start this item again."
+		failure.RecommendedAction = "Fix access or change the folder, then start this item again."
+	case "folder_unavailable":
+		failure.MessageKey = "queue.failure.folder_unavailable"
+		failure.Heading = "Save folder is missing"
+		failure.Message = "The folder for this download is gone. Plug the drive back in, or Change to a different folder."
+		failure.RecommendedAction = "Bring the original path back, or Change the folder. This download continues by itself when the path returns."
+		failure.Retryable = true
 	case "security_blocked":
 		failure.MessageKey = "queue.failure.security_blocked"
 		failure.Heading = "Download blocked"
@@ -2126,12 +2181,23 @@ func failureCategoryForCode(code string) string {
 		return "disk_full"
 	case "permission_denied":
 		return "permission_denied"
+	case "output-root-unavailable":
+		return "folder_unavailable"
 	case "security":
 		return "security_blocked"
 	case retryCodeFreshDownloadRequired:
 		return "retry_exhausted"
 	default:
 		return "internal"
+	}
+}
+
+func leftoverUnusableCode(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "session-manifest-corrupt", "session-version-unknown", "session-reconciliation-required", "recovery-session-unavailable", "recovery-session-reference-invalid", "publication-reconciliation-required":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -2333,6 +2399,124 @@ func (m *Manager) QueueActionRequiredDiscard(id, token string) error {
 	return m.cancelIdle(state)
 }
 
+// QueueDiscardSavedData removes leftover session files for a paused row after
+// the inspector confirm. Size is named by the frontend from SavedBytes.
+func (m *Manager) QueueDiscardSavedData(id, token string) error {
+	state, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.Discard })
+	if err != nil || state.snap.Status != StatusPaused {
+		return errors.New("jobs: discarding saved data is no longer available")
+	}
+	m.mu.Lock()
+	if m.all[id] != state || state.commanding || state.settling || m.active[id] != nil {
+		m.mu.Unlock()
+		return errors.New("jobs: discarding saved data is no longer available")
+	}
+	state.commanding = true
+	m.mu.Unlock()
+	return m.cancelIdle(state)
+}
+
+func savedBytesFor(state *jobState, snap JobSnapshot) int64 {
+	if state != nil && state.fromStateV2 && state.durable.LastFailureCommittedBytes > 0 {
+		return state.durable.LastFailureCommittedBytes
+	}
+	if snap.Bytes > 0 {
+		return snap.Bytes
+	}
+	return 0
+}
+
+// QueueChangeFolder retargets a failed job to a new writable folder and
+// continues from leftover data when the engine can use it.
+func (m *Manager) QueueChangeFolder(id, token, canonicalPath string) error {
+	state, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.ChangeFolder })
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(canonicalPath) == "" {
+		return errors.New("jobs: a folder is required")
+	}
+	root, err := reservationfs.EnsureOpenRoot(canonicalPath)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	facts := root.Facts()
+	if facts.Volume.CanonicalPath == "" || facts.Volume.Identity == "" {
+		return errors.New("jobs: the chosen folder has no stable identity")
+	}
+	engineRoot, err := engine.ValidateOutputRoot(facts.Volume.CanonicalPath)
+	if err != nil {
+		return err
+	}
+	if engineRoot.CanonicalPath != facts.Volume.CanonicalPath {
+		return errors.New("jobs: engine and reservation folders differ")
+	}
+	nextRoot := jobmodel.OutputRootRef{
+		CanonicalPath:  facts.Volume.CanonicalPath,
+		Identity:       facts.Volume.Identity,
+		EngineIdentity: engineRoot.Identity,
+	}
+	if err := m.commitDurable(state, func(job *jobmodel.DurableJob, _ *jobmodel.State) error {
+		job.OutputRoot = nextRoot
+		job.Reservation.Directory = nextRoot
+		return nil
+	}); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	if m.all[id] == state {
+		state.snap.OutputDir = nextRoot.CanonicalPath
+	}
+	m.mu.Unlock()
+	return m.Retry(id)
+}
+
+// ContinueWhenFoldersReturn retries failed jobs whose save folder has come
+// back. Waiting jobs are not started as a side effect.
+func (m *Manager) ContinueWhenFoldersReturn() {
+	m.mu.Lock()
+	ids := make([]string, 0)
+	for id, state := range m.all {
+		if state == nil || state.snap.Status != StatusFailed {
+			continue
+		}
+		if state.durable.LastErrorCode != "output-root-unavailable" && state.snap.ErrorReason != "output-root-unavailable" {
+			continue
+		}
+		if state.commanding || state.settling {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+	for _, id := range ids {
+		m.tryContinueMissingFolder(id)
+	}
+}
+
+func (m *Manager) tryContinueMissingFolder(id string) {
+	m.mu.Lock()
+	state := m.all[id]
+	if state == nil || !state.fromStateV2 || state.snap.Status != StatusFailed {
+		m.mu.Unlock()
+		return
+	}
+	root := state.durable.OutputRoot
+	sessionID := state.durable.SessionID
+	m.mu.Unlock()
+	if root.CanonicalPath == "" || sessionID == "" {
+		return
+	}
+	summary, err := m.inspectResume(context.Background(), engineRootRef(root), sessionID)
+	if err != nil || recovery.IsRootUnavailable(summary) {
+		return
+	}
+	if err := m.Retry(id); err != nil {
+		log.Printf("vidstow: could not continue after folder returned: %v", err)
+	}
+}
+
 // QueueActionRequiredRetryFreshLink rotates away from uncertain session
 // evidence atomically, retains it for durable cleanup, and starts the same row
 // with a fresh engine session so media URLs are resolved again.
@@ -2402,6 +2586,7 @@ func (m *Manager) QueueActionRequiredRetryFreshLink(id, token string) error {
 	state.snap.StartedAt = ""
 	state.snap.CompletedAt = ""
 	state.commanding = false
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -3239,6 +3424,7 @@ func (m *Manager) Resume(id string) error {
 	state.snap.Processing = false
 	state.snap.CanPause = false
 	state.commanding = false
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -3409,6 +3595,38 @@ func canRestartPreTransferFailure(state *jobState, summary engine.ResumeSummary)
 		return false
 	}
 	return string(summary.Publication) == "" && string(summary.Cleanup) == "" && string(summary.Status) == ""
+}
+
+// canRestartAfterFolderRetarget starts a fresh session when the save folder
+// was missing, full, or unwritable and leftover data is not sitting in the
+// new folder. Reusable leftover still goes through classifyRetryResume.
+func canRestartAfterFolderRetarget(state *jobState, summary engine.ResumeSummary) bool {
+	if state == nil {
+		return false
+	}
+	switch state.durable.LastErrorCode {
+	case "output-root-unavailable", "disk_full", "permission_denied":
+	default:
+		return false
+	}
+	if summary.HasManifest || summary.LeaseContended {
+		return false
+	}
+	if string(summary.Publication) == "committed" || string(summary.Publication) == "indeterminate" {
+		return false
+	}
+	classes := append([]engine.ResumeInspectionClass{summary.Classification}, summary.Classifications...)
+	for _, class := range classes {
+		switch string(class) {
+		case "", "unavailable_root", "missing_lease":
+			continue
+		case "available", "unsafe_path", "lease_contention", "publication_indeterminate", "manifest_commit_indeterminate":
+			return false
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // committedBytesFromSummary sums the durable per-track checkpoints of a
@@ -3599,7 +3817,7 @@ func (m *Manager) Retry(id string) error {
 		} else {
 			summary, inspectErr := m.inspectResume(context.Background(), engineRootRef(state.durable.OutputRoot), sessionID)
 			if inspectErr != nil {
-				if canRestartPreTransferFailure(state, engine.ResumeSummary{}) {
+				if canRestartPreTransferFailure(state, engine.ResumeSummary{}) || canRestartAfterFolderRetarget(state, engine.ResumeSummary{}) {
 					sessionID = newSessionID()
 					retryMode = jobmodel.RetryModeRestartNewSession
 				} else {
@@ -3608,7 +3826,7 @@ func (m *Manager) Retry(id string) error {
 			} else {
 				decision, actionCode := classifyRetryResume(summary)
 				if decision != retryResumeReuse {
-					if canRestartPreTransferFailure(state, summary) {
+					if canRestartPreTransferFailure(state, summary) || canRestartAfterFolderRetarget(state, summary) {
 						sessionID = newSessionID()
 						retryMode = jobmodel.RetryModeRestartNewSession
 					} else {
@@ -3684,6 +3902,7 @@ func (m *Manager) Retry(id string) error {
 	state.startBps = time.Time{}
 	state.startByt = 0
 	state.commanding = false
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -3801,6 +4020,7 @@ func (m *Manager) DownloadAgain(id string) (string, error) {
 			return "", ErrClosed
 		}
 		m.all[newID] = newState
+		newState.forceStart = true
 		m.order = append(m.order, newID)
 		m.emitLocked(Event{Name: EventJobUpdate, Job: newState.snap})
 		m.maybeStartNextLocked()
@@ -3990,12 +4210,36 @@ func (m *Manager) Concurrency() int {
 }
 
 // maybeStartNextLocked fills every available download slot from the FIFO.
+// After a crash restore, only StartupResume or force-started rows start
+// until a running job frees a slot.
 // Caller must hold m.mu.
 func (m *Manager) maybeStartNextLocked() {
 	if m.closing || m.closed {
 		return
 	}
-	for len(m.active) < m.concurrency && len(m.order) > 0 {
+	for len(m.active) < m.concurrency {
+		id, ok := m.nextStartableLocked()
+		if !ok {
+			return
+		}
+		m.activatePendingLocked(id)
+	}
+}
+
+func (m *Manager) nextStartableLocked() (string, bool) {
+	if m.holdRestoredWaiting {
+		for _, id := range m.order {
+			state, ok := m.all[id]
+			if !ok || state.commanding || state.settling || state.snap.Status != StatusPending {
+				continue
+			}
+			if state.durable.StartupResume || state.forceStart {
+				return id, true
+			}
+		}
+		return "", false
+	}
+	for len(m.order) > 0 {
 		id := m.order[0]
 		state, ok := m.all[id]
 		if !ok {
@@ -4003,47 +4247,53 @@ func (m *Manager) maybeStartNextLocked() {
 			continue
 		}
 		if state.commanding || state.settling {
-			// A FIFO-head row is in a durable lifecycle transition. Do not
-			// bypass it or start it before its winner is reflected in memory.
-			break
+			return "", false
 		}
 		if state.snap.Status != StatusPending {
 			m.order = m.order[1:]
 			continue
 		}
-		ctx, cancel := context.WithCancelCause(context.Background())
-		worker := &worker{
-			JobID:     id,
-			AttemptID: state.durable.AttemptID,
-			SessionID: state.durable.SessionID,
-			Cancel:    cancel,
-			Ctx:       ctx,
-			Arbiter:   engine.NewPublicationArbiter(),
-			Done:      make(chan struct{}),
-		}
-		state.worker = worker
-		state.done = worker.Done
-		if state.fromStateV2 {
-			// Prevent Pause/Cancel from racing the pending-to-active State
-			// transaction. The flag is cleared immediately before the runner
-			// starts, after durable activation succeeds.
-			state.commanding = true
-		}
-		state.snap.Status = StatusActive
-		state.snap.OccupiesSlot = true
-		if state.fromStateV2 {
-			state.snap.Lifecycle = jobmodel.LifecycleActive
-			state.snap.Desired = jobmodel.DesiredRunning
-			state.snap.Phase = jobmodel.PhasePreparing
-		}
-		state.snap.StartedAt = time.Now().UTC().Format(time.RFC3339)
-		state.snap.Message = "Preparing"
-		state.snap.CanPause = true
-		m.active[id] = worker
-		m.order = m.order[1:]
-		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
-		go m.startWorker(state, worker)
+		return id, true
 	}
+	return "", false
+}
+
+func (m *Manager) activatePendingLocked(id string) {
+	state := m.all[id]
+	if state == nil {
+		return
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	worker := &worker{
+		JobID:     id,
+		AttemptID: state.durable.AttemptID,
+		SessionID: state.durable.SessionID,
+		Cancel:    cancel,
+		Ctx:       ctx,
+		Arbiter:   engine.NewPublicationArbiter(),
+		Done:      make(chan struct{}),
+	}
+	state.worker = worker
+	state.done = worker.Done
+	if state.fromStateV2 {
+		state.commanding = true
+	}
+	state.snap.Status = StatusActive
+	state.snap.OccupiesSlot = true
+	if state.fromStateV2 {
+		state.snap.Lifecycle = jobmodel.LifecycleActive
+		state.snap.Desired = jobmodel.DesiredRunning
+		state.snap.Phase = jobmodel.PhasePreparing
+	}
+	state.snap.StartedAt = time.Now().UTC().Format(time.RFC3339)
+	state.snap.Message = "Preparing"
+	state.snap.CanPause = true
+	state.forceStart = false
+	state.durable.StartupResume = false
+	m.active[id] = worker
+	m.removeFromOrderLocked(id)
+	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
+	go m.startWorker(state, worker)
 }
 
 // startWorker commits the durable pending-to-active transition before the
@@ -4057,6 +4307,7 @@ func (m *Manager) startWorker(state *jobState, worker *worker) {
 			}
 			job.Lifecycle = jobmodel.LifecycleActive
 			job.Phase = jobmodel.PhasePreparing
+			job.StartupResume = false
 			return nil
 		}); err != nil {
 			m.mu.Lock()
@@ -4285,6 +4536,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 	state.snap.OccupiesSlot = false
 	delete(m.active, state.snap.ID)
 	state.worker = nil
+	m.holdRestoredWaiting = false
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap, Diagnostic: diagnostic})
 	m.maybeStartNextLocked()
 	m.emitQueueLocked()

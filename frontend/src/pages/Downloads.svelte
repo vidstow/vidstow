@@ -1,21 +1,19 @@
 <script lang="ts">
-  import { history, modal, showBanner, showError } from '../lib/stores.js';
+  import PageEmpty from '../lib/components/PageEmpty.svelte';
+  import { history, modal, route, showBanner, showError } from '../lib/stores.js';
   import { api } from '../lib/api.js';
   import {
     buildHistorySections,
     episodeIndex,
     episodeLabel,
+    episodeSubtitle,
     historySubtitle,
     thumbnailFor,
     type HistoryCollectionRow,
     type HistoryRecord,
   } from '../lib/download-history.js';
 
-  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  const searchPlaceholder = isMac ? 'Search · ⌘F' : 'Search · Ctrl+F';
-
   let query = '';
-  let searchField: HTMLInputElement | null = null;
   let selectedId: string | null = null;
   let openGroups = new Set<string>();
 
@@ -38,31 +36,23 @@
   }
 
   const open = async (entry: HistoryRecord) => {
-    if (entry.fileMissing) {
-      showBanner('warning', 'That downloaded file is no longer on disk.');
-      return;
-    }
     try {
       await api.fs.open(entry.absolutePath);
     } catch (err) {
-      showError(err, 'Could not open the downloaded file');
+      showError(err, 'That file is no longer at this path');
     }
   };
 
   const reveal = async (entry: HistoryRecord) => {
-    if (entry.fileMissing) {
-      showBanner('warning', 'That downloaded file is no longer on disk.');
-      return;
-    }
     try {
       await api.fs.reveal(entry.absolutePath);
     } catch (err) {
-      showError(err, 'Could not show the downloaded file');
+      showError(err, 'That file is no longer at this path');
     }
   };
 
   function firstPresent(entries: HistoryRecord[]): HistoryRecord | undefined {
-    return entries.find((entry) => !entry.fileMissing) ?? entries[0];
+    return entries[0];
   }
 
   async function openGroup(group: HistoryCollectionRow) {
@@ -119,32 +109,29 @@
     });
   }
 
-  function onWindowKeydown(event: KeyboardEvent) {
-    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.repeat) return;
-    if (event.key.toLowerCase() !== 'f') return;
-    event.preventDefault();
-    searchField?.focus();
-    searchField?.select();
+  function goHome() {
+    route.set('home');
+  }
+
+  function clearSearch() {
+    query = '';
   }
 </script>
-
-<svelte:window on:keydown={onWindowKeydown} />
 
 <section class="page downloads-page" aria-labelledby="downloads-title">
   <header class="dhead">
     <h1 id="downloads-title">Downloads</h1>
     <input
-      bind:this={searchField}
       class="dsearch"
       type="search"
       bind:value={query}
-      placeholder={searchPlaceholder}
+      placeholder="Search"
       aria-label="Search downloads"
     />
   </header>
 
-  <div class="dlist">
-    {#if sections.length}
+  {#if sections.length}
+    <div class="dlist">
       {#each sections as section (section.key)}
         <div class="dgroup">{section.label}</div>
         {#each section.rows as row (row.kind === 'collection' ? row.id : row.entry.id)}
@@ -171,14 +158,14 @@
                 <span>Playlist · {row.entries.length} {row.entries.length === 1 ? 'episode' : 'episodes'} · {row.format} · {row.sizeLabel}</span>
               </div>
               <div class="dact">
-                <button type="button" class="btn sm ghost" on:click|stopPropagation={() => revealGroup(row)}>Reveal</button>
-                <button type="button" class="btn sm ghost" on:click|stopPropagation={() => openGroup(row)}>Open</button>
+                <button type="button" class="btn sm ghost" on:click|stopPropagation={() => revealGroup(row)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button>
+                <button type="button" class="btn sm ghost" on:click|stopPropagation={() => openGroup(row)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
               </div>
             </div>
             {#if expanded}
               {#each row.entries as entry, index (entry.id)}
                 {@const ep = episodeIndex(entry, index + 1)}
-                <div class="drow sub" class:missing={entry.fileMissing} class:selected={selectedId === entry.id}>
+                <div class="drow sub" class:selected={selectedId === entry.id}>
                   <span class="epx">{episodeLabel(ep)}</span>
                   {#if thumbnailFor(entry)}
                     <img src={thumbnailFor(entry)} alt="" referrerpolicy="no-referrer" />
@@ -187,21 +174,18 @@
                   {/if}
                   <button class="copy" type="button" on:click={() => toggleDetails(entry)}>
                     <b title={entry.title}>{entry.title}</b>
-                    <span>{entry.durationLabel ? `${entry.durationLabel} · ` : ''}{historySubtitle(entry)}</span>
+                    <span>{episodeSubtitle(entry)}</span>
                   </button>
                   <div class="dact">
-                    <button type="button" class="btn sm ghost" aria-label="Show in Finder" disabled={entry.fileMissing} on:click={() => reveal(entry)}>Reveal</button>
-                    <button type="button" class="btn sm ghost" aria-label="Open downloaded file" disabled={entry.fileMissing} on:click={() => open(entry)}>Open</button>
+                    <button type="button" class="btn sm ghost" aria-label="Show in Finder" on:click={() => reveal(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button>
+                    <button type="button" class="btn sm ghost" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
                   </div>
                   {#if selectedId === entry.id}
                     <div class="detail">
-                      {#if entry.fileMissing}
-                        <p class="missing-note">This file is no longer on disk. You can still remove the history entry.</p>
-                      {/if}
                       <p class="path" title={entry.absolutePath}>{entry.absolutePath}</p>
                       <div class="dact">
-                        <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}>Remove</button>
-                        <button type="button" class="btn sm ghost danger" aria-label="Delete downloaded file" disabled={entry.fileMissing} on:click={() => confirmDeleteFile(entry)}>Delete file</button>
+                        <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5l11 11"/><path d="M17.5 6.5l-11 11"/></svg>Remove</button>
+                        <button type="button" class="btn sm ghost danger" aria-label="Delete downloaded file" on:click={() => confirmDeleteFile(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6.5 7l1 13h9l1-13"/><path d="M10 11v5.5"/><path d="M14 11v5.5"/></svg>Delete file</button>
                       </div>
                     </div>
                   {/if}
@@ -210,7 +194,7 @@
             {/if}
           {:else}
             {@const entry = row.entry}
-            <div class="drow" class:missing={entry.fileMissing} class:selected={selectedId === entry.id}>
+            <div class="drow" class:selected={selectedId === entry.id}>
               {#if thumbnailFor(entry)}
                 <img src={thumbnailFor(entry)} alt="" referrerpolicy="no-referrer" />
               {:else}
@@ -221,18 +205,15 @@
                 <span>{historySubtitle(entry)}</span>
               </button>
               <div class="dact">
-                <button type="button" class="btn sm ghost" aria-label="Show in Finder" disabled={entry.fileMissing} on:click={() => reveal(entry)}>Reveal</button>
-                <button type="button" class="btn sm ghost" aria-label="Open downloaded file" disabled={entry.fileMissing} on:click={() => open(entry)}>Open</button>
+                <button type="button" class="btn sm ghost" aria-label="Show in Finder" on:click={() => reveal(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button>
+                <button type="button" class="btn sm ghost" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
               </div>
               {#if selectedId === entry.id}
                 <div class="detail">
-                  {#if entry.fileMissing}
-                    <p class="missing-note">This file is no longer on disk. You can still remove the history entry.</p>
-                  {/if}
                   <p class="path" title={entry.absolutePath}>{entry.absolutePath}</p>
                   <div class="dact">
-                    <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}>Remove</button>
-                    <button type="button" class="btn sm ghost danger" aria-label="Delete downloaded file" disabled={entry.fileMissing} on:click={() => confirmDeleteFile(entry)}>Delete file</button>
+                    <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5l11 11"/><path d="M17.5 6.5l-11 11"/></svg>Remove</button>
+                    <button type="button" class="btn sm ghost danger" aria-label="Delete downloaded file" on:click={() => confirmDeleteFile(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6.5 7l1 13h9l1-13"/><path d="M10 11v5.5"/><path d="M14 11v5.5"/></svg>Delete file</button>
                   </div>
                 </div>
               {/if}
@@ -240,10 +221,25 @@
           {/if}
         {/each}
       {/each}
-    {:else}
-      <div class="dgroup">{needle ? 'No matching downloads' : 'No downloads yet'}</div>
-    {/if}
-  </div>
+    </div>
+  {:else if $history.length && needle}
+    <PageEmpty
+      icon="search"
+      title="No matching downloads"
+      message="Try a different title, channel, or filename."
+      action="Clear search"
+      actionKind="ghost"
+      onAction={clearSearch}
+    />
+  {:else}
+    <PageEmpty
+      icon="downloads"
+      title="Nothing here yet"
+      message={"Paste a link on Home.\nFinished files show up here."}
+      action="Go to Home"
+      onAction={goHome}
+    />
+  {/if}
 </section>
 
 <style>
@@ -262,7 +258,9 @@
     align-items: center;
     justify-content: space-between;
     gap: 14px;
-    padding: 18px 18px 10px;
+    flex-shrink: 0;
+    min-height: calc(var(--page-pad-y) + 28px + 16px);
+    padding: var(--page-pad-y) var(--page-pad-x) 16px;
   }
   .dhead h1 {
     margin: 0;
@@ -291,7 +289,7 @@
   .dlist {
     flex: 1;
     overflow-y: auto;
-    padding: 0 10px 14px;
+    padding: 0 calc(var(--page-pad-x) - 8px) 16px;
   }
   .dgroup {
     padding: 14px 8px 6px;
@@ -313,7 +311,6 @@
   }
   .drow:hover { background: #131316; }
   .drow.selected { background: var(--surface-raised); }
-  .drow.missing { opacity: 0.92; }
   .drow img, .thumb-fallback {
     width: 48px;
     height: 28px;
@@ -360,6 +357,8 @@
     text-overflow: ellipsis;
   }
   .dact { display: flex; gap: 6px; }
+  .dact .btn:has(> svg) { display: inline-flex; align-items: center; gap: 5px; }
+  .dact .btn:has(> svg) svg { width: 12px; height: 12px; flex-shrink: 0; }
 
   .btn {
     display: inline-flex;
@@ -373,6 +372,7 @@
     color: var(--text-primary);
     font-size: 12px;
     font-weight: 500;
+    cursor: pointer;
     transition: background-color 120ms ease, border-color 120ms ease;
   }
   .btn:hover:not(:disabled) { background: var(--surface-hover); }
@@ -388,7 +388,6 @@
     gap: 8px;
     padding: 0 0 10px;
   }
-  .missing-note { margin: 0; color: var(--status-warning); font-size: 11px; }
   .path {
     margin: 0;
     min-width: 0;

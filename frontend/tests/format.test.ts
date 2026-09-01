@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'vitest';
 
-import { formatEngineVersion, formatViewCount, youtubeUrlFromText } from '../src/lib/format.js';
+import { formatDiscardConfirm, formatEngineVersion, formatPlanSize, formatViewCount, youtubeUrlFromText } from '../src/lib/format.js';
+
+describe('formatPlanSize', () => {
+  test('keeps approximate and exact sizes as plain labels', () => {
+    expect(formatPlanSize(65.3 * 1024 * 1024)).toBe('65.3 MB');
+    expect(formatPlanSize(478.6 * 1024 * 1024, true)).toBe('~478.6 MB');
+  });
+});
 
 describe('formatViewCount', () => {
   test('promotes 1000 of a unit to the next unit', () => {
@@ -21,6 +28,16 @@ describe('youtubeUrlFromText', () => {
     expect(youtubeUrlFromText('check this https://www.youtube.com/shorts/dQw4w9WgXcQ out')).toBe(
       'https://www.youtube.com/shorts/dQw4w9WgXcQ',
     );
+  });
+});
+
+describe('formatDiscardConfirm', () => {
+  test('names the leftover size in the confirm', () => {
+    expect(formatDiscardConfirm(843 * 1024 * 1024)).toBe('Delete 843 MB of saved data?');
+  });
+
+  test('asks without a size when leftover bytes are unknown', () => {
+    expect(formatDiscardConfirm(0)).toBe('Delete the saved data for this download?');
   });
 });
 

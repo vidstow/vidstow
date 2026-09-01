@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 import Home from '../src/pages/Home.svelte';
-import { pendingUrl, pendingHomeFocus, settings, modal } from '../src/lib/stores.js';
+import { pendingUrl, settings, modal, banner } from '../src/lib/stores.js';
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
@@ -47,19 +47,23 @@ function installBindings() {
   const AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
   const AnalyzeBatchURLs = vi.fn();
   const StartBatchDownload = vi.fn();
-  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload } } };
-  return { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload };
+  const StartDownload = vi.fn(async () => 'job-1');
+  const StartPlaylistDownload = vi.fn(async () => ({ collectionId: 'playlist-1', admitted: 2 }));
+  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload } } };
+  return { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload };
 }
 
 describe('Home analysis authority', () => {
-  test('empty Home shows the field shortcut and dotted try chips', async () => {
+  test('empty Home shows dotted try chips', async () => {
     render(Home);
-    const kbd = document.querySelector('.fieldwrap .kbd');
-    expect(kbd).toBeTruthy();
-    expect(kbd?.textContent).toMatch(/L|Ctrl\+L/);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'a private link' }));
+    expect(document.querySelector('.fieldwrap .kbd')).toBeNull();
+    expect(screen.getByRole('button', { name: 'a video' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'a playlist' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'several links' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'a private link' })).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'a video' }));
     expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(
-      'https://www.youtube.com/watch?v=private',
+      'https://www.youtube.com/watch?v=jNQXAC9IVRw',
     );
   });
 
@@ -87,17 +91,22 @@ describe('Home analysis authority', () => {
     expect(await screen.findByRole('button', { name: /Part of playlist/ })).toBeInTheDocument();
   });
 
-  test('pending home focus selects the field', async () => {
+  test('Enter in the URL field analyzes instead of inserting a newline', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeURL } = installBindings();
     render(Home);
     const field = screen.getByLabelText('YouTube video, Short, or playlist URL');
-    pendingHomeFocus.set(true);
-    await waitFor(() => expect(field).toHaveFocus());
+    await user.click(field);
+    await user.paste(firstURL);
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(AnalyzeURL).toHaveBeenCalled());
+    expect(field).toHaveValue(firstURL);
   });
 
   beforeEach(() => {
     pendingUrl.set('');
-    pendingHomeFocus.set(false);
     modal.set(null);
+    banner.set(null);
     settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', confirmBeforeDownload: false }));
     installBindings();
   });
@@ -128,6 +137,28 @@ describe('Home analysis authority', () => {
     await waitFor(() => expect(AnalyzeURL).toHaveBeenCalledWith(firstURL));
     expect(input).toHaveValue(firstURL);
     expect(get(pendingUrl)).toBe('');
+  });
+
+  test('Analyze keeps its idle width while the request is in flight', async () => {
+    const user = userEvent.setup();
+    (window as any).go.main.App.ValidateURL = vi.fn(() => new Promise(() => {}));
+    render(Home);
+
+    const input = screen.getByLabelText('YouTube video, Short, or playlist URL');
+    await user.type(input, firstURL);
+    const idle = screen.getByRole('button', { name: 'Analyze' });
+    expect(idle).toHaveClass('dbtn', 'query');
+    expect(idle).toHaveAttribute('aria-busy', 'false');
+    expect(idle.querySelector('svg')).toBeTruthy();
+    expect(idle.querySelector('.query-spin')).toBeNull();
+    const idleWidth = idle.getBoundingClientRect().width;
+
+    await user.click(idle);
+    const busy = await screen.findByRole('button', { name: 'Analyze' });
+    expect(busy).toHaveClass('dbtn', 'query');
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy.querySelector('.query-spin')).toBeTruthy();
+    expect(busy.getBoundingClientRect().width).toBe(idleWidth);
   });
 
   test('does not publish an in-flight result after the URL changes', async () => {
@@ -189,6 +220,7 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
 
     expect(await screen.findByRole('button', { name: 'Download 2 videos' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Download 2 videos' }).querySelector('svg')).toBeTruthy();
     expect(screen.queryByText('First video')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /2 episodes/ }));
@@ -197,6 +229,58 @@ describe('Home analysis authority', () => {
     expect(screen.getByLabelText('Range start')).toBeInTheDocument();
     expect(screen.queryByLabelText('Search playlist')).not.toBeInTheDocument();
     expect(screen.getByText('2 selected · up to 1080p')).toBeInTheDocument();
+  });
+
+  test('playlist Download starts the collection path, not a single video', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    const { StartDownload, StartPlaylistDownload } = installBindings();
+    StartPlaylistDownload.mockImplementation(async (req: { selectedItems: number[] }) => ({
+      collectionId: 'playlist-1', admitted: req.selectedItems.length,
+    }));
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
+    }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByRole('button', { name: /2 episodes/ }));
+    await user.click(screen.getByRole('button', { name: /First video/ }));
+    expect(await screen.findByRole('button', { name: 'Download 1 video' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Download 1 video' }));
+
+    await waitFor(() => expect(StartPlaylistDownload).toHaveBeenCalledWith({
+      url: playlistURL, playlistId: 'PLfixture', quality: '1080p', audioBitrate: 0, selectedItems: [2],
+    }));
+    expect(StartDownload).not.toHaveBeenCalled();
+    expect(get(banner)).toMatchObject({ kind: 'success', message: 'Added 1 video to queue' });
+  });
+
+  test('playlist start errors keep Playlist could not start without single-video copy from Home', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    const { StartDownload, StartPlaylistDownload } = installBindings();
+    StartPlaylistDownload.mockRejectedValue(new Error('A selected video requires a channel membership and is not available in this version.'));
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
+    }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByRole('button', { name: 'Download 2 videos' }));
+
+    await waitFor(() => expect(StartPlaylistDownload).toHaveBeenCalledOnce());
+    expect(StartDownload).not.toHaveBeenCalled();
+    expect(get(modal)).toMatchObject({
+      kind: 'error',
+      title: 'Playlist could not start',
+      message: 'A selected video requires a channel membership and is not available in this version.',
+    });
+    expect(screen.getByText('Fixture playlist')).toBeInTheDocument();
   });
 
   test('All and None write the range fields', async () => {
@@ -340,6 +424,7 @@ describe('Home analysis authority', () => {
     expect(document.querySelector('.batch-thumbnail img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/fixture0001/hqdefault.jpg');
     const start = screen.getByRole('button', { name: 'Download 3 videos' });
     expect(start).toBeEnabled();
+    expect(start.querySelector('svg')).toBeTruthy();
     await user.click(start);
     await waitFor(() => expect(StartBatchDownload).toHaveBeenCalledWith({ token: 'batch-token', quality: '1080p', audioBitrate: 0 }));
   });
@@ -390,12 +475,15 @@ describe('Home analysis authority', () => {
 
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    expect(await screen.findByText('Video plan')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Type' })).toHaveTextContent('Video');
+    expect(screen.getByRole('radio', { name: 'Video plan' })).toHaveAttribute('aria-checked', 'true');
 
-    await user.click(screen.getByRole('button', { name: 'Audio' }));
-    expect(screen.getByText('Audio plan')).toBeInTheDocument();
-    expect(screen.queryByText('Video plan')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Type' }));
+    await user.click(await screen.findByRole('option', { name: 'Audio' }));
+    expect(screen.getByRole('button', { name: 'Type' })).toHaveTextContent('Audio');
+    expect(screen.getByRole('radio', { name: 'Audio plan' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Download' }).querySelector('svg')).toBeTruthy();
   });
 
   test('a failed Analyze offers Paste another link instead of only a dead modal', async () => {
@@ -408,10 +496,46 @@ describe('Home analysis authority', () => {
     expect(await screen.findByText('Unsupported URL')).toBeInTheDocument();
     expect(screen.getByText('This video is private.')).toBeInTheDocument();
     const recover = screen.getByRole('button', { name: 'Paste another link' });
+    expect(recover).toHaveClass('dbtn', 'query');
     const field = screen.getByLabelText('YouTube video, Short, or playlist URL');
     await user.click(recover);
     await waitFor(() => expect(screen.queryByText('Unsupported URL')).not.toBeInTheDocument());
     expect(field).toHaveFocus();
+  });
+
+  test('successful Download clears the analysed dock and keeps the URL', async () => {
+    const user = userEvent.setup();
+    const { StartDownload } = installBindings();
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByText('Fixture video')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'Download' })).not.toBeInTheDocument();
+    expect(screen.getByText(/the link decides/)).toBeInTheDocument();
+    expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(firstURL);
+    expect(get(banner)).toMatchObject({ kind: 'success', message: 'Queued for download' });
+  });
+
+  test('failed Download keeps the analysed dock', async () => {
+    const user = userEvent.setup();
+    const { StartDownload } = installBindings();
+    StartDownload.mockRejectedValue(new Error('Could not start this download.'));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    expect(screen.getByText('Fixture video')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled();
+    expect(get(modal)).toMatchObject({ kind: 'error', title: 'Download could not start' });
   });
 
   test('Analyze submits the live field when the DOM and Svelte state diverge', async () => {

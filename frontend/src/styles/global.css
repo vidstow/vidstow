@@ -1,17 +1,18 @@
 /* ----------------------------------------------------------------
  * Design tokens
  *
- * Zinc canvas, Geist, and a 196px rail. Pages still behave like
+ * Zinc canvas, Geist, and a 160px rail. Pages still behave like
  * the paper app; they sit on this shell until later slices.
  * ---------------------------------------------------------------- */
 
 :root {
-  --surface-bg:        #09090B;
+  --surface-bg:        #121212;
   --surface-base:      #111113;
   --surface-raised:    #18181B;
   --surface-sunken:    #0C0C0E;
   --surface-subtle:    #101012;
-  --surface-sidebar:   #0C0C0E;
+  --surface-sidebar:   #18181B;
+  --surface-input:     #1F1F23;
   --surface-hover:     #18181B;
   --surface-active:    #27272A;
 
@@ -21,7 +22,7 @@
 
   --text-primary:      #FAFAFA;
   --text-secondary:    #A1A1AA;
-  --text-muted:        #71717A;
+  --text-muted:        #8A8A93;
   --text-disabled:     #52525B;
   --text-on-accent:    #FFFFFF;
 
@@ -70,11 +71,14 @@
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24);
   --shadow-modal: 0 20px 56px rgba(0, 0, 0, 0.62);
 
-  --sidebar-w: 196px;
+  --sidebar-w: 160px;
   --header-h: 48px;
   --statusbar-h: 22px;
-  --page-pad-x: 32px;
-  --page-pad-y: 28px;
+  --rail-pad-top: 38px;
+  --brand-stack: 36px;
+  --nav-first-gap: 2px;
+  --page-pad-x: 24px;
+  --page-pad-y: calc(var(--rail-pad-top) + var(--brand-stack) + var(--nav-first-gap));
   --page-pad-bottom: 40px;
   --page-title-gap: 6px;
   --page-section-gap: 16px;
@@ -281,7 +285,7 @@ a:hover { text-decoration: underline; }
 }
 @media (max-width: 720px) {
   .page {
-    padding: 24px 18px 32px;
+    padding: 32px 20px 32px;
   }
 }
 
@@ -356,35 +360,6 @@ a:hover { text-decoration: underline; }
 /* Focus visibility for keyboard users */
 :focus-visible { outline: 2px solid var(--accent-400); outline-offset: 2px; border-radius: var(--r-sm); }
 .fieldwrap textarea:focus-visible { outline: none; outline-offset: 0; }
-.fieldwrap .kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  flex: 0 0 auto;
-  min-width: 28px;
-  min-height: 18px;
-  padding: 2px 6px;
-  border: 1px solid var(--border-strong);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  background: var(--surface-raised);
-  color: #A1A1AA;
-  -webkit-text-fill-color: #A1A1AA;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1;
-  white-space: nowrap;
-  overflow: visible;
-  font-variation-settings: normal;
-}
-.fieldwrap .kbd .cmdkey {
-  width: 10px;
-  height: 10px;
-  display: block;
-  flex-shrink: 0;
-}
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {

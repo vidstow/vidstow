@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import ActionRequiredReviewDialog from '../src/lib/lifecycle-ui/ActionRequiredReviewDialog.svelte';
 import DestinationConflictDialog from '../src/lib/lifecycle-ui/DestinationConflictDialog.svelte';
-import LifecycleJobRow from '../src/lib/lifecycle-ui/LifecycleJobRow.svelte';
+import LifecycleJobRow, { type LifecycleJobActionEvent } from '../src/lib/lifecycle-ui/LifecycleJobRow.svelte';
 import QueueOverview from '../src/lib/lifecycle-ui/QueueOverview.svelte';
 import QuitConfirmationDialog from '../src/lib/lifecycle-ui/QuitConfirmationDialog.svelte';
 import type {
@@ -366,6 +366,57 @@ describe('backend-authored capabilities', () => {
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
   });
+
+  test('missing-folder errors offer Change from the inspector', async () => {
+    const onAction = vi.fn<(event: LifecycleJobActionEvent) => void>();
+    const user = userEvent.setup();
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'missing-folder', title: 'Missing folder video', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'folder_unavailable', messageKey: 'queue.failure.folder_unavailable',
+              heading: 'Save folder is missing',
+              message: 'The folder for this download is gone. Plug the drive back in, or Change to a different folder.',
+              recommendedAction: 'Bring the original path back, or Change the folder.',
+              retryable: true, partialOutput: true,
+            },
+            capabilities: { retry: true, changeFolder: true, remove: true }, commandToken: 'folder-token',
+          }],
+        }),
+        onAction,
+      },
+    });
+
+    expect(screen.getByText('Save folder is missing')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+    expect(onAction.mock.calls[0][0]).toEqual({
+      jobId: 'missing-folder', commandToken: 'folder-token', action: 'change-folder',
+    });
+  });
+
+  test('unusable leftover paused rows offer Resume and Discard', async () => {
+    const onAction = vi.fn<(event: LifecycleJobActionEvent) => void>();
+    const user = userEvent.setup();
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'leftover', title: 'Unusable leftover', lifecycle: 'paused', occupiesSlot: false,
+            savedBytes: 843 * 1024 * 1024,
+            capabilities: { resume: true, discard: true, cancel: true }, commandToken: 'leftover-token',
+          }],
+        }),
+        onAction,
+      },
+    });
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(onAction.mock.calls[0][0]).toEqual({
+      jobId: 'leftover', commandToken: 'leftover-token', action: 'discard',
+    });
+  });
 });
 
 describe('action-required recovery', () => {
@@ -532,7 +583,7 @@ describe('modal keyboard focus', () => {
 
     const keepWorking = screen.getByRole('button', { name: 'Keep working' });
     const close = screen.getByRole('button', { name: 'Close' });
-    const quit = screen.getByRole('button', { name: 'Pause downloads and quit' });
+    const quit = screen.getByRole('button', { name: 'Quit' });
     expect(keepWorking).toHaveFocus();
 
     outside.focus();

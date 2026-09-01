@@ -69,7 +69,13 @@ export function historySubtitle(entry: HistoryRecord): string {
   const parts = [formatHistoryLabel(entry)];
   if (entry.sizeBytes) parts.push(formatBytes(entry.sizeBytes));
   parts.push(entry.channel || 'YouTube');
-  if (entry.fileMissing) parts.push('File missing');
+  return parts.join(' · ');
+}
+
+export function episodeSubtitle(entry: HistoryRecord): string {
+  const parts: string[] = [];
+  if (entry.durationLabel) parts.push(entry.durationLabel);
+  if (entry.sizeBytes) parts.push(formatBytes(entry.sizeBytes));
   return parts.join(' · ');
 }
 

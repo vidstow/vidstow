@@ -42,9 +42,9 @@
   <div class="setting interrupted-setting">
     <div>
       <strong>Interrupted jobs</strong>
-      <p>Saved jobs are restored as paused. Nothing starts automatically when VidStow opens.</p>
+      <p>The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.</p>
     </div>
-    <span class="fixed-value">Restored as paused</span>
+    <span class="fixed-value">In progress continues</span>
   </div>
 
   <div class="setting concurrency-setting">
