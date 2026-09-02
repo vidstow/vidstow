@@ -10,7 +10,9 @@ test('approved navigation and window branding are used', async () => {
     read('../../main.go'),
   ]);
   for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
-  assert.match(sidebar, /class="brand-mark"/);
+  assert.doesNotMatch(sidebar, /class="brand"/);
+  assert.doesNotMatch(sidebar, /class="brand-mark"/);
+  assert.doesNotMatch(sidebar, />VidStow</);
   assert.doesNotMatch(sidebar, /brand-mark\.svg/);
   assert.doesNotMatch(sidebar, /label: 'About'/);
   for (const rejected of ['v0 · single video', 'Single public YouTube videos only', 'brand-name', 'class="logo"', 'logo-universal']) assert.doesNotMatch(sidebar, new RegExp(rejected));

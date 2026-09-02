@@ -114,8 +114,7 @@ Layout, top to bottom:
 
 Fixed width, 160px. Slightly raised against the main pane. Order:
 
-- Brand: download-into-tray mark plus the wordmark `VidStow`. Clicking it goes Home. The mark is a small blue tray glyph, not a decorative logo lockup.
-- Primary nav: Home, Queue, Downloads.
+- Primary nav: Home, Queue, Downloads. The product name lives in the native title bar. The rail does not repeat the wordmark or tray lockup.
 - Utility nav: Settings only. About is not in the sidebar. The About page still exists as a route until Settings absorbs it.
 
 FFmpeg readiness does not live in the rail. It belongs on Settings under Engine.

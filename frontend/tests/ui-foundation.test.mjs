@@ -17,8 +17,7 @@ test('design tokens match the zinc shell contract', async () => {
   assert.match(css, /--statusbar-h:\s+22px/);
   assert.match(css, /--page-pad-x:\s+24px/);
   assert.match(css, /--rail-pad-top:\s+38px/);
-  assert.match(css, /--brand-stack:\s+36px/);
-  assert.match(css, /--page-pad-y:\s+calc\(var\(--rail-pad-top\) \+ var\(--brand-stack\) \+ var\(--nav-first-gap\)\)/);
+  assert.match(css, /--page-pad-y:\s+calc\(var\(--rail-pad-top\) \+ var\(--nav-first-gap\)\)/);
   assert.match(css, /\.page \{/);
   assert.match(css, /\.page-header h1 \{/);
   assert.match(css, /--r-sm:\s+3px/);
@@ -54,13 +53,12 @@ test('Analyze is the light query chip; Download stays the compact blue commit', 
   assert.doesNotMatch(home, /M12 4v11m0 0-4-4m4 4 4-4M5 19h14/);
 });
 
-test('zinc sidebar uses the tray mark, Settings only, and no FFmpeg footer', async () => {
+test('zinc sidebar starts at Home, Settings only, and no FFmpeg footer', async () => {
   const sidebar = await read('../src/lib/components/Sidebar.svelte');
   assert.match(sidebar, /padding: var\(--rail-pad-top\) 6px 12px/);
-  assert.match(sidebar, /class="brand"/);
-  assert.match(sidebar, /class="brand-mark"/);
-  assert.match(sidebar, /M12 4v11m0 0-4-4m4 4 4-4M5 19h14/);
-  assert.match(sidebar, />VidStow</);
+  assert.doesNotMatch(sidebar, /class="brand"/);
+  assert.doesNotMatch(sidebar, /class="brand-mark"/);
+  assert.doesNotMatch(sidebar, />VidStow</);
   assert.doesNotMatch(sidebar, /brand-mark\.(?:svg|png)|<img/);
   for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) {
     assert.match(sidebar, new RegExp(`label: '${label}'`));

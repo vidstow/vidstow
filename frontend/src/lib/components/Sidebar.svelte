@@ -20,15 +20,6 @@
 </script>
 
 <aside class="sidebar" aria-label="Primary">
-  <button type="button" class="brand" onclick={() => go('home')} aria-label="VidStow home">
-    <span class="brand-mark" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="12" height="12">
-        <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"/>
-      </svg>
-    </span>
-    <span class="brand-title">VidStow</span>
-  </button>
-
   <nav aria-label="Primary navigation">
     <ul>
       {#each items as item}
@@ -92,36 +83,10 @@
     border-right: 1px solid var(--border-default);
     display: flex;
     flex-direction: column;
-    /* Traffic lights, then the VidStow mark. First nav row is --page-pad-y. */
+    /* First nav row lines up with --page-pad-y on the main pane. */
     padding: var(--rail-pad-top) 6px 12px;
     overflow: visible;
     z-index: 30;
-  }
-
-  /* 2 + 20px mark + 14 = --brand-stack */
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 2px 6px 14px;
-    color: var(--text-primary);
-    text-decoration: none;
-    border-radius: var(--r-sm);
-  }
-  .brand-mark {
-    display: inline-grid;
-    place-items: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
-    background: linear-gradient(180deg, #3B82F6, #1D4ED8);
-    color: #fff;
-    flex-shrink: 0;
-  }
-  .brand-title {
-    font-size: 13px;
-    font-weight: 650;
-    letter-spacing: -0.01em;
   }
 
   nav { flex: 1; padding-top: var(--nav-first-gap); }

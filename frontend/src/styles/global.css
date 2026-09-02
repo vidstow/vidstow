@@ -75,10 +75,9 @@
   --header-h: 48px;
   --statusbar-h: 22px;
   --rail-pad-top: 38px;
-  --brand-stack: 36px;
   --nav-first-gap: 2px;
   --page-pad-x: 24px;
-  --page-pad-y: calc(var(--rail-pad-top) + var(--brand-stack) + var(--nav-first-gap));
+  --page-pad-y: calc(var(--rail-pad-top) + var(--nav-first-gap));
   --page-pad-bottom: 40px;
   --page-title-gap: 6px;
   --page-section-gap: 16px;
