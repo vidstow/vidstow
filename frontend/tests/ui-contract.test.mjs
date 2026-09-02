@@ -36,8 +36,9 @@ test('page titles and controls match the approved redesign', async () => {
   assert.doesNotMatch(home, /That link is not a supported single YouTube video/);
   assert.match(home, /downloadVideosLabel\(batchReadyCount\)/);
   assert.match(home, /<small>\{item\.message\}<\/small>/);
-  assert.match(home, /the link decides\.<br>/);
-  assert.match(home, /class="sep"/);
+  assert.match(home, /the link decides\./);
+  assert.match(home, /class="tries"/);
+  assert.match(home, /<button type="button" class="try"/);
   assert.match(home, /word-break: break-all/);
   assert.doesNotMatch(home, /class="kbd"/);
   assert.doesNotMatch(home, /aria-keyshortcuts/);
@@ -48,7 +49,8 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /several links/);
   assert.doesNotMatch(home, /a private link/);
   assert.doesNotMatch(home, /a video in a playlist/);
-  assert.match(home, /-webkit-text-decoration: underline dotted/);
+  assert.doesNotMatch(home, /underline dotted/);
+  assert.match(home, /\.try \{[\s\S]*?border-radius: 7px;/);
   assert.match(home, /This link includes a playlist/);
   assert.match(home, /Choose what to download/);
   assert.match(home, /class="sdialog"/);

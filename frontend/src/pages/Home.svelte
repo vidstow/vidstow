@@ -603,12 +603,6 @@
     });
   }
 
-  function onTryKey(event: KeyboardEvent, kind: 'video' | 'playlist' | 'batch') {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    fillExample(kind);
-  }
-
   async function enqueueVideo() {
     if (!preview || !selectedPlan || !folder) return;
     if (selectedPlan.requiresFfmpeg && !$ffmpeg.available) {
@@ -729,13 +723,13 @@
 
   {#if !hasDock && !analyzeError && !(busy || batchBusy)}
     <p class="hint">
-      One link, a playlist, or a handful — the link decides.<br>
-      Try:{' '}{#each TRY_CHIPS as chip, index}{#if index}<span class="sep" aria-hidden="true">·</span>{/if}<span
-          class="try"
-          role="button"
-          tabindex="0"
-          on:click={() => fillExample(chip.kind)}
-          on:keydown={(event) => onTryKey(event, chip.kind)}>{chip.label}</span>{/each}
+      One link, a playlist, or a handful — the link decides.
+      <span class="tries">
+        Try
+        {#each TRY_CHIPS as chip}
+          <button type="button" class="try" on:click={() => fillExample(chip.kind)}>{chip.label}</button>
+        {/each}
+      </span>
     </p>
   {:else if (busy || batchBusy) && !hasDock && !analyzeError}
     <div class="skel" aria-busy="true">Reading…</div>
@@ -1115,24 +1109,41 @@
     width: min(780px, 100%);
     margin: 0 auto;
     padding: 14px 4px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
     color: var(--text-muted);
     font-size: 13px;
     text-align: center;
     line-height: 1.7;
   }
-  .try {
-    color: var(--text-secondary);
-    cursor: pointer;
-    text-decoration: underline dotted;
-    text-underline-offset: 3px;
-    -webkit-text-decoration: underline dotted;
-    text-decoration-skip-ink: none;
+  .tries {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12px;
   }
-  .try:hover { color: var(--text-primary); }
-  .hint .sep {
-    display: inline-block;
-    color: var(--text-muted);
-    padding: 0 0.5em;
+  .try {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+  }
+  .try:hover {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
   }
 
   .skel {

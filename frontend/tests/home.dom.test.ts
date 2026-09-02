@@ -54,14 +54,17 @@ function installBindings() {
 }
 
 describe('Home analysis authority', () => {
-  test('empty Home shows dotted try chips', async () => {
+  test('empty Home shows try chips that fill the field', async () => {
     render(Home);
     expect(document.querySelector('.fieldwrap .kbd')).toBeNull();
-    expect(screen.getByRole('button', { name: 'a video' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'a playlist' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'several links' })).toBeInTheDocument();
+    const video = screen.getByRole('button', { name: 'a video' });
+    const playlist = screen.getByRole('button', { name: 'a playlist' });
+    const batch = screen.getByRole('button', { name: 'several links' });
+    expect(video).toHaveClass('try');
+    expect(playlist).toHaveClass('try');
+    expect(batch).toHaveClass('try');
     expect(screen.queryByRole('button', { name: 'a private link' })).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole('button', { name: 'a video' }));
+    await userEvent.setup().click(video);
     expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(
       'https://www.youtube.com/watch?v=jNQXAC9IVRw',
     );

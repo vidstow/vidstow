@@ -152,7 +152,7 @@ File-manager labels must be platform-aware: Show in Finder on macOS, Show in Exp
 
 Home is intake. It is the only place work is analyzed and admitted. A live analysis stays for the rest of this window session. Opening Queue, Downloads, Settings, or About does not discard it. Coming back shows the same field, dock, and selection. An edited URL, a new Analyze, a dropped URL, or Start over from Home replaces it.
 
-**One field.** No page title. No Single URL / Batch URLs switch. Placeholder: `Paste a YouTube URL`. Enter submits Analyze. Paste still accepts several lines. Under the empty field, two lines: the paste sentence, then **Try:** with dotted chips for a video, a playlist, and several links. Those chips fill the field. Analyze is the only submit. A watch URL that also has a list id is not a Try chip. Paste it and Home asks before any dock.
+**One field.** No page title. No Single URL / Batch URLs switch. Placeholder: `Paste a YouTube URL`. Enter submits Analyze. Paste still accepts several lines. Under the empty field, two lines: the paste sentence, then **Try** with compact bordered chips for a video, a playlist, and several links. Those chips fill the field. Analyze is the only submit. A watch URL that also has a list id is not a Try chip. Paste it and Home asks before any dock.
 
 Paste count chooses the path. One URL goes to `ValidateURL`. Two to twenty go to `AnalyzeBatchURLs`. A playlist URL is still a playlist. Playlist URLs do not belong in a batch. The 2 to 20 and 500 caps stay.
 
