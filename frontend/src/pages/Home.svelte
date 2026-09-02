@@ -47,6 +47,7 @@
   let batchText = '';
   let batchGeneration = 0;
   let batchBusy = false;
+  let playlistBusy = false;
   let batchReview: BatchAnalysisView | null = null;
   let batchNow = Date.now();
   let batchTab: 'video' | 'audio' = 'video';
@@ -232,6 +233,7 @@
       batchBusy = false;
       batchReview = null;
     }
+    playlistBusy = false;
   }
 
   function updatePaste(event: Event) {
@@ -641,7 +643,7 @@
   }
 
   async function enqueuePlaylist() {
-    if (!playlist || !selectedItems.size) return;
+    if (!playlist || !selectedItems.size || playlistBusy) return;
     if (!folder) {
       showBanner('warning', 'Choose a download folder before adding this playlist.');
       return;
@@ -653,6 +655,8 @@
       return;
     }
     const start = async () => {
+      if (playlistBusy) return;
+      playlistBusy = true;
       try {
         const result = await api.jobs.startPlaylist({
           url: playlist!.url,
@@ -671,6 +675,8 @@
         dispatch('goto', 'queue');
       } catch (err) {
         modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
+      } finally {
+        playlistBusy = false;
       }
     };
     if (selectedItems.size > 100 || $settings.confirmBeforeDownload) {
@@ -712,8 +718,8 @@
         spellcheck="false"
         rows="1"
       ></textarea>
-      <button class="dbtn query" type="submit" disabled={busy || batchBusy || !url.trim() || !!scopeChoice} aria-busy={busy || batchBusy}>
-        {#if busy || batchBusy}
+      <button class="dbtn query" type="submit" disabled={busy || batchBusy || playlistBusy || !url.trim() || !!scopeChoice} aria-busy={busy || batchBusy || playlistBusy}>
+        {#if busy || batchBusy || playlistBusy}
           <span class="query-spin" aria-hidden="true"></span>
         {:else}
           {@render searchMark()}
@@ -834,8 +840,8 @@
           <span class="dpath" title={playlistSavePath || folder}>{playlistSavePath || (folder ? folder : 'Choose a download folder')}</span>
         </span>
         {#if !detailsOpen}
-          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder}>
-            {#if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
+          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || playlistBusy} aria-busy={playlistBusy}>
+            {#if playlistBusy}<span class="query-spin" aria-hidden="true"></span>Adding…{:else if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
           </button>
         {/if}
       </footer>
@@ -881,8 +887,8 @@
         </div>
         <div class="epcommit">
           <span>{selectedItems.size} selected · {policy.detail}</span>
-          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder}>
-            {#if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
+          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || playlistBusy} aria-busy={playlistBusy}>
+            {#if playlistBusy}<span class="query-spin" aria-hidden="true"></span>Adding…{:else if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
           </button>
         </div>
       </div>

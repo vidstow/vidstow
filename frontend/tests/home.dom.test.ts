@@ -291,6 +291,32 @@ describe('Home analysis authority', () => {
     expect(onGoto.mock.calls.some((call) => call[0]?.detail === 'queue')).toBe(true);
   });
 
+  test('playlist Download shows Adding until the collection is admitted', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    const { StartPlaylistDownload } = installBindings();
+    let finish: (value: { collectionId: string; admitted: number }) => void = () => {};
+    StartPlaylistDownload.mockImplementation(() => new Promise((resolve) => {
+      finish = resolve;
+    }));
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
+    }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    const download = await screen.findByRole('button', { name: 'Download 2 videos' });
+    await user.click(download);
+    const adding = await screen.findByRole('button', { name: 'Adding…' });
+    expect(adding).toBeDisabled();
+    await user.click(adding);
+    expect(StartPlaylistDownload).toHaveBeenCalledTimes(1);
+    finish({ collectionId: 'playlist-1', admitted: 2 });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Adding…' })).not.toBeInTheDocument());
+  });
+
   test('playlist start errors keep Playlist could not start without single-video copy from Home', async () => {
     const user = userEvent.setup();
     const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
