@@ -71,8 +71,12 @@ describe('Downloads page', () => {
     expect(screen.queryByText(/Playlist ·/)).not.toBeInTheDocument();
     const reveal = screen.getAllByRole('button', { name: 'Show in Finder' })[0];
     const open = screen.getAllByRole('button', { name: 'Open downloaded file' })[0];
+    expect(reveal).toHaveClass('ghost');
+    expect(open).toHaveClass('pri');
     expect(reveal.querySelector('svg')).not.toBeNull();
     expect(open.querySelector('svg')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Show details for Go 2026' }).querySelector('.chev')?.textContent).toBe('▸');
+    expect(screen.getByText(/1080p · 22.0 MB · Channel · (just now|\d+[mhd] ago)/)).toBeInTheDocument();
   });
 
   test('expands a playlist group only when history carries collection identity', async () => {
@@ -93,6 +97,8 @@ describe('Downloads page', () => {
     expect(screen.queryByText('Introduction')).not.toBeInTheDocument();
     const groupReveal = screen.getByRole('button', { name: 'Reveal' });
     const groupOpen = screen.getByRole('button', { name: 'Open' });
+    expect(groupReveal).toHaveClass('ghost');
+    expect(groupOpen).toHaveClass('pri');
     expect(groupReveal.querySelector('svg')).not.toBeNull();
     expect(groupOpen.querySelector('svg')).not.toBeNull();
 
@@ -100,7 +106,7 @@ describe('Downloads page', () => {
     expect(screen.getByText('Introduction')).toBeInTheDocument();
     expect(screen.getByText('EP 01')).toBeInTheDocument();
     expect(screen.getByText('WaitGroups')).toBeInTheDocument();
-    expect(screen.getAllByText('12:00 · 22.0 MB')).toHaveLength(2);
+    expect(screen.getAllByText(/12:00 · 22.0 MB · (just now|\d+[mhd] ago)/)).toHaveLength(2);
     expect(screen.queryByText(/12:00 · 1080p/)).not.toBeInTheDocument();
   });
 
@@ -149,5 +155,19 @@ describe('Downloads page', () => {
     expect(screen.getByRole('button', { name: 'Show in Finder' })).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Open downloaded file' }));
     expect(get(banner)).toMatchObject({ kind: 'danger', message: 'That file is no longer at this path' });
+  });
+
+  test('a row chevron shows that details can expand', async () => {
+    const user = userEvent.setup();
+    history.set([
+      entry({ id: 'today', title: 'Go 2026', completedAt: daysAgo(0) }),
+    ]);
+    render(Downloads);
+    const row = screen.getByRole('button', { name: 'Show details for Go 2026' });
+    expect(row).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('/tmp/today.mp4')).not.toBeInTheDocument();
+    await user.click(row);
+    expect(screen.getByRole('button', { name: 'Hide details for Go 2026' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('/tmp/today.mp4')).toBeInTheDocument();
   });
 });

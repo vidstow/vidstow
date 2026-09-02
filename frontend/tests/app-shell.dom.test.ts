@@ -66,6 +66,7 @@ function installBindings() {
         AnalyzeURL,
         AnalyzePlaylist: vi.fn(),
         AnalyzeBatchURLs: vi.fn(),
+        RevealInFinder: vi.fn(async () => {}),
       },
     },
   };
@@ -155,6 +156,10 @@ describe('Home analysis survives navigation', () => {
 
     expect(document.querySelector('.status-bar .path')?.textContent?.trim()).toBe('/tmp/downloads');
     expect(document.querySelector('.status-bar .label')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open download folder /tmp/downloads' })).toBeEnabled();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Open download folder /tmp/downloads' }));
+    expect((window as any).go.main.App.RevealInFinder).toHaveBeenCalledWith('/tmp/downloads');
     expect(screen.getByRole('button', { name: 'Downloads' }).getAttribute('data-tip')).toBeNull();
     expect(screen.getByRole('button', { name: 'Settings' }).getAttribute('data-tip')).toBeNull();
 

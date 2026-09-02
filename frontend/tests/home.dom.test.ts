@@ -273,7 +273,8 @@ describe('Home analysis authority', () => {
       kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
     }));
     (window as any).go.main.App.AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
-    render(Home);
+    const onGoto = vi.fn();
+    render(Home, { events: { goto: onGoto } });
 
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
@@ -287,6 +288,7 @@ describe('Home analysis authority', () => {
     }));
     expect(StartDownload).not.toHaveBeenCalled();
     expect(get(banner)).toMatchObject({ kind: 'success', message: 'Added 1 video to queue' });
+    expect(onGoto.mock.calls.some((call) => call[0]?.detail === 'queue')).toBe(true);
   });
 
   test('playlist start errors keep Playlist could not start without single-video copy from Home', async () => {
@@ -534,10 +536,11 @@ describe('Home analysis authority', () => {
     expect(field).toHaveFocus();
   });
 
-  test('successful Download clears the analysed dock and keeps the URL', async () => {
+  test('successful Download clears the analysed dock, keeps the URL, and goes to Queue', async () => {
     const user = userEvent.setup();
     const { StartDownload } = installBindings();
-    render(Home);
+    const onGoto = vi.fn();
+    render(Home, { events: { goto: onGoto } });
 
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
@@ -550,6 +553,7 @@ describe('Home analysis authority', () => {
     expect(screen.getByText(/the link decides/)).toBeInTheDocument();
     expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toHaveValue(firstURL);
     expect(get(banner)).toMatchObject({ kind: 'success', message: 'Queued for download' });
+    expect(onGoto.mock.calls.some((call) => call[0]?.detail === 'queue')).toBe(true);
   });
 
   test('failed Download keeps the analysed dock', async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { formatDiscardConfirm, formatEngineVersion, formatPlanSize, formatViewCount, youtubeUrlFromText } from '../src/lib/format.js';
+import { formatDiscardConfirm, formatEngineVersion, formatPlanSize, formatRelative, formatViewCount, youtubeUrlFromText } from '../src/lib/format.js';
 
 describe('formatPlanSize', () => {
   test('keeps approximate and exact sizes as plain labels', () => {
@@ -28,6 +28,17 @@ describe('youtubeUrlFromText', () => {
     expect(youtubeUrlFromText('check this https://www.youtube.com/shorts/dQw4w9WgXcQ out')).toBe(
       'https://www.youtube.com/shorts/dQw4w9WgXcQ',
     );
+  });
+});
+
+describe('formatRelative', () => {
+  const now = Date.parse('2026-09-02T20:00:00');
+
+  test('uses compact elapsed time until a week has passed', () => {
+    expect(formatRelative('2026-09-02T19:59:30', now)).toBe('just now');
+    expect(formatRelative('2026-09-02T19:12:00', now)).toBe('48m ago');
+    expect(formatRelative('2026-09-02T18:00:00', now)).toBe('2h ago');
+    expect(formatRelative('2026-08-31T20:00:00', now)).toBe('2d ago');
   });
 });
 

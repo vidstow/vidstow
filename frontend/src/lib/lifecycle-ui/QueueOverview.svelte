@@ -217,6 +217,8 @@
     onResumeAll?.();
   }
 
+  const slotCopy = $derived(`${model.summary.occupiedSlots} of ${model.summary.slotLimit} slots in use`);
+
   function goHome(): void {
     dispatch('go-home');
     onGoHome?.();
@@ -247,7 +249,10 @@
 <section class="page queue-page" aria-labelledby="lifecycle-queue-title">
   {#if displayItems.length === 0}
     <header class="qhead">
-      <h1 id="lifecycle-queue-title">{title}</h1>
+      <div class="qident">
+        <h1 id="lifecycle-queue-title">{title}</h1>
+        <p class="qslots">{slotCopy}</p>
+      </div>
     </header>
     <PageEmpty
       icon="queue"
@@ -260,7 +265,10 @@
     <div class="qwrap">
       <div class="qmaster">
         <header class="qhead">
-          <h1 id="lifecycle-queue-title">{title}</h1>
+          <div class="qident">
+            <h1 id="lifecycle-queue-title">{title}</h1>
+            <p class="qslots">{slotCopy}</p>
+          </div>
           <div class="acts">
             <button
               type="button"
@@ -525,11 +533,24 @@
     min-height: calc(var(--page-pad-y) + 28px + 16px);
     padding: var(--page-pad-y) var(--page-pad-x) 16px;
   }
+  .qident {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 10px;
+  }
   .qhead h1 {
     margin: 0;
     font-size: 17px;
     font-weight: 650;
     letter-spacing: -0.02em;
+  }
+  .qslots {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
   }
   .acts { display: flex; gap: 6px; }
   .qlist {

@@ -46,6 +46,14 @@ function conflictModel(overrides: Partial<DestinationConflictViewModel> = {}): D
 }
 
 describe('backend-authored capabilities', () => {
+  test('empty Queue still shows how many slots can run', () => {
+    render(QueueOverview, { props: { model: queueModel() } });
+    expect(screen.getByRole('heading', { name: 'Queue' })).toBeInTheDocument();
+    expect(screen.getByText('0 of 2 slots in use')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause all' })).not.toBeInTheDocument();
+  });
+
   test('queue-wide actions fail closed when capabilities are absent at runtime', async () => {
     const onPauseAll = vi.fn();
     const onResumeAll = vi.fn();

@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { counts, jobs, settings } from '../stores.js';
+  import { api } from '../api.js';
+  import { counts, jobs, settings, showError } from '../stores.js';
   import { formatSpeed } from '../format.js';
 
-  $: downloadPath = $settings.downloadFolder || 'Not set';
+  $: folder = $settings.downloadFolder?.trim() ?? '';
+  $: downloadPath = folder || 'Not set';
   $: limit = Math.max(1, $settings.downloadConcurrency || 2);
   $: active = $counts.active;
   $: speedBps = $jobs.reduce((sum, job) => (
@@ -11,12 +13,28 @@
   $: occupancy = active > 0
     ? (speedBps > 0 ? `${formatSpeed(speedBps)} · ${active}/${limit} slots` : `${active}/${limit} slots`)
     : 'Idle';
+
+  async function openFolder() {
+    if (!folder) return;
+    try {
+      await api.fs.reveal(folder);
+    } catch (err) {
+      showError(err, 'That folder could not be opened');
+    }
+  }
 </script>
 
 <footer class="status-bar" aria-label="Application status">
-  <div class="path" title={downloadPath}>
+  <button
+    type="button"
+    class="path"
+    title={downloadPath}
+    disabled={!folder}
+    aria-label={folder ? `Open download folder ${downloadPath}` : 'Download folder not set'}
+    on:click={openFolder}
+  >
     <strong>{downloadPath}</strong>
-  </div>
+  </button>
   <div class="occupancy" class:live={active > 0} aria-label={occupancy}>
     {occupancy}
   </div>
@@ -35,9 +53,9 @@
     padding: 0 14px;
     border-top: 1px solid var(--border-default);
     background: #0A0A0C;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1;
   }
 
@@ -45,10 +63,17 @@
     display: flex;
     min-width: 0;
     align-items: center;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+  }
+  .path:hover:not(:disabled) strong { color: var(--text-primary); }
+  .path:disabled {
+    cursor: default;
   }
   .path strong {
     overflow: hidden;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-family: inherit;
     font-size: inherit;
     font-weight: 500;

@@ -20,6 +20,8 @@ workflow from the parent directory.
 ## Structure
 
 - `src/pages/` contains Home, Queue, Downloads, and Settings.
+  `About.svelte` re-renders Settings so the About route still works; it is not
+  a separate page.
 - `src/lib/components/` contains shared presentation components.
 - `src/lib/api.ts` is the typed boundary over Wails runtime globals.
 - `src/lib/stores.ts` owns application snapshots and shared UI messages.

@@ -623,6 +623,7 @@
         });
         showBanner('success', 'Queued for download');
         clearAnalysis();
+        dispatch('goto', 'queue');
       } catch (err) {
         modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
       }
@@ -667,6 +668,7 @@
         } else {
           showBanner('success', `Added ${admittedLabel} to queue`);
         }
+        dispatch('goto', 'queue');
       } catch (err) {
         modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
       }

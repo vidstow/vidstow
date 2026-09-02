@@ -103,15 +103,20 @@ mutation.
 
 ## Startup and shutdown
 
-Startup opens and validates State v2 before restoring queue rows. Recovery
+Startup opens and validates State v2 before restoring queue rows. An unreadable
+or untrusted queue is quarantined; settings are salvaged when possible, and the
+workstation starts healthy with a dismissible notice. An unwritable or unsafe
+data folder, including a remapped recovery-required or instance-lock outcome, is
+a cannot-save stop and does not create the runtime. Recovery otherwise
 reconciles durable application records with engine session and publication
 evidence. Restored scheduler occupancy is always false until the current
 process starts a worker.
 
-Shutdown stops admission, records pause intent for active durable work, signals
-manager-owned runners, and waits within a caller-provided bound. Evidence that
-did not settle safely remains recoverable rather than being reported as a
-successful pause.
+Ordinary quit leaves in-progress jobs durable as they are, the same as a crash.
+Pause-and-quit stops admission, records pause intent for active durable work,
+signals manager-owned runners, and waits within a caller-provided bound.
+Evidence that did not settle safely remains recoverable rather than being
+reported as a successful pause.
 
 ## Trust boundaries
 

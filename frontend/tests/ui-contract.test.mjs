@@ -112,6 +112,7 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /circle cx="11" cy="11" r="7"/);
   assert.match(home, /class="dbtn query"/);
   assert.match(home, /Queued for download/);
+  assert.match(home, /dispatch\('goto', 'queue'\)/);
   assert.doesNotMatch(home, /class="dbtn pri" type="submit"/);
   assert.doesNotMatch(home, /12vh/);
   assert.doesNotMatch(home, /class:empty=/);
@@ -123,6 +124,7 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(queue, /onResumeAll=\{resumeAll\}/);
   assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /Go to Home/);
   assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /Nothing here yet/);
+  assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /slots in use/);
   assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /PageEmpty/);
   assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /id="lifecycle-queue-title"/);
   assert.match(await read('../src/lib/lifecycle-ui/QueueOverview.svelte'), /padding: var\(--page-pad-y\) var\(--page-pad-x\) 16px/);
@@ -264,6 +266,8 @@ test('download history actions remain native accessible buttons', async () => {
   assert.doesNotMatch(downloads, /fileMissing/);
   assert.doesNotMatch(downloads, /File missing/);
   assert.match(downloads, /historySubtitle\(entry\)/);
+  assert.match(downloads, /class="btn sm pri"/);
+  assert.match(downloads, /class="chev"/);
   assert.match(downloads, /episodeSubtitle\(entry\)/);
   assert.match(downloads, />Reveal</);
   assert.match(downloads, />Open</);

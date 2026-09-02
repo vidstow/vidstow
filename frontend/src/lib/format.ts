@@ -76,11 +76,12 @@ export function formatDate(iso: string): string {
   }
 }
 
-export function formatRelative(iso: string): string {
+export function formatRelative(iso: string, now = Date.now()): string {
   if (!iso) return '';
   try {
     const d = new Date(iso).getTime();
-    const diff = Date.now() - d;
+    if (!Number.isFinite(d)) return iso;
+    const diff = now - d;
     if (diff < 60_000) return 'just now';
     if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;

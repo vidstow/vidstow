@@ -159,7 +159,7 @@
               </div>
               <div class="dact">
                 <button type="button" class="btn sm ghost" on:click|stopPropagation={() => revealGroup(row)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button>
-                <button type="button" class="btn sm ghost" on:click|stopPropagation={() => openGroup(row)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
+                <button type="button" class="btn sm pri" on:click|stopPropagation={() => openGroup(row)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
               </div>
             </div>
             {#if expanded}
@@ -178,7 +178,7 @@
                   </button>
                   <div class="dact">
                     <button type="button" class="btn sm ghost" aria-label="Show in Finder" on:click={() => reveal(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button>
-                    <button type="button" class="btn sm ghost" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
+                    <button type="button" class="btn sm pri" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
                   </div>
                   {#if selectedId === entry.id}
                     <div class="detail">
@@ -194,21 +194,32 @@
             {/if}
           {:else}
             {@const entry = row.entry}
-            <div class="drow" class:selected={selectedId === entry.id}>
-              {#if thumbnailFor(entry)}
-                <img src={thumbnailFor(entry)} alt="" referrerpolicy="no-referrer" />
-              {:else}
-                <span class="thumb-fallback" aria-hidden="true"></span>
-              {/if}
-              <button class="copy" type="button" aria-label={`${selectedId === entry.id ? 'Hide' : 'Show'} details for ${entry.title}`} aria-expanded={selectedId === entry.id} on:click={() => toggleDetails(entry)}>
-                <b title={entry.title}>{entry.title}</b>
-                <span>{historySubtitle(entry)}</span>
+            {@const expanded = selectedId === entry.id}
+            <div class="drow" class:selected={expanded} class:open={expanded}>
+              <button
+                class="expand"
+                type="button"
+                title={expanded ? 'Hide details' : 'Show details'}
+                aria-label={`${expanded ? 'Hide' : 'Show'} details for ${entry.title}`}
+                aria-expanded={expanded}
+                on:click={() => toggleDetails(entry)}
+              >
+                <span class="chev" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                {#if thumbnailFor(entry)}
+                  <img src={thumbnailFor(entry)} alt="" referrerpolicy="no-referrer" />
+                {:else}
+                  <span class="thumb-fallback" aria-hidden="true"></span>
+                {/if}
+                <div class="copy">
+                  <b title={entry.title}>{entry.title}</b>
+                  <span>{historySubtitle(entry)}</span>
+                </div>
               </button>
               <div class="dact">
                 <button type="button" class="btn sm ghost" aria-label="Show in Finder" on:click={() => reveal(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>Reveal</button>
-                <button type="button" class="btn sm ghost" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
+                <button type="button" class="btn sm pri" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
               </div>
-              {#if selectedId === entry.id}
+              {#if expanded}
                 <div class="detail">
                   <p class="path" title={entry.absolutePath}>{entry.absolutePath}</p>
                   <div class="dact">
@@ -302,7 +313,7 @@
 
   .drow {
     display: grid;
-    grid-template-columns: 48px minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
     align-items: center;
     min-height: 46px;
@@ -311,6 +322,7 @@
   }
   .drow:hover { background: #131316; }
   .drow.selected { background: var(--surface-raised); }
+  .drow.open .chev { color: var(--text-secondary); }
   .drow img, .thumb-fallback {
     width: 48px;
     height: 28px;
@@ -318,6 +330,14 @@
     object-fit: cover;
     display: block;
     background: var(--surface-base);
+  }
+  .expand {
+    display: grid;
+    grid-template-columns: 16px 48px minmax(0, 1fr);
+    gap: 12px;
+    min-width: 0;
+    align-items: center;
+    text-align: left;
   }
   .drow.grp { grid-template-columns: 16px 48px minmax(0, 1fr) auto; cursor: pointer; }
   .drow.sub { grid-template-columns: 34px 48px minmax(0, 1fr) auto; padding-left: 14px; }
@@ -378,6 +398,8 @@
   .btn:hover:not(:disabled) { background: var(--surface-hover); }
   .btn:disabled { opacity: 0.4; cursor: default; }
   .btn.ghost { background: transparent; }
+  .btn.pri { background: var(--accent-600); border-color: var(--accent-600); color: #fff; }
+  .btn.pri:hover:not(:disabled) { background: #1D4ED8; }
   .btn.sm { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
   .btn.danger { color: #FCA5A5; }
 

@@ -1,5 +1,5 @@
 import type { HistoryEntry } from './types.js';
-import { formatBytes, qualityLabel } from './format.js';
+import { formatBytes, formatRelative, qualityLabel } from './format.js';
 
 export type HistoryDayKey = 'today' | 'yesterday' | 'earlier';
 
@@ -65,17 +65,21 @@ export function formatHistoryLabel(entry: HistoryRecord): string {
   return entry.container ? `${quality} · ${entry.container}` : quality;
 }
 
-export function historySubtitle(entry: HistoryRecord): string {
+export function historySubtitle(entry: HistoryRecord, now = Date.now()): string {
   const parts = [formatHistoryLabel(entry)];
   if (entry.sizeBytes) parts.push(formatBytes(entry.sizeBytes));
   parts.push(entry.channel || 'YouTube');
+  const relative = formatRelative(entry.completedAt, now);
+  if (relative) parts.push(relative);
   return parts.join(' · ');
 }
 
-export function episodeSubtitle(entry: HistoryRecord): string {
+export function episodeSubtitle(entry: HistoryRecord, now = Date.now()): string {
   const parts: string[] = [];
   if (entry.durationLabel) parts.push(entry.durationLabel);
   if (entry.sizeBytes) parts.push(formatBytes(entry.sizeBytes));
+  const relative = formatRelative(entry.completedAt, now);
+  if (relative) parts.push(relative);
   return parts.join(' · ');
 }
 

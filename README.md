@@ -66,11 +66,16 @@ verification details.
 - **Focused output choices** — choose best available video, capped resolutions,
   original audio, or MP3 when the analyzed media supports those choices.
 - **Playlist review** — select up to 500 available entries, apply a bounded
-  range, and admit the collection as one expandable parent with individual jobs.
+  index range, and admit the collection as one expandable parent with individual
+  jobs. Playlist search is not on this list yet.
 - **Reliable batch downloads** — review 2–20 individual video or Short URLs at
   once, identify invalid and duplicate lines, then atomically admit every ready
   item under one durable expandable queue parent.
 - **FIFO queue** — configure 1–10 concurrent downloads; the default is 2.
+  Occupancy is shown beside the Queue title and in the status bar.
+- **Continue in-progress work** — ordinary quit leaves an in-progress download
+  running. It continues the next time VidStow opens. Waiting stays waiting.
+  Paused stays paused. Pause downloads and quit records paused intent first.
 - **Explicit lifecycle controls** — each queue row presents only the Pause,
   Resume, Cancel, Retry, Start again, source, Open, or removal actions authorized
   by the application; Pause All is available for eligible queued work.
@@ -79,8 +84,10 @@ verification details.
 - **Persistent download history** — completed downloads remain available across
   app launches, with search, file actions, expandable details, and removal
   controls.
-- **Conservative recovery** — corrupt, unsafe, contended, unavailable, or
-  indeterminate evidence does not authorize automatic destructive mutation.
+- **Conservative recovery** — an unreadable queue is skipped without freezing
+  the app. An unwritable or unsafe data folder is a small cannot-save stop.
+  Corrupt, unsafe, contended, unavailable, or indeterminate evidence does not
+  authorize automatic destructive mutation.
 - **Destination reservations** — related artifacts for a job receive one
   collision decision, and an unrelated destination is not silently replaced.
 - **External FFmpeg support** — VidStow detects FFmpeg and FFprobe on `PATH`,
@@ -106,34 +113,30 @@ required instead of claiming success.
 <table>
   <tr>
     <td width="50%">
-      <strong>Queue</strong><br>
-      Review queue occupancy, lifecycle status, progress, and available actions.<br><br>
-      <img src="docs/assets/screenshots/queue-lifecycle.png" alt="VidStow queue showing a completed video and its available actions">
+      <strong>Home</strong><br>
+      Paste a public YouTube URL, try an example, analyze, and choose an output.
+      Download goes to Queue.<br><br>
+      <img src="docs/assets/screenshots/home.png" alt="VidStow Home with one URL field, Analyze, and Try chips for a video, a playlist, and several links">
     </td>
     <td width="50%">
-      <strong>Playlist review</strong><br>
-      Search a playlist, select entries, apply a range, and choose one output policy.<br><br>
-      <img src="docs/assets/screenshots/playlist-review.png" alt="VidStow reviewing selected entries from the Blender Open Movies playlist">
+      <strong>Queue</strong><br>
+      Occupancy, lifecycle status, progress, and available actions. The empty
+      header shows how many slots are in use.<br><br>
+      <img src="docs/assets/screenshots/queue-lifecycle.png" alt="VidStow empty Queue showing 0 of 2 slots in use">
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <strong>Download history</strong><br>
-      Search completed downloads and open files or reveal them in the system file manager.<br><br>
-      <img src="docs/assets/screenshots/downloads.png" alt="VidStow Downloads page showing search and file actions for a completed download">
+      <strong>Downloads</strong><br>
+      Search completed files, open them, or reveal them in the system file
+      manager.<br><br>
+      <img src="docs/assets/screenshots/downloads.png" alt="VidStow Downloads page showing relative time, Open, and an expandable row">
     </td>
     <td width="50%">
       <strong>Settings</strong><br>
-      Configure output behavior, queue concurrency, recovery policy, and FFmpeg.<br><br>
-      <img src="docs/assets/screenshots/settings-lifecycle.png" alt="VidStow settings showing download, queue recovery, FFmpeg, and diagnostics controls">
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2">
-      <strong>Recovery-required state</strong><br>
-      Unsafe or unreadable application state disables ordinary queue mutation
-      and preserves available recovery evidence for review.<br><br>
-      <img src="docs/assets/screenshots/recovery-required.png" alt="VidStow recovery-required screen preserving saved media and disabling automatic cleanup">
+      Download folder, concurrency, in-progress continues, FFmpeg, and
+      diagnostics. The colophon sits at the bottom.<br><br>
+      <img src="docs/assets/screenshots/settings-lifecycle.png" alt="VidStow Settings showing General, Performance, and Advanced with In progress continues">
     </td>
   </tr>
 </table>

@@ -14,11 +14,34 @@ does not exist yet.
 
 ### Added
 
-- No entries yet.
+- Dark zinc workstation with Home, Queue, Downloads, and Settings. The product
+  name lives in the native title bar; the sidebar starts at Home and no longer
+  repeats the wordmark or an About item.
+- Home Try chips that fill the field with a sample video, playlist, or several
+  links. Analyze is still the only submit.
+- Queue header occupancy `{n} of {limit} slots in use`, including on the empty
+  page. Pause all stays hidden until there is a list.
+- Downloads rows with relative time, a chevron to expand, Open as the primary
+  action, and Reveal as a ghost.
+- A clickable status-bar folder path that reveals the download folder. `Not set`
+  is not clickable.
+- Confirm before starting downloads, off by default.
+- Settings colophon (version, license, platform, source, docs, built-with) in
+  place of a separate About page. The About route still renders Settings.
+- Cannot-save stop when the data folder is unwritable or unsafe. An unreadable
+  queue is quarantined and skipped, with a dismissible workstation notice.
 
 ### Changed
 
-- No entries yet.
+- Ordinary quit leaves in-progress downloads running, the same as a crash. Pause
+  downloads and quit is the path that records paused intent first.
+- Interrupted jobs are a fixed In progress continues policy. Waiting stays
+  waiting. Paused stays paused.
+- After Download on Home (single video or playlist), VidStow goes to Queue.
+  Batch already did.
+- The macOS window uses Dark Aqua so traffic lights and the title sit on the
+  zinc canvas.
+- Start over from Action required returns the URL to Home.
 
 ### Fixed
 

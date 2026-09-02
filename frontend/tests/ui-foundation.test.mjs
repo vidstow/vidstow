@@ -96,6 +96,8 @@ test('app shell mounts the workstation, status bar, and keeps the About page', a
   assert.match(status, /'Not set'/);
   assert.match(status, /Idle/);
   assert.match(status, /\$\{active\}\/\$\{limit\} slots/);
+  assert.match(status, /api\.fs\.reveal\(folder\)/);
+  assert.match(status, /font-size: 11px/);
   assert.doesNotMatch(status, />Path</);
   assert.doesNotMatch(status, /FFmpeg/);
   assert.doesNotMatch(status, /ytdlp/);
