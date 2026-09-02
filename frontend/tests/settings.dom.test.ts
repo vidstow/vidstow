@@ -62,6 +62,7 @@ describe('Settings page', () => {
       perVideoSubfolder: true,
       confirmBeforeDownload: false,
       automaticDiagnostics: 'disabled',
+      outputOptions: {},
     });
     ffmpeg.set({
       available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7.1', ffprobePath: '/usr/bin/ffprobe', message: '',
@@ -114,6 +115,25 @@ describe('Settings page', () => {
     render(Settings);
     await user.click(screen.getByRole('switch', { name: 'Create a subfolder for each download' }));
     await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ perVideoSubfolder: false })));
+  });
+
+  test('video files defaults talk to UpdateSettings through outputOptions', async () => {
+    const user = userEvent.setup();
+    const App = installBindings();
+    render(Settings);
+    expect(screen.getByRole('heading', { name: 'Video files' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Embed thumbnail artwork' })).toBeEnabled();
+
+    await user.selectOptions(screen.getByLabelText('Default subtitle mode'), 'sidecar');
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      outputOptions: expect.objectContaining({ subtitleMode: 'sidecar' }),
+    })));
+    expect(await screen.findByLabelText('Default subtitle file format')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('switch', { name: 'Embed title and channel details' }));
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      outputOptions: expect.objectContaining({ embedMetadata: true }),
+    })));
   });
 
   test('concurrency stepper warns above 4 and talks to UpdateSettings', async () => {

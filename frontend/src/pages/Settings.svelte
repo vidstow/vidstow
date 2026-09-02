@@ -4,7 +4,7 @@
   import { settings, ffmpeg, showBanner, showError } from '../lib/stores.js';
   import { formatEngineVersion } from '../lib/format.js';
   import { MAX_CONCURRENCY, MIN_CONCURRENCY } from '../lib/lifecycle-ui/types.js';
-  import type { BuildInfo, Settings } from '../lib/types.js';
+  import type { BuildInfo, OutputOptions, Settings } from '../lib/types.js';
 
   const APP = {
     name: 'VidStow',
@@ -41,6 +41,10 @@
       showBanner('success', message);
     } catch (err) { showError(err, 'Could not save settings'); }
     finally { saving = false; }
+  }
+
+  async function updateOutputOptions(patch: Partial<OutputOptions>) {
+    await update({ ...$settings, outputOptions: { ...($settings.outputOptions ?? {}), ...patch } }, 'Output defaults updated');
   }
 
   async function pickFolder() {
@@ -194,6 +198,133 @@
       </div>
       {#if concurrency > 4}
         <p class="swarn">More than 4 concurrent downloads may trigger YouTube rate limits (HTTP 429).</p>
+      {/if}
+    </section>
+
+    <section class="sgroup" aria-labelledby="video-files-settings-title">
+      <h2 id="video-files-settings-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m10 9 5 3-5 3Z" /></svg>
+        <span>Video files</span>
+      </h2>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Subtitles on new adds</strong>
+          <span>Pre-selects subtitles for new downloads when the video offers them.</span>
+        </div>
+        <div class="sact">
+          <select
+            class="sselect"
+            aria-label="Default subtitle mode"
+            value={$settings.outputOptions?.subtitleMode ?? ''}
+            on:change={(e) => updateOutputOptions({ subtitleMode: (e.currentTarget as HTMLSelectElement).value as OutputOptions['subtitleMode'] })}
+          >
+            <option value="">Off</option>
+            <option value="sidecar">Subtitle file</option>
+            <option value="embed" disabled={!$ffmpeg.available}>Embed in video</option>
+          </select>
+        </div>
+      </div>
+
+      {#if $settings.outputOptions?.subtitleMode === 'sidecar'}
+        <div class="srow">
+          <div class="scopy">
+            <strong>Subtitle file format</strong>
+            <span>{$ffmpeg.available ? 'Converted with FFmpeg when needed.' : 'FFmpeg is needed to convert; the original format is kept.'}</span>
+          </div>
+          <div class="sact">
+            <select
+              class="sselect"
+              aria-label="Default subtitle file format"
+              disabled={!$ffmpeg.available}
+              value={$settings.outputOptions?.subtitleFormat ?? ''}
+              on:change={(e) => updateOutputOptions({ subtitleFormat: (e.currentTarget as HTMLSelectElement).value as OutputOptions['subtitleFormat'] })}
+            >
+              <option value="">Original</option>
+              <option value="srt">SRT</option>
+              <option value="vtt">VTT</option>
+            </select>
+          </div>
+        </div>
+      {/if}
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Include auto-generated captions</strong>
+          <span>Uses auto-generated tracks when a language has no manual subtitles.</span>
+        </div>
+        <div class="sact">
+          <button
+            type="button"
+            class="switch"
+            class:on={!!$settings.outputOptions?.subtitleAutoCaptions}
+            role="switch"
+            aria-checked={!!$settings.outputOptions?.subtitleAutoCaptions}
+            aria-label="Include auto-generated captions"
+            on:click={() => updateOutputOptions({ subtitleAutoCaptions: !$settings.outputOptions?.subtitleAutoCaptions })}
+          ><span class="switch-thumb"></span></button>
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Embed title &amp; channel details</strong>
+          <span>Writes the video's details into the downloaded file.</span>
+        </div>
+        <div class="sact">
+          <button
+            type="button"
+            class="switch"
+            class:on={!!$settings.outputOptions?.embedMetadata}
+            role="switch"
+            aria-checked={!!$settings.outputOptions?.embedMetadata}
+            aria-label="Embed title and channel details"
+            disabled={!$ffmpeg.available}
+            on:click={() => updateOutputOptions({ embedMetadata: !$settings.outputOptions?.embedMetadata })}
+          ><span class="switch-thumb"></span></button>
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Embed thumbnail artwork</strong>
+          <span>Shows the video's artwork in media players.</span>
+        </div>
+        <div class="sact">
+          <button
+            type="button"
+            class="switch"
+            class:on={!!$settings.outputOptions?.embedThumbnail}
+            role="switch"
+            aria-checked={!!$settings.outputOptions?.embedThumbnail}
+            aria-label="Embed thumbnail artwork"
+            disabled={!$ffmpeg.available}
+            on:click={() => updateOutputOptions({ embedThumbnail: !$settings.outputOptions?.embedThumbnail })}
+          ><span class="switch-thumb"></span></button>
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Embed chapter markers</strong>
+          <span>Adds the video's chapters where the format supports them.</span>
+        </div>
+        <div class="sact">
+          <button
+            type="button"
+            class="switch"
+            class:on={!!$settings.outputOptions?.embedChapters}
+            role="switch"
+            aria-checked={!!$settings.outputOptions?.embedChapters}
+            aria-label="Embed chapter markers"
+            disabled={!$ffmpeg.available}
+            on:click={() => updateOutputOptions({ embedChapters: !$settings.outputOptions?.embedChapters })}
+          ><span class="switch-thumb"></span></button>
+        </div>
+      </div>
+
+      {#if !$ffmpeg.available}
+        <p class="swarn">Embedding needs FFmpeg. Install it or set its path under Advanced.</p>
       {/if}
     </section>
 
@@ -389,6 +520,19 @@
     flex-shrink: 0;
   }
   .srow.stack .sact { width: 100%; }
+  .sselect {
+    height: 28px;
+    min-width: 140px;
+    padding: 0 26px 0 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: var(--surface-input);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12px;
+  }
+  .sselect:focus { border-color: var(--accent-500); outline: none; }
+  .sselect:disabled { opacity: 0.4; }
   .sfixed {
     color: var(--text-muted);
     font-family: var(--font-mono);
