@@ -123,7 +123,7 @@ func (a *App) startup(ctx context.Context) {
 
 	statePath, err := defaultStatePath()
 	if err != nil {
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
 		logAppErrorf(ctx, "desktop: store path: %v", err)
 		return
 	}
@@ -141,7 +141,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 			return
 		}
 		logAppErrorf(ctx, "desktop: instance lock: %v", lockErr)
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
 		return
 	}
 	a.instanceLock = guard
@@ -179,7 +179,13 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 			_ = st.Close()
 		}
 		if status.Warning != "" {
-			status = store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate}
+			status = store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate}
+		}
+		if status.Mode == store.StartupRecoveryRequired {
+			status.Mode = store.StartupCannotSave
+		}
+		if !status.CannotSave() {
+			status = store.StartupStatus{Mode: store.StartupCannotSave, Reason: status.Reason}
 		}
 		a.setStartupStatus(status)
 		return
@@ -191,7 +197,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		logAppErrorf(ctx, "desktop: validate output roots: %v", err)
 		_ = st.Close()
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
 		return
 	}
 	committed, err := reconcileStartupState(ctx, st)
@@ -202,7 +208,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		logAppErrorf(ctx, "desktop: reconcile startup state: %v", err)
 		_ = st.Close()
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 
@@ -227,7 +233,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		_ = st.Close()
 		a.jobs = nil
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 	if err := restoreStartupManager(a.jobs, committed); err != nil {
@@ -235,7 +241,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		_ = st.Close()
 		a.jobs = nil
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 	a.coordinator, err = admission.NewCoordinator(admission.Dependencies{
@@ -246,7 +252,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		_ = st.Close()
 		a.jobs = nil
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 
@@ -1164,7 +1170,7 @@ func (a *App) CopyDiagnostics() (string, error) {
 	if a.store != nil {
 		report.WriteString("Download folder: configured\n")
 	} else {
-		report.WriteString("Startup: recovery required (" + string(a.startupStatusSnapshot().Reason) + ")\n")
+		report.WriteString("Startup: cannot save (" + string(a.startupStatusSnapshot().Reason) + ")\n")
 	}
 	// FFmpeg status messages are closed application-authored values. Never
 	// include the configured path or any of its components.

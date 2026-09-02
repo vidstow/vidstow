@@ -7,10 +7,9 @@
   import type { QueueView } from './lib/lifecycle-ui/types.js';
   import { newestQueueView } from './lib/queue-view.js';
   import type { JobSnapshot, QuitSummary, StartupStatus } from './lib/types.js';
-  import { DEFAULT_RECOVERY_REQUIRED, type RecoveryRequiredViewModel } from './lib/lifecycle-ui/types.js';
   import QuitConfirmationDialog from './lib/lifecycle-ui/QuitConfirmationDialog.svelte';
   import DiagnosticConsentDialog from './lib/lifecycle-ui/DiagnosticConsentDialog.svelte';
-  import RecoveryRequiredShell from './lib/lifecycle-ui/RecoveryRequiredShell.svelte';
+  import CannotSaveDialog from './lib/lifecycle-ui/CannotSaveDialog.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
   import StatusBar from './lib/components/StatusBar.svelte';
   import Modal from './lib/components/Modal.svelte';
@@ -25,7 +24,6 @@
   let startupStatus: StartupStatus | null = null;
   let quitOpen = false;
   let quitModel: QuitSummary = { activeDownloads: 0, waitingOrPausedDownloads: 0 };
-  let recoveryModel: RecoveryRequiredViewModel = DEFAULT_RECOVERY_REQUIRED;
   let queueResetNotice = false;
   let diagnosticChoiceOpen = false;
   let diagnosticChoiceSaving = false;
@@ -57,11 +55,7 @@
 
     try {
       startupStatus = await waitForStartupStatus();
-      if (startupStatus.mode === 'recovery-required') {
-        recoveryModel = {
-          ...DEFAULT_RECOVERY_REQUIRED,
-          stateFileStatus: startupStatus.reason ? `State v2: ${startupStatus.reason}` : DEFAULT_RECOVERY_REQUIRED.stateFileStatus,
-        };
+      if (cannotSave(startupStatus)) {
         return;
       }
       const [savedSettings, initialJobs, initialQueueView, savedHistory, ffmpegStatus, persistenceStatus] = await Promise.all([
@@ -168,13 +162,8 @@
     }
   }
 
-  async function copyRecoveryDiagnostics() {
-    try {
-      await api.diagnostics.copy();
-      showBanner('success', 'Diagnostics copied.', 5000);
-    } catch (err) {
-      modal.set({ kind: 'error', title: 'Could not copy diagnostics', message: errorMessage(err, 'Try again or open the data folder.') });
-    }
+  function cannotSave(status: StartupStatus | null): boolean {
+    return status?.mode === 'cannot-save' || status?.mode === 'recovery-required';
   }
 
   async function openRecoveryDataFolder() {
@@ -238,15 +227,9 @@
       <p>Restoring saved downloads…</p>
     </div>
   </main>
-{:else if startupStatus.mode === 'recovery-required'}
-  <main class="main">
-    <div class="scroll">
-      <RecoveryRequiredShell
-        model={recoveryModel}
-        onCopyDiagnostics={copyRecoveryDiagnostics}
-        onOpenDataFolder={openRecoveryDataFolder}
-      />
-    </div>
+{:else if cannotSave(startupStatus)}
+  <main class="main startup-shell">
+    <CannotSaveDialog onOpenDataFolder={openRecoveryDataFolder} />
   </main>
 {:else}
   <div class="workstation">
@@ -258,18 +241,8 @@
           <aside class="queue-reset-notice" role="status">
             <span class="notice-icon" aria-hidden="true">!</span>
             <div class="notice-body">
-              <p>Your downloads are safe on disk. VidStow could not read its saved queue, so the Queue was reset!</p>
-              <div class="queue-reset-actions">
-                <button type="button" class="btn sm ghost" onclick={copyRecoveryDiagnostics}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>
-                  Copy diagnostics
-                </button>
-                <button type="button" class="btn sm" onclick={openRecoveryDataFolder}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7A1.5 1.5 0 0 1 5 5.5h4l2 2h8A1.5 1.5 0 0 1 20.5 9v8A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17Z"/></svg>
-                  Open data folder
-                </button>
-                <button type="button" class="btn sm ghost quiet" onclick={() => (queueResetNotice = false)}>Dismiss</button>
-              </div>
+              <p>The saved queue could not be read. Files on disk were not touched.</p>
+              <button type="button" class="btn sm ghost quiet" onclick={() => (queueResetNotice = false)}>Dismiss</button>
             </div>
           </aside>
         {/if}
@@ -393,10 +366,7 @@
     font-size: var(--fs-sm);
     line-height: 1.45;
   }
-  .queue-reset-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+  .notice-body .btn {
     margin-top: var(--sp-3);
   }
   .btn {
@@ -425,11 +395,6 @@
   .btn.quiet:hover:not(:disabled) {
     background: transparent;
     color: var(--text-primary);
-  }
-  .queue-reset-actions .btn svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
   }
   @keyframes startup-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {

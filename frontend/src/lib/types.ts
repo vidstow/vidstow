@@ -216,7 +216,7 @@ export interface PersistenceStatus {
 }
 
 export interface StartupStatus {
-  mode: 'starting' | 'healthy' | 'recovery-required';
+  mode: 'starting' | 'healthy' | 'cannot-save' | 'recovery-required';
   reason?: string;
   warning?: string;
 }

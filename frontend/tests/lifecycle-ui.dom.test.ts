@@ -435,6 +435,7 @@ describe('action-required recovery', () => {
 
     expect(screen.getByRole('dialog', { name: review.heading })).toBeInTheDocument();
     expect(screen.getByText(review.preservationNotice)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Keep for now' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Start over from Home' }));
     expect(onStartOver).toHaveBeenCalledOnce();
     expect(onClose).not.toHaveBeenCalled();

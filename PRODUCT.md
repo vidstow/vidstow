@@ -330,9 +330,13 @@ Never display the string `yt-dlp` as the engine name. The branded engine is `ytd
 
 **Destination conflict.** `Choose a new filename`. VidStow will not replace the existing file. Read-only unavailable name and proposed name, Available chip when the proposal is free. Cancel download / Use new name. Authority is the opaque conflict token, never the displayed filename.
 
-**Action required review.** Eyebrow `Action required`, heading and item title from the backend, preservation notice, then only the buttons the review model enables: Keep for now, Remove from queue, Discard saved data, Retry cleanup, Try recovery again, Retry with fresh link, Start over from Home. Start over returns the URL to Home and leaves preserved evidence untouched. Discard confirms that only data VidStow can identify safely will be removed.
+**Action required review.** Eyebrow `Action required`, heading and item title from the backend, preservation notice, then only the buttons the review model enables: Remove from queue, Discard saved data, Retry cleanup, Try recovery again, Retry with fresh link, Start over from Home. Closing the dialog leaves the row in the queue. Start over returns the URL to Home and leaves preserved evidence untouched. Discard confirms that only data VidStow can identify safely will be removed.
 
-**Recovery required (full screen).** Triangle warning, `Download state needs recovery`. Media and recovery files preserved. Downloads paused. VidStow will not resume, retry, cancel, or clean up. Status list: State file, Automatic cleanup (Disabled), Saved media (Preserved). Copy diagnostics / Open data folder. Footer: `No recovery files have been changed.` No sidebar, no queue.
+**Cannot save (small stop).** `VidStow cannot save this session`. The data folder is not writable. Open data folder. Not the full-screen recovery shell.
+
+**Junk queue.** Unreadable or untrusted `state.json` is quarantined. Settings are salvaged when possible. The workstation starts healthy with a dismissible notice: `The saved queue could not be read. Files on disk were not touched.` Files on disk are not touched.
+
+**Recovery required (full screen).** Triangle warning, `Download state needs recovery`. Media and recovery files preserved. Downloads paused. VidStow will not resume, retry, cancel, or clean up. Status list: State file, Automatic cleanup (Disabled), Saved media (Preserved). Copy diagnostics / Open data folder. Footer: `No recovery files have been changed.` No sidebar, no queue. Unwritable data uses the cannot-save stop instead.
 
 **Collection cancel/remove.** Confirm. Completed files remain on disk.
 

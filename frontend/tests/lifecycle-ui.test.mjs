@@ -23,6 +23,7 @@ test('lifecycle UI exports typed presentation components and view models', async
     'QueueSettingsCard',
     'QueueSummary',
     'QuitConfirmationDialog',
+    'CannotSaveDialog',
     'RecoveryRequiredShell',
   ]) {
     assert.match(index, new RegExp(`export \{ default as ${name} \}`));
@@ -170,6 +171,13 @@ test('queue settings communicates 1–10/default 2 and drain-on-lower with no to
   assert.match(types, /DEFAULT_CONCURRENCY = 2/);
 });
 
+test('action-required review has no Keep for now and preserves evidence on start over', async () => {
+  const review = await read('../src/lib/lifecycle-ui/ActionRequiredReviewDialog.svelte');
+  assert.match(review, /Start over from Home/);
+  assert.doesNotMatch(review, /Keep for now/);
+  assert.match(review, /What happens to the saved data\?/);
+});
+
 test('ordinary quit dialog only offers safe first-release actions', async () => {
   const quit = await read('../src/lib/lifecycle-ui/QuitConfirmationDialog.svelte');
   assert.match(quit, /Quit VidStow\?/);
@@ -186,6 +194,15 @@ test('ordinary quit dialog only offers safe first-release actions', async () => 
   assert.doesNotMatch(quit, /will be paused before VidStow quits/);
   assert.doesNotMatch(quit, /Cancel downloads and quit/);
   assert.doesNotMatch(quit, /background operation|tray operation/i);
+});
+
+test('cannot-save dialog is a small stop and does not offer recovery', async () => {
+  const dialog = await read('../src/lib/lifecycle-ui/CannotSaveDialog.svelte');
+  assert.match(dialog, /VidStow cannot save this session/);
+  assert.match(dialog, /could not write its data folder/);
+  assert.match(dialog, />Open data folder<\/button>/);
+  assert.doesNotMatch(dialog, /Download state needs recovery/);
+  assert.doesNotMatch(dialog, />Resume<\/button>|>Retry<\/button>|>Reset<\/button>/);
 });
 
 test('recovery-required shell fails closed and exposes diagnostics only', async () => {
@@ -225,6 +242,7 @@ test('all lifecycle UI components remain presentation-only', async () => {
     'QueueSettingsCard.svelte',
     'QueueSummary.svelte',
     'QuitConfirmationDialog.svelte',
+    'CannotSaveDialog.svelte',
     'RecoveryRequiredShell.svelte',
     'types.ts',
   ];

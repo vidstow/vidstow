@@ -25,6 +25,7 @@ const (
 	// It is not a persistence result and must not be rendered as recovery.
 	StartupStarting         StartupMode = "starting"
 	StartupHealthy          StartupMode = "healthy"
+	StartupCannotSave       StartupMode = "cannot-save"
 	StartupRecoveryRequired StartupMode = "recovery-required"
 )
 
@@ -55,6 +56,10 @@ type StartupStatus struct {
 }
 
 func (s StartupStatus) Healthy() bool { return s.Mode == StartupHealthy }
+
+func (s StartupStatus) CannotSave() bool {
+	return s.Mode == StartupCannotSave || s.Mode == StartupRecoveryRequired
+}
 
 // JobPrecondition remains exported from store for the V1 admission seam.
 // The canonical definition lives in jobmodel so the jobs package can depend
@@ -108,9 +113,10 @@ type V2Store struct {
 }
 
 // OpenV2 loads State v2 under its permanent sibling lock. Missing state starts
-// empty. Corrupt or indeterminate state returns recovery-required with no
-// usable store; a known committed image with unresolved durability returns a
-// usable snapshot plus a warning and mutation block.
+// empty. Untrusted queue documents are quarantined and replaced with an empty
+// queue (Settings kept when they still look valid). A folder VidStow cannot
+// write returns cannot-save. A known committed image with unresolved
+// durability returns a usable snapshot plus a warning and mutation block.
 func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error) {
 	if path == "" {
 		return nil, StartupStatus{}, errors.New("store: empty path")
@@ -120,23 +126,23 @@ func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error)
 		return nil, StartupStatus{}, err
 	}
 	if !validPath(absPath) {
-		return nil, recoveryStatus(errors.New("store: invalid state path")), nil
+		return nil, cannotSaveFromErr(errors.New("store: invalid state path")), nil
 	}
 	if err := ensureStateDirectory(filepath.Dir(absPath)); err != nil {
-		return nil, recoveryStatus(err), nil
+		return nil, cannotSaveFromErr(err), nil
 	}
 	canonicalPath, canonicalErr := canonicalizeStatePath(absPath)
 	if canonicalErr != nil {
-		return nil, recoveryStatus(canonicalErr), nil
+		return nil, cannotSaveFromErr(canonicalErr), nil
 	}
 	path = canonicalPath
 	if !validPath(path) || !validPath(path+".lock") || !validPath(path+".recovery") {
-		return nil, recoveryStatus(errors.New("store: state path exceeds limit")), nil
+		return nil, cannotSaveFromErr(errors.New("store: state path exceeds limit")), nil
 	}
 	s := &V2Store{path: path, lockPath: path + ".lock", markerPath: path + ".recovery", status: StartupStatus{Mode: StartupHealthy}, replacer: osAtomicReplacer{}, markerWriter: writeRecoveryMarker}
 	lock, err := acquireStateLock(s.lockPath)
 	if err != nil {
-		return nil, recoveryStatus(err), nil
+		return nil, cannotSaveFromErr(err), nil
 	}
 	keepStartupLock := false
 	defer func() {
@@ -150,7 +156,7 @@ func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error)
 				returnErr = nil
 				return
 			}
-			status = StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryIndeterminate}
+			status = cannotSave(RecoveryIndeterminate)
 			returnErr = nil
 		}
 	}()
@@ -159,33 +165,35 @@ func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error)
 	marker, markerExists, markerErr := readRecoveryMarker(s.markerPath)
 	if markerErr != nil {
 		if errors.Is(markerErr, errUnsafePermissions) {
-			return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryUnsafePermissions}, nil
+			return nil, cannotSave(RecoveryUnsafePermissions), nil
 		}
-		return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryIndeterminate}, nil
+		return skipResult(s.trySkipUntrusted(salvageSettingsFromFile(path)))
 	}
 	if markerExists {
 		// A marker can survive a process exit after the target replacement has
 		// committed but before marker cleanup. Only clear that evidence when the
 		// current target itself proves the exact marked revision is authoritative.
-		// Candidate promotion and cleanup remain deliberately out of scope.
+		// Candidate promotion remains out of scope; an unproven marker skips the
+		// queue instead of freezing the app.
 		if marker.TargetPath != path {
-			return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryIndeterminate}, nil
+			return skipResult(s.trySkipUntrusted(salvageSettingsFromFile(path)))
 		}
 		markedState, missing, readErr := readStateV2(path)
 		if readErr != nil {
 			if errors.Is(readErr, errUnsafePermissions) {
-				return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryUnsafePermissions}, nil
+				return nil, cannotSave(RecoveryUnsafePermissions), nil
 			}
-			return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryIndeterminate}, nil
+			return skipResult(s.trySkipUntrusted(salvageSettingsFromFile(path)))
 		}
 		if missing || markedState.Version != jobmodel.StateVersion || markedState.StoreRevision != marker.StoreRevision || validateState(markedState.State) != nil {
-			return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryIndeterminate}, nil
-		}
-		if err := removeRecoveryMarker(s.markerPath); err != nil {
-			if errors.Is(err, errUnsafePermissions) {
-				return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryUnsafePermissions}, nil
+			settings := markedState.Settings
+			if missing {
+				settings = salvageSettingsFromFile(path)
 			}
-			return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryIndeterminate}, nil
+			return skipResult(s.trySkipUntrusted(settings))
+		}
+		if err := removeRecoveryMarker(s.markerPath); err != nil && errors.Is(err, errUnsafePermissions) {
+			return nil, cannotSave(RecoveryUnsafePermissions), nil
 		}
 		state = markedState
 		stateLoaded = true
@@ -196,14 +204,9 @@ func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error)
 		state, missing, err = readStateV2(path)
 		if err != nil {
 			if errors.Is(err, errUnsafePermissions) {
-				return nil, recoveryStatus(err), nil
+				return nil, cannotSaveFromErr(err), nil
 			}
-			if isUnreadableQueue(err) {
-				if resetErr := s.resetUnreadableQueue(); resetErr == nil {
-					return s, s.status, nil
-				}
-			}
-			return nil, recoveryStatus(err), nil
+			return skipResult(s.trySkipUntrusted(salvageSettingsFromFile(path)))
 		}
 	}
 	if missing {
@@ -219,11 +222,8 @@ func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error)
 		}
 	} else if state.Version == 0 || state.Version == 1 {
 		migrated, err := migrateV1(path, state.raw)
-		if err != nil {
-			return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryMigrationFailed}, nil
-		}
-		if err := validateState(migrated); err != nil {
-			return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryMigrationFailed}, nil
+		if err != nil || validateState(migrated) != nil {
+			return skipResult(s.trySkipUntrusted(salvageSettingsJSON(state.raw)))
 		}
 		state = decodedState{State: migrated}
 		if err := s.writeInitial(migrated); err != nil {
@@ -237,24 +237,42 @@ func OpenV2(path string) (store *V2Store, status StartupStatus, returnErr error)
 		}
 	}
 	if state.Version != jobmodel.StateVersion {
-		return nil, StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryUnsupportedVersion}, nil
+		return skipResult(s.trySkipUntrusted(state.Settings))
 	}
 	if err := validateState(state.State); err != nil {
-		return nil, recoveryStatus(err), nil
+		return skipResult(s.trySkipUntrusted(state.Settings))
 	}
 	s.state = state.State
 	return s, s.status, nil
 }
 
-func recoveryStatus(err error) StartupStatus {
-	reason := RecoveryCorruptState
-	if errors.Is(err, errUnsafePermissions) {
-		reason = RecoveryUnsafePermissions
+func skipResult(opened *V2Store, status StartupStatus, ok bool) (*V2Store, StartupStatus, error) {
+	if ok {
+		return opened, status, nil
 	}
-	return StartupStatus{Mode: StartupRecoveryRequired, Reason: reason}
+	return nil, status, nil
 }
 
-func (s *V2Store) resetUnreadableQueue() error {
+func cannotSave(reason RecoveryReason) StartupStatus {
+	return StartupStatus{Mode: StartupCannotSave, Reason: reason}
+}
+
+func cannotSaveFromErr(err error) StartupStatus {
+	if errors.Is(err, errUnsafePermissions) {
+		return cannotSave(RecoveryUnsafePermissions)
+	}
+	return cannotSave(RecoveryIndeterminate)
+}
+
+func (s *V2Store) trySkipUntrusted(settings jobmodel.Settings) (*V2Store, StartupStatus, bool) {
+	if err := s.skipUntrustedQueue(settings); err != nil {
+		status := cannotSaveFromErr(err)
+		return nil, status, false
+	}
+	return s, s.status, true
+}
+
+func (s *V2Store) skipUntrustedQueue(settings jobmodel.Settings) error {
 	quarantined := s.path + ".unreadable"
 	if !validPath(quarantined) {
 		return errors.New("store: unreadable-queue quarantine path is invalid")
@@ -263,22 +281,65 @@ func (s *V2Store) resetUnreadableQueue() error {
 	if err := os.Rename(s.path, quarantined); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	if err := removeRecoveryMarker(s.markerPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		_ = removePrivate(s.markerPath)
+	}
 	fresh := defaultStateV2()
+	fresh.Settings = applySalvagedSettings(fresh.Settings, settings)
+	if err := validateState(fresh); err != nil {
+		fresh = defaultStateV2()
+	}
 	if err := s.writeInitial(fresh); err != nil {
 		_ = os.Rename(quarantined, s.path)
-		return err
+		return fmt.Errorf("store: skip untrusted queue: %w", err)
 	}
 	s.state = fresh
 	s.status = StartupStatus{Mode: StartupHealthy, Warning: WarningQueueReset}
 	return nil
 }
 
-func isUnreadableQueue(err error) bool {
-	if err == nil {
-		return false
+func salvageSettingsFromFile(path string) jobmodel.Settings {
+	f, err := openPrivateRead(path)
+	if err != nil {
+		return jobmodel.Settings{}
 	}
-	message := err.Error()
-	return strings.Contains(message, "invalid state JSON") || strings.Contains(message, "empty state") || strings.Contains(message, "no valid version") || strings.Contains(message, "invalid v2 state") || strings.Contains(message, "unknown field")
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxStateBytes+1))
+	if err != nil {
+		return jobmodel.Settings{}
+	}
+	return salvageSettingsJSON(data)
+}
+
+func salvageSettingsJSON(raw []byte) jobmodel.Settings {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return jobmodel.Settings{}
+	}
+	var probe struct {
+		Settings json.RawMessage `json:"settings"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil || len(probe.Settings) == 0 {
+		return jobmodel.Settings{}
+	}
+	var settings jobmodel.Settings
+	if err := json.Unmarshal(probe.Settings, &settings); err != nil {
+		return jobmodel.Settings{}
+	}
+	return settings
+}
+
+func applySalvagedSettings(base, salvaged jobmodel.Settings) jobmodel.Settings {
+	if !validSettings(salvaged) {
+		return base
+	}
+	out := salvaged
+	if out.DownloadConcurrency < 1 || out.DownloadConcurrency > 10 {
+		out.DownloadConcurrency = base.DownloadConcurrency
+	}
+	if strings.TrimSpace(out.DownloadFolder) == "" {
+		out.DownloadFolder = base.DownloadFolder
+	}
+	return out
 }
 
 // Snapshot returns a deep, independent state image.
@@ -309,9 +370,9 @@ func (s *V2Store) Close() error {
 func startupWriteStatus(err error) StartupStatus {
 	var outcome CommitError
 	if errors.As(err, &outcome) && (outcome.Committed() || outcome.Indeterminate()) {
-		return StartupStatus{Mode: StartupRecoveryRequired, Reason: RecoveryIndeterminate}
+		return cannotSave(RecoveryIndeterminate)
 	}
-	return recoveryStatus(err)
+	return cannotSaveFromErr(err)
 }
 
 func (s *V2Store) Status() StartupStatus {

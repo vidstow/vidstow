@@ -141,8 +141,9 @@
   $: if ($pendingUrl) {
     const droppedURL = $pendingUrl;
     pendingUrl.set('');
-    url = droppedURL;
-    submitPaste();
+    applyUrl(droppedURL);
+    if (urlField) urlField.value = droppedURL;
+    void submitPaste(droppedURL);
   }
 
   const batchReviewSummary = (review: BatchAnalysisView) => {
@@ -243,8 +244,8 @@
     void submitPaste();
   }
 
-  async function submitPaste() {
-    applyUrl(urlField?.value ?? url);
+  async function submitPaste(source?: string) {
+    applyUrl(typeof source === 'string' ? source : (urlField?.value ?? url));
     const items = pasteItems(url);
     if (!items.length || busy || batchBusy || scopeChoice) return;
     analyzeError = null;

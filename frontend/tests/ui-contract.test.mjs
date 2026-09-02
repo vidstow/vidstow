@@ -218,12 +218,12 @@ test('startup performs one FFmpeg fetch and normalizes binding errors', async ()
   ]);
   assert.equal((app.match(/api\.ffmpeg\.status\(\)/g) || []).length, 1);
   assert.match(app, /title: 'The app could not finish starting'/);
-  assert.match(app, /Your downloads are safe on disk\. VidStow could not read its saved queue, so the Queue was reset!/);
-  assert.match(app, /class="btn sm ghost" onclick=\{copyRecoveryDiagnostics\}/);
-  assert.match(app, /class="btn sm" onclick=\{openRecoveryDataFolder\}/);
+  assert.match(app, /The saved queue could not be read\. Files on disk were not touched\./);
+  assert.match(app, /CannotSaveDialog/);
   assert.match(app, /class="btn sm ghost quiet"/);
+  assert.doesNotMatch(app, /copyRecoveryDiagnostics/);
   assert.doesNotMatch(app, /class="notice-btn"/);
-  assert.doesNotMatch(app, /so the Queue was reset\.</);
+  assert.doesNotMatch(app, /Your downloads are safe on disk/);
   assert.match(app, /api\.events\.onJobUpdate\(updateJobInList\)/);
   assert.match(app, /if \(idx === -1\) return \[updated, \.\.\.list\]/);
   assert.match(stores, /'message' in err/);

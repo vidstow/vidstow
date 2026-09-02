@@ -139,6 +139,34 @@ describe('Home analysis authority', () => {
     expect(get(pendingUrl)).toBe('');
   });
 
+  test('a pending URL fills an empty field and analyzes it', async () => {
+    const { ValidateURL, AnalyzeURL } = installBindings();
+    render(Home);
+
+    const input = screen.getByLabelText('YouTube video, Short, or playlist URL');
+    expect(input).toHaveValue('');
+    pendingUrl.set(firstURL);
+
+    await waitFor(() => expect(input).toHaveValue(firstURL));
+    await waitFor(() => expect(ValidateURL).toHaveBeenCalledWith(firstURL));
+    await waitFor(() => expect(AnalyzeURL).toHaveBeenCalledWith(firstURL));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(get(pendingUrl)).toBe('');
+  });
+
+  test('a pending URL replaces a different field value before analyzing', async () => {
+    const { AnalyzeURL } = installBindings();
+    render(Home);
+
+    const input = screen.getByLabelText('YouTube video, Short, or playlist URL');
+    await userEvent.setup().type(input, 'https://www.youtube.com/watch?v=oldvideo01');
+    pendingUrl.set(firstURL);
+
+    await waitFor(() => expect(input).toHaveValue(firstURL));
+    await waitFor(() => expect(AnalyzeURL).toHaveBeenCalledWith(firstURL));
+    expect(AnalyzeURL).not.toHaveBeenCalledWith('https://www.youtube.com/watch?v=oldvideo01');
+  });
+
   test('Analyze keeps its idle width while the request is in flight', async () => {
     const user = userEvent.setup();
     (window as any).go.main.App.ValidateURL = vi.fn(() => new Promise(() => {}));

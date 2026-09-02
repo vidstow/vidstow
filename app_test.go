@@ -101,13 +101,13 @@ func TestVideoSubfolderIsPortableAndBounded(t *testing.T) {
 	}
 }
 
-func TestStartupRecoveryRequiredFailsClosedWithoutRuntimeFallback(t *testing.T) {
+func TestStartupCannotSaveDoesNotCreateRuntime(t *testing.T) {
 	for _, status := range []store.StartupStatus{
-		{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryCorruptState},
-		{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsupportedVersion},
+		{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions},
+		{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate},
 		{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate},
 	} {
-		t.Run(string(status.Reason), func(t *testing.T) {
+		t.Run(string(status.Mode)+"/"+string(status.Reason), func(t *testing.T) {
 			restore := installAppTestSeams(t)
 			defer restore()
 			openStateV2 = func(string) (*store.V2Store, store.StartupStatus, error) { return nil, status, nil }
@@ -121,11 +121,12 @@ func TestStartupRecoveryRequiredFailsClosedWithoutRuntimeFallback(t *testing.T) 
 
 			app := NewApp()
 			app.startupAt(context.Background(), filepath.Join(t.TempDir(), "state.json"))
-			if got := app.GetStartupStatus(); got != status {
-				t.Fatalf("startup status = %#v, want %#v", got, status)
+			got := app.GetStartupStatus()
+			if !got.CannotSave() {
+				t.Fatalf("startup status = %#v, want cannot-save", got)
 			}
 			if app.store != nil || app.jobs != nil || app.coordinator != nil || app.cleanupDone != nil {
-				t.Fatalf("recovery-required startup created authoritative runtime state: %#v", app)
+				t.Fatalf("cannot-save startup created authoritative runtime state: %#v", app)
 			}
 			if cleanupStarts != 0 {
 				t.Fatalf("cleanup worker starts = %d, want 0", cleanupStarts)
@@ -140,7 +141,7 @@ func TestGetStartupStatusReturnsStartingUntilStartupCompletes(t *testing.T) {
 
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	want := store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsupportedVersion}
+	want := store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions}
 	openStateV2 = func(string) (*store.V2Store, store.StartupStatus, error) {
 		close(entered)
 		<-release
@@ -232,7 +233,7 @@ func TestStartupPathFailureSignalsTerminalStatus(t *testing.T) {
 
 	app := NewApp()
 	app.startup(context.Background())
-	want := store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions}
+	want := store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions}
 	if got := app.GetStartupStatus(); got != want {
 		t.Fatalf("startup status = %#v, want %#v", got, want)
 	}
@@ -273,8 +274,8 @@ func TestStartupDurabilityWarningRecordsIndeterminateState(t *testing.T) {
 
 	app := NewApp()
 	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
-	if got := app.GetStartupStatus(); got.Reason != store.RecoveryIndeterminate {
-		t.Fatalf("startup status = %#v, want indeterminate recovery", got)
+	if got := app.GetStartupStatus(); !got.CannotSave() || got.Reason != store.RecoveryIndeterminate {
+		t.Fatalf("startup status = %#v, want cannot-save indeterminate", got)
 	}
 	events, err := app.diagnostics.Recent()
 	if err != nil {
@@ -459,6 +460,86 @@ func TestQuitAndContinueSkipsQueuePause(t *testing.T) {
 	}
 	if closes, _, _ := state.snapshot(); closes != 1 {
 		t.Fatalf("State close calls = %d, want 1", closes)
+	}
+}
+
+func TestStartupSkipsUnreadableQueueAndKeepsSettings(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	root := secureAppTempDir(t)
+	downloads := filepath.Join(root, "downloads")
+	if err := os.Mkdir(downloads, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "state.json")
+	body := fmt.Sprintf(`{
+  "version": 2,
+  "storeRevision": 2,
+  "nextQueueOrdinal": 4,
+  "settings": {
+    "downloadFolder": %q,
+    "ffmpegPath": "",
+    "windowWidth": 1180,
+    "windowHeight": 760,
+    "downloadConcurrency": 3,
+    "perVideoSubfolder": true,
+    "confirmBeforeDownload": true,
+    "automaticDiagnostics": "enabled"
+  },
+  "jobs": [{"id": "not-a-valid-job"}],
+  "history": [],
+  "cleanup": []
+}`, downloads)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp()
+	app.startupAt(context.Background(), path)
+	defer func() {
+		app.stopFolderWatch()
+		app.stopCleanup(context.Background())
+		if app.jobs != nil {
+			_ = app.jobs.Close(context.Background())
+		}
+		if app.store != nil {
+			_ = app.store.Close()
+		}
+	}()
+	status := app.GetStartupStatus()
+	if !status.Healthy() || status.Warning != store.WarningQueueReset {
+		t.Fatalf("startup = %#v; want healthy queue-reset", status)
+	}
+	if got := app.GetSettings(); got.DownloadFolder != downloads || got.DownloadConcurrency != 3 || !got.ConfirmBeforeDownload {
+		t.Fatalf("startup dropped salvaged settings: %#v", got)
+	}
+	if jobs := app.ListJobs(); len(jobs) != 0 {
+		t.Fatalf("startup kept untrusted jobs: %#v", jobs)
+	}
+	if _, err := os.Stat(path + ".unreadable"); err != nil {
+		t.Fatalf("untrusted state was not quarantined: %v", err)
+	}
+}
+
+func TestCopyDiagnosticsCannotSaveDoesNotSayRecovery(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	var clipboard string
+	clipboardSetText = func(_ context.Context, text string) error {
+		clipboard = text
+		return nil
+	}
+	app := NewApp()
+	app.ctx = context.Background()
+	app.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
+	if _, err := app.CopyDiagnostics(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(clipboard, "recovery required") {
+		t.Fatalf("clipboard still names recovery: %q", clipboard)
+	}
+	if !strings.Contains(clipboard, "cannot save") || !strings.Contains(clipboard, "unsafe-permissions") {
+		t.Fatalf("clipboard = %q", clipboard)
 	}
 }
 

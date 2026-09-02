@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, waitFor } from '@testing-library/svelte';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -161,6 +161,25 @@ describe('Home analysis survives navigation', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Downloads' }));
     expect(await screen.findByRole('heading', { name: 'Downloads' })).toBeInTheDocument();
   });
+
+  test('a pending URL handed off from Queue fills Home and analyzes', async () => {
+    const { ValidateURL, AnalyzeURL } = installBindings();
+    const user = userEvent.setup();
+    render(App);
+    await waitForHome();
+
+    await user.click(screen.getByRole('button', { name: 'Queue' }));
+    expect(await screen.findByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
+
+    pendingUrl.set(firstURL);
+    route.set('home');
+
+    const input = await screen.findByLabelText('YouTube video, Short, or playlist URL');
+    await waitFor(() => expect(input).toHaveValue(firstURL));
+    await waitFor(() => expect(ValidateURL).toHaveBeenCalledWith(firstURL));
+    await waitFor(() => expect(AnalyzeURL).toHaveBeenCalledWith(firstURL));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+  });
 });
 
 describe('unreadable queue notice', () => {
@@ -191,8 +210,6 @@ describe('unreadable queue notice', () => {
       confirmBeforeDownload: false,
       automaticDiagnostics: 'enabled',
     }));
-    app.CopyDiagnostics = vi.fn(async () => 'ok');
-    app.OpenDataFolder = vi.fn(async () => {});
   });
 
   afterEach(() => {
@@ -203,21 +220,43 @@ describe('unreadable queue notice', () => {
   test('healthy startup with a reset queue shows a dismissible notice, not the recovery shell', async () => {
     const user = userEvent.setup();
     render(App);
-    expect(await screen.findByText('Your downloads are safe on disk. VidStow could not read its saved queue, so the Queue was reset!')).toBeInTheDocument();
+    expect(await screen.findByText('The saved queue could not be read. Files on disk were not touched.')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Download state needs recovery' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy diagnostics' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open data folder' })).not.toBeInTheDocument();
 
-    const copy = screen.getByRole('button', { name: 'Copy diagnostics' });
-    const folder = screen.getByRole('button', { name: 'Open data folder' });
-    const dismiss = screen.getByRole('button', { name: 'Dismiss' });
-    expect(copy).toHaveClass('ghost');
-    expect(copy).not.toHaveClass('quiet');
-    expect(copy.querySelector('svg')).toBeTruthy();
-    expect(folder).not.toHaveClass('ghost');
-    expect(folder.querySelector('svg')).toBeTruthy();
-    expect(dismiss).toHaveClass('ghost', 'quiet');
-    expect(dismiss.querySelector('svg')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('The saved queue could not be read. Files on disk were not touched.')).not.toBeInTheDocument();
+  });
+});
 
-    await user.click(dismiss);
-    expect(screen.queryByText(/Your downloads are safe on disk/)).not.toBeInTheDocument();
+describe('cannot-save stop', () => {
+  beforeEach(() => {
+    route.set('home');
+    installBindings();
+    const app = (window as any).go.main.App;
+    app.GetStartupStatus = vi.fn(async () => ({ mode: 'cannot-save', reason: 'unsafe-permissions' }));
+    app.OpenDataFolder = vi.fn(async () => {});
+  });
+
+  test('shows a small cannot-save dialog instead of recovery', async () => {
+    const user = userEvent.setup();
+    render(App);
+    expect(await screen.findByRole('heading', { name: 'VidStow cannot save this session' })).toBeInTheDocument();
+    expect(screen.getByText(/could not write its data folder/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Download state needs recovery' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Home' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Open data folder' }));
+    expect((window as any).go.main.App.OpenDataFolder).toHaveBeenCalled();
+  });
+
+  test('legacy recovery-required mode uses the cannot-save stop', async () => {
+    const app = (window as any).go.main.App;
+    app.GetStartupStatus = vi.fn(async () => ({ mode: 'recovery-required', reason: 'indeterminate-commit' }));
+    render(App);
+    expect(await screen.findByRole('heading', { name: 'VidStow cannot save this session' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Download state needs recovery' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Home' })).not.toBeInTheDocument();
   });
 });

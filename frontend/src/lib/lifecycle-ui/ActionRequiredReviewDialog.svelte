@@ -58,7 +58,6 @@
       </div>
 
       <footer class="dialog-footer">
-        <button type="button" class="app-btn" disabled={busy} onclick={close}>Keep for now</button>
         {#if review.canRemove}
           <button type="button" class="app-btn" disabled={busy} onclick={() => onRemove?.()}>Remove from queue</button>
         {/if}
