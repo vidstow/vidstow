@@ -72,21 +72,29 @@ describe('Settings page', () => {
   test('renders grouped cards, live engine info, and the About colophon', async () => {
     render(Settings);
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Performance' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Advanced' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Diagnostics' })).toBeInTheDocument();
     expect(screen.getByText('Default download folder')).toBeInTheDocument();
     expect(screen.getByText('/tmp/downloads')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show in Finder' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Change Folder' })).toBeInTheDocument();
     expect(screen.getByText('Create a subfolder for each download')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Create a subfolder for each download' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('Confirm before starting downloads')).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Confirm before starting downloads' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText('Interrupted jobs')).toBeInTheDocument();
     expect(screen.getByText('In progress continues')).toBeInTheDocument();
     expect(screen.getByText('The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.')).toBeInTheDocument();
-    expect(screen.getByText('Concurrent downloads')).toBeInTheDocument();
+    expect(screen.getByText('Maximum concurrent downloads')).toBeInTheDocument();
+    expect(screen.getByText(/Range: 1–10; Recommended: 2–4/)).toBeInTheDocument();
     expect(screen.queryByText(/HTTP 429/)).not.toBeInTheDocument();
 
     await waitFor(() => expect(screen.getByText('ytdlp-go v0.3.0')).toBeInTheDocument());
-    expect(screen.getByText(/Version 7\.1 · ready for merging/)).toBeInTheDocument();
+    expect(screen.getByText(/FFmpeg version 7\.1 · ready for merging/)).toBeInTheDocument();
     expect(screen.getByText('/usr/bin/ffmpeg')).toBeInTheDocument();
-    expect(screen.getAllByText('Ready').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Ready')).toBeInTheDocument();
 
     expect(screen.getByText('When VidStow cannot complete a requested download, send a small sanitized report. Links, paths, and error text stay private.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Diagnostics privacy notice ↗' })).toBeInTheDocument();
@@ -98,6 +106,14 @@ describe('Settings page', () => {
     expect(screen.getByRole('button', { name: 'View source' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Read the docs' })).toBeInTheDocument();
     expect(screen.getByText(/Built with Go · Wails · Svelte · ytdlp-go · FFmpeg/)).toBeInTheDocument();
+  });
+
+  test('subfolder switch talks to UpdateSettings', async () => {
+    const user = userEvent.setup();
+    const App = installBindings();
+    render(Settings);
+    await user.click(screen.getByRole('switch', { name: 'Create a subfolder for each download' }));
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ perVideoSubfolder: false })));
   });
 
   test('concurrency stepper warns above 4 and talks to UpdateSettings', async () => {
@@ -120,14 +136,14 @@ describe('Settings page', () => {
     expect(App.SetAutomaticDiagnostics).toHaveBeenCalledWith('disabled');
   });
 
-  test('Show in Finder, Change…, Recheck, and diagnostics buttons use existing APIs', async () => {
+  test('Show in Finder, Change Folder, Recheck Dependencies, and diagnostics buttons use existing APIs', async () => {
     const user = userEvent.setup();
     const App = installBindings();
     render(Settings);
     await user.click(screen.getByRole('button', { name: 'Show in Finder' }));
     expect(App.RevealInFinder).toHaveBeenCalledWith('/tmp/downloads');
 
-    await user.click(screen.getByRole('button', { name: 'Recheck' }));
+    await user.click(screen.getByRole('button', { name: 'Recheck Dependencies' }));
     expect(App.ProbeFFmpeg).toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'Copy diagnostics' }));

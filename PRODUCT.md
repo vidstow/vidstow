@@ -280,11 +280,16 @@ Confirmations:
 
 Grouped cards. Uppercase micro-headings. Each row is label + control, description in secondary type.
 
-**Downloads**
+**General**
 
-- Default download folder, Show in file manager, Change…
-- Create a subfolder for each download (all artifacts for one video together). Playlist admission still uses a playlist folder under that root. Batch children may use distinct roots when this is on.
-- Queue and recovery: Interrupted jobs are a fixed value, `In progress continues`. The download that was in progress continues on launch. Waiting stays waiting. Paused stays paused. Concurrent downloads 1-10, default 2, FIFO. Reducing the limit waits for active jobs. It does not pause them. Warn when concurrency is greater than 4: stability and rate limits.
+- Default download folder, Show in file manager, **Change Folder**
+- Create a subfolder for each download (all artifacts for one video together). Playlist admission still uses a playlist folder under that root. Batch children may use distinct roots when this is on. Binary rows use a switch, not On/Off pills.
+- Confirm before starting downloads
+- Interrupted jobs are a fixed value, `In progress continues`. The download that was in progress continues on launch. Waiting stays waiting. Paused stays paused.
+
+**Performance**
+
+- Maximum concurrent downloads 1-10, default 2, FIFO, with range and recommended 2–4 on the row. Reducing the limit waits for active jobs. It does not pause them. Warn when concurrency is greater than 4: stability and rate limits.
 
 **Video files**
 
@@ -294,10 +299,10 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 - Also save an `.srt` file (in addition to the embedded track, when subtitles are On).
 - Embed title and channel details.
 
-**FFmpeg**
+**Advanced**
 
-- Status badge Ready / Not found, version when known, Recheck.
-- Path, Change… to pick a binary (matching ffprobe beside it).
+- Engine and dependencies as one status row: FFmpeg Ready / Missing, Recheck Dependencies, ytdlp-go version underneath.
+- FFmpeg path, **Change Path** to pick a binary (matching ffprobe beside it).
 - If missing: install hint plus link to ffmpeg.org/download.html.
 
 **Diagnostics**

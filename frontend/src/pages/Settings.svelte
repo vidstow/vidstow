@@ -32,7 +32,6 @@
   $: concurrency = $settings.downloadConcurrency;
   $: ffmpegVersion = ($ffmpeg.version || '').replace(/^ffmpeg version /i, '').split(/\s+/)[0] || '';
   $: platform = build.os && build.architecture ? `${build.os}/${build.architecture}` : '';
-  $: engineReady = !!build.engineVersion && build.engineVersion !== 'Loading…';
 
   async function update(next: Settings, message = 'Settings updated') {
     saving = true;
@@ -110,8 +109,11 @@
   <div class="scol">
     <h1 id="settings-title">Settings</h1>
 
-    <section class="sgroup" aria-labelledby="downloads-settings-title">
-      <h2 id="downloads-settings-title">Downloads</h2>
+    <section class="sgroup" aria-labelledby="general-settings-title">
+      <h2 id="general-settings-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l1.6 1.8H19.5A1.5 1.5 0 0 1 21 9.3v8.2a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5Z" /></svg>
+        <span>General</span>
+      </h2>
 
       <div class="srow">
         <div class="scopy">
@@ -120,7 +122,7 @@
         </div>
         <div class="sact">
           <button type="button" class="btn sm ghost" disabled={!folder} on:click={showFolder}>Show in Finder</button>
-          <button type="button" class="btn sm ghost" on:click={pickFolder}>Change…</button>
+          <button type="button" class="btn sm ghost" on:click={pickFolder}>Change Folder</button>
         </div>
       </div>
 
@@ -132,11 +134,13 @@
         <div class="sact">
           <button
             type="button"
-            class="toggle"
+            class="switch"
             class:on={$settings.perVideoSubfolder}
-            aria-pressed={$settings.perVideoSubfolder}
+            role="switch"
+            aria-checked={$settings.perVideoSubfolder}
+            aria-label="Create a subfolder for each download"
             on:click={() => update({ ...$settings, perVideoSubfolder: !$settings.perVideoSubfolder })}
-          >{$settings.perVideoSubfolder ? 'On' : 'Off'}</button>
+          ><span class="switch-thumb"></span></button>
         </div>
       </div>
 
@@ -148,11 +152,13 @@
         <div class="sact">
           <button
             type="button"
-            class="toggle"
+            class="switch"
             class:on={$settings.confirmBeforeDownload}
-            aria-pressed={$settings.confirmBeforeDownload}
+            role="switch"
+            aria-checked={$settings.confirmBeforeDownload}
+            aria-label="Confirm before starting downloads"
             on:click={() => update({ ...$settings, confirmBeforeDownload: !$settings.confirmBeforeDownload })}
-          >{$settings.confirmBeforeDownload ? 'On' : 'Off'}</button>
+          ><span class="switch-thumb"></span></button>
         </div>
       </div>
 
@@ -165,16 +171,25 @@
           <span class="sfixed">In progress continues</span>
         </div>
       </div>
+    </section>
+
+    <section class="sgroup" aria-labelledby="performance-settings-title">
+      <h2 id="performance-settings-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 1 9-9" /><path d="M12 12l5-3" /><circle cx="12" cy="12" r="1.6" /></svg>
+        <span>Performance</span>
+      </h2>
 
       <div class="srow">
         <div class="scopy">
-          <strong>Concurrent downloads</strong>
-          <span>How many jobs transfer at once.</span>
+          <strong>Maximum concurrent downloads</strong>
+          <span>Range: {MIN_CONCURRENCY}–{MAX_CONCURRENCY}; Recommended: 2–4.</span>
         </div>
         <div class="sact">
-          <button type="button" class="btn sm ghost" aria-label="Decrease concurrent downloads" disabled={saving || concurrency <= MIN_CONCURRENCY} on:click={() => changeConcurrency(concurrency - 1)}>−</button>
-          <b>{concurrency}</b>
-          <button type="button" class="btn sm ghost" aria-label="Increase concurrent downloads" disabled={saving || concurrency >= MAX_CONCURRENCY} on:click={() => changeConcurrency(concurrency + 1)}>+</button>
+          <div class="stepper">
+            <button type="button" class="btn sm ghost" aria-label="Decrease concurrent downloads" disabled={saving || concurrency <= MIN_CONCURRENCY} on:click={() => changeConcurrency(concurrency - 1)}>−</button>
+            <b>{concurrency}</b>
+            <button type="button" class="btn sm ghost" aria-label="Increase concurrent downloads" disabled={saving || concurrency >= MAX_CONCURRENCY} on:click={() => changeConcurrency(concurrency + 1)}>+</button>
+          </div>
         </div>
       </div>
       {#if concurrency > 4}
@@ -182,23 +197,34 @@
       {/if}
     </section>
 
-    <section class="sgroup" aria-labelledby="engine-title">
-      <h2 id="engine-title">Engine</h2>
+    <section class="sgroup" aria-labelledby="advanced-settings-title">
+      <h2 id="advanced-settings-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.4" /><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M6 6l1.8 1.8M16.2 16.2 18 18M18 6l-1.8 1.8M7.8 16.2 6 18" /></svg>
+        <span>Advanced</span>
+      </h2>
 
       <div class="srow">
         <div class="scopy">
-          <strong>FFmpeg</strong>
+          <strong>Engine &amp; dependencies</strong>
           <span>
             {#if $ffmpeg.available && ffmpegVersion}
-              Version {ffmpegVersion} · ready for merging and MP3 conversion.
+              FFmpeg version {ffmpegVersion} · ready for merging and MP3 conversion.
             {:else}
-              Needed to merge video and audio, and to convert to MP3.
+              FFmpeg is needed to merge video and audio, and to convert to MP3.
             {/if}
           </span>
+          <span>ytdlp-go {formatEngineVersion(build.engineVersion)}</span>
         </div>
         <div class="sact">
-          <em class="sbadge" class:ok={$ffmpeg.available}>{$ffmpeg.available ? 'Ready' : 'Missing'}</em>
-          <button type="button" class="btn sm ghost" on:click={recheck}>Recheck</button>
+          <em class="sbadge" class:ok={$ffmpeg.available}>
+            {#if $ffmpeg.available}
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>
+              Ready
+            {:else}
+              Missing
+            {/if}
+          </em>
+          <button type="button" class="btn sm ghost" on:click={recheck}>Recheck Dependencies</button>
         </div>
       </div>
 
@@ -208,26 +234,17 @@
           <span class="mono" class:empty={!displayedFFmpegPath} title={displayedFFmpegPath}>{displayedFFmpegPath || 'Not configured'}</span>
         </div>
         <div class="sact">
-          <button type="button" class="btn sm ghost" on:click={locateFFmpeg}>Change…</button>
-        </div>
-      </div>
-
-      <div class="srow">
-        <div class="scopy">
-          <strong>Engine</strong>
-          <span>ytdlp-go {formatEngineVersion(build.engineVersion)}</span>
-        </div>
-        <div class="sact">
-          {#if engineReady}
-            <em class="sbadge ok">Ready</em>
-          {/if}
+          <button type="button" class="btn sm ghost" on:click={locateFFmpeg}>Change Path</button>
         </div>
       </div>
     </section>
 
     <section class="sgroup" aria-labelledby="diagnostics-title">
-      <h2 id="diagnostics-title">Diagnostics</h2>
-      <div class="srow">
+      <h2 id="diagnostics-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 8-6-16-3 8H2" /></svg>
+        <span>Diagnostics</span>
+      </h2>
+      <div class="srow stack">
         <div class="scopy">
           <strong>Send operational diagnostics</strong>
           <span>When VidStow cannot complete a requested download, send a small sanitized report. Links, paths, and error text stay private.</span>
@@ -287,8 +304,8 @@
     height: 100%;
   }
   .settings-page h1 {
-    margin: 0 0 8px;
-    font-size: 17px;
+    margin: 0 0 4px;
+    font-size: 18px;
     font-weight: 650;
     letter-spacing: -0.02em;
   }
@@ -296,33 +313,52 @@
     max-width: 680px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 18px;
   }
   .sgroup {
     border: 1px solid var(--border-default);
-    border-radius: 10px;
+    border-radius: 12px;
     background: var(--surface-raised);
-    padding: 4px 18px 6px;
+    padding: 2px 20px 10px;
   }
   .sgroup h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 0;
-    padding: 8px 0 2px;
+    padding: 14px 0 12px;
+    border-bottom: 1px solid #1F1F23;
     font-size: 11px;
     font-weight: 650;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-muted);
   }
+  .sgroup h2 svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
   .srow {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    padding: 6px 0;
+    gap: 20px;
+    padding: 14px 0;
     border-top: 1px solid #1F1F23;
-    min-height: 36px;
+    min-height: 56px;
   }
   .sgroup h2 + .srow { border-top: 0; }
+  .srow.stack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
   .scopy { min-width: 0; flex: 1; }
   .scopy strong, .scopy span, .scopy small { display: block; }
   .scopy strong { font-size: 13px; font-weight: 600; }
@@ -352,19 +388,37 @@
     gap: 6px;
     flex-shrink: 0;
   }
-  .sact b {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    min-width: 16px;
-    text-align: center;
-  }
+  .srow.stack .sact { width: 100%; }
   .sfixed {
     color: var(--text-muted);
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
     font-weight: 600;
     white-space: nowrap;
   }
+  .stepper {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .stepper .btn {
+    width: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .stepper b {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    min-width: 28px;
+    text-align: center;
+  }
   .sbadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     padding: 3px 10px;
     border-radius: 99px;
     background: var(--status-danger-soft);
@@ -373,13 +427,22 @@
     font-size: 11px;
     font-weight: 650;
   }
+  .sbadge svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
   .sbadge.ok {
     background: rgba(34, 197, 94, 0.12);
     color: #4ADE80;
   }
   .swarn {
     margin: 0;
-    padding: 2px 0 10px;
+    padding: 0 0 12px;
     color: #FBBF24;
     font-size: 11.5px;
     line-height: 1.45;
@@ -390,20 +453,29 @@
     text-underline-offset: 3px;
     cursor: pointer;
   }
-  .toggle {
-    height: 24px;
-    padding: 0 12px;
+  .switch {
+    width: 40px;
+    height: 22px;
+    padding: 2px;
     border-radius: 99px;
     border: 1px solid var(--border-default);
-    font-size: 11px;
-    color: var(--text-secondary);
-    background: var(--surface-base);
+    background: #27272A;
+    flex-shrink: 0;
   }
-  .toggle.on {
-    background: var(--accent-soft);
-    border-color: rgba(59, 130, 246, 0.55);
-    color: #93C5FD;
+  .switch-thumb {
+    display: block;
+    width: 16px;
+    height: 16px;
+    border-radius: 99px;
+    background: #FAFAFA;
+    transform: translateX(0);
+    transition: transform 120ms ease;
   }
+  .switch.on {
+    background: var(--accent-600);
+    border-color: var(--accent-600);
+  }
+  .switch.on .switch-thumb { transform: translateX(18px); }
   .btn {
     display: inline-flex;
     align-items: center;
@@ -434,7 +506,7 @@
     align-items: center;
     padding: 10px 14px;
     border: 1px solid var(--border-default);
-    border-radius: 10px;
+    border-radius: 12px;
     background: var(--surface-raised);
   }
   .cleft { display: flex; align-items: center; gap: 13px; }

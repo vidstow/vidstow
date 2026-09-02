@@ -145,8 +145,16 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(settings, />Interrupted jobs</);
   assert.match(settings, /In progress continues/);
   assert.doesNotMatch(settings, /Restored as paused/);
+  assert.match(settings, />General</);
+  assert.match(settings, />Performance</);
+  assert.match(settings, />Advanced</);
   assert.match(settings, />FFmpeg path</);
   assert.match(settings, />Diagnostics</);
+  assert.match(settings, />Change Folder</);
+  assert.match(settings, />Change Path</);
+  assert.match(settings, />Recheck Dependencies</);
+  assert.match(settings, /role="switch"/);
+  assert.doesNotMatch(settings, /class="toggle"/);
   assert.match(settings, />Copy diagnostics</);
   assert.match(settings, />Clear history</);
   assert.match(settings, />Send</);
