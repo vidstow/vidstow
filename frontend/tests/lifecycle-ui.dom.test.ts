@@ -120,6 +120,39 @@ describe('backend-authored capabilities', () => {
     expect(screen.queryByRole('button', { name: 'Collapse Fixture playlist' })).not.toBeInTheDocument();
   });
 
+  test('playlist inspector shows a finished count chip instead of a muted row', () => {
+    const { container } = render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [
+            {
+              id: 'done-1', collectionId: 'collection-1', collectionIndex: 1,
+              title: 'Done one', lifecycle: 'completed', occupiesSlot: false,
+              capabilities: {}, commandToken: 'done-token',
+            },
+            {
+              id: 'live-1', collectionId: 'collection-1', collectionIndex: 2,
+              title: 'Live child', lifecycle: 'active', occupiesSlot: true, speedLabel: '2.9 MiB/s',
+              capabilities: { pause: true }, commandToken: 'live-token',
+            },
+          ],
+          collections: [{
+            id: 'collection-1', kind: 'playlist', title: 'Mixed playlist', policy: 'video:1080p',
+            childJobIds: ['done-1', 'live-1'], total: 12, completed: 4, failed: 0, canceled: 0,
+            active: 1, pending: 7, paused: 0, progress: 0.33, progressLabel: '4 of 12 complete',
+            capabilities: { pause: true }, commandToken: 'collection-token',
+          }],
+        }),
+      },
+    });
+
+    expect(screen.getByText('4 finished')).toBeInTheDocument();
+    expect(container.querySelector('.kdone')).not.toBeNull();
+    expect(container.querySelector('.kid.done')).toBeNull();
+    expect(screen.getByText('Live child')).toBeInTheDocument();
+    expect(screen.queryByText('Done one')).not.toBeInTheDocument();
+  });
+
   test('interleaves collections and standalone videos using backend priority order', () => {
     const { container } = render(QueueOverview, {
       props: {

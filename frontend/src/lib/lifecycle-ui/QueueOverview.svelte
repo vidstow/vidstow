@@ -443,7 +443,7 @@
           {@const anyActive = collection.active > 0 || children.some((child) => child.lifecycle === 'active' || child.lifecycle === 'pending')}
           {@const live = children.filter((child) => child.lifecycle === 'active' || child.lifecycle === 'pausing' || child.phase === 'finalizing').slice(0, 2)}
           {@const waitingKids = children.filter((child) => child.lifecycle === 'pending').slice(0, 3)}
-          {@const done = children.filter((child) => child.lifecycle === 'completed').length}
+          {@const done = collection.completed}
           {@const speed = children.find((child) => child.speedLabel)?.speedLabel}
           {@const art = collectionArtwork(collection, children)}
           <h3>{collection.title}</h3>
@@ -454,10 +454,13 @@
             {collection.kind === 'batch' ? 'Batch' : 'Playlist'} · {collection.completed}/{collection.total} finished · {anyActive ? (speed ?? 'working') : 'paused'}
           </div>
           <div class="ibar"><i style={`width:${progressPct(collection.progress)}%`}></i></div>
+          {#if done}
+            <div class="kdone">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>
+              {done} finished
+            </div>
+          {/if}
           <div class="kids">
-            {#if done}
-              <div class="kid done"><span></span><span class="kt">✓ {done} finished</span><span></span></div>
-            {/if}
             {#each live as child (child.id)}
               <div class="kid live">
                 <span class="kth">
@@ -648,9 +651,32 @@
     border-radius: 99px;
     background: #26262C;
     overflow: hidden;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
   }
   .ibar i { display: block; height: 100%; background: var(--accent-500); }
+  .kdone {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 0 8px;
+    padding: 3px 9px 3px 7px;
+    border-radius: 99px;
+    background: var(--status-success-soft);
+    color: #4ADE80;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .kdone svg {
+    width: 12px;
+    height: 12px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
   .ierr {
     margin: 12px 0;
     padding: 10px 12px;
@@ -663,7 +689,7 @@
     line-height: 1.7;
   }
   .ibtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-  .kids { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 4px; }
+  .kids { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px; }
   .kid {
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr) auto;
@@ -685,8 +711,6 @@
   }
   .kth img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .kd { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
-  .kid.done { color: #52525B; cursor: default; }
-  .kid.done:hover { background: none; }
   .kid.live { background: var(--surface-raised); color: var(--text-primary); cursor: default; }
   .kid.live:hover { background: var(--surface-raised); }
   .kid:hover { background: var(--surface-base); }
