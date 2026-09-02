@@ -89,6 +89,8 @@ If analysis cannot proceed, fail with a clear unsupported-URL dialog. Do not sil
 
 **Output plan.** A backend-authored choice for a single video (kind video or audio, label, container, codecs, approximate size, FFmpeg requirement, recommended flag). The user picks a plan. The UI does not invent formats.
 
+**Output options.** Per-download extras on video outputs, seeded from the Settings defaults: subtitle mode (off, sidecar file, embedded), languages reported by analysis with auto-generated tracks marked, auto-caption fallback, sidecar format (SRT/VTT), and embed flags for title and channel details, thumbnail artwork, and chapter markers. FFmpeg-dependent choices clamp when FFmpeg is missing. Audio outputs leave subtitle choices out. A backend-authored note describes non-default choices in queue metadata; durable jobs keep their options across retries and relaunch.
+
 **Queue view.** The only source of truth for the Queue page. It includes rows, collections, occupancy summary, queue-level capabilities, a command token, and persistence health. The frontend presents this view. It does not reconstruct authority from job snapshots.
 
 **History entry.** A completed download that survives app launches: title, channel, quality, container, size, path, thumbnail, completion time, and a missing-file flag.
@@ -162,6 +164,7 @@ The URL field stays pinned to the top of Home, empty or after Analyze. The dock,
 - **Type** is a dropdown (Video / Audio) stacked above compact chips (`1440p`, `M4A (Original)`)
 - Title uses a two-line clamp. Hover still shows the full name
 - Under the channel line: muted container · codecs, then size. Updates with the selected chip
+- **Subtitles & details** disclosure under the dock header, never beside the quality chips. Subtitle mode (Off / Subtitle file / Embed in video), languages reported by analysis with auto-generated tracks marked, auto-caption fallback, sidecar format when a file was chosen, and embed flags for title & channel details, artwork, and chapters. Choices seed from Settings; English is pre-selected when the video offers it. FFmpeg-dependent controls stay disabled with an Open Settings link while FFmpeg is missing. Audio hides the subtitle side entirely
 - Footer: **Change**, the path, **Download**. Success: banner `Queued for download`, then Queue. The dock clears; the URL stays
 
 Changing the URL clears analysis. Confirm before starting downloads (off by default) asks `Add this download?` before enqueue.
@@ -169,6 +172,7 @@ Changing the URL clears analysis. Confirm before starting downloads (off by defa
 **Playlist after analysis.** Same dock, adapted:
 
 - Thumbnail, title, Playlist · N videos · duration · channel, unavailable count. Duration is the sum of available entry lengths when every available video reported one. Channel comes from the playlist, or the first child that named one. **Type** is the same dropdown; format chips follow. No invented 1080p coverage or playlist file-size total
+- The same **Subtitles & details** disclosure appears once, above the episode disclosure. One output policy for the collection: each video uses its English or first-available track, plus the shared embed flags. A video without a usable track downloads without subtitles
 - Disclosure: episode count and the chosen policy. Cap note when 500 entries were returned. The list stays collapsed until that disclosure is opened
 - Episode review: `N of M selected`, All, None, Range as two position fields plus Apply. All fills the fields with first–last index. None clears them. Rows are checkbox, title, duration. Unavailable rows are visible, dimmed, not selectable
 - Range Apply with an invalid span shows `Enter positions from N to M` on the header. Selection is by original index
@@ -182,7 +186,7 @@ Confirm before starting downloads, or more than 100 selected videos, asks `Add t
 
 Shared **Type** dropdown and format chips for every ready item. The title list opens from an underlined `{N} titles` hint. Footer: **Change**, the path, **Edit URLs**, **Download N videos**. N is ready count, not pasted count. Disabled unless the token is still valid, ready ≥ 2, and a folder is set. Success navigates to Queue. Edit URLs returns to the field without losing the text.
 
-**FFmpeg.** Most video plans and all MP3 plans require it. Missing FFmpeg opens a dialog with Open Settings, and notes that original audio without merging remains available.
+**FFmpeg.** Most video plans and all MP3 plans require it. Subtitles and embedded details need it too. Missing FFmpeg opens a dialog with Open Settings, and notes that original audio without merging remains available.
 
 ### Queue
 
@@ -198,7 +202,7 @@ Queue is operations. Master-detail: dense rows on the left, inspector on the rig
 
 A job row is thumbnail, title, progress bar, and a mono tail (speed · ETA, paused, waiting · slot, or the failure heading). Actions do not sit on the row. Selecting a row drives the inspector. Space toggles pause/resume on the focused job.
 
-**Inspector (right).** For a video: title, still, metadata, Speed / ETA / Progress / Status, bar, then authorized actions. Failed jobs add the error card and **Copy details**. For a playlist: title, still, `Playlist · N/M finished`, live children, then authorized parent actions. Batch collections stay count-badge only. Cancel and Remove confirm: completed files remain on disk.
+**Inspector (right).** For a video: title, still, metadata, Speed / ETA / Progress / Status, bar, then authorized actions. Non-default output choices appear as a backend-authored note at the end of the metadata line. Failed jobs add the error card and **Copy details**. For a playlist: title, still, `Playlist · N/M finished`, live children, then authorized parent actions. Batch collections stay count-badge only. Cancel and Remove confirm: completed files remain on disk.
 
 Action buttons are the authorized set for that job or collection. Labels that exist when authorized: Pause, Cancel, Resume / Restart download, Retry, Download again, Start again, Open source, Copy link, Review, Open, Remove. Start again sends the URL back to Home for re-analysis.
 
@@ -243,6 +247,13 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 **Performance**
 
 - Maximum concurrent downloads 1–10, default 2, FIFO. Reducing the limit waits for active jobs. It does not pause them. Warn when concurrency is greater than 4.
+
+**Video files**
+
+- Subtitles on new adds: Off / Subtitle file / Embed in video. Embed needs FFmpeg and is disabled without it. Seeds the Home dock's subtitle mode.
+- Subtitle file format, shown when Subtitle file is on: Original / SRT / VTT.
+- Include auto-generated captions (switch, off by default). Uses auto-generated tracks when a language has no manual subtitles.
+- Embed title & channel details, Embed thumbnail artwork, Embed chapter markers (switches, need FFmpeg). The dock carries the same choices per download.
 
 **Advanced**
 

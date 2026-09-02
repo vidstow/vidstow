@@ -30,6 +30,13 @@ does not exist yet.
   place of a separate About page. The About route still renders Settings.
 - Cannot-save stop when the data folder is unwritable or unsafe. An unreadable
   queue is quarantined and skipped, with a dismissible workstation notice.
+- Subtitles & details on Home's video and playlist docks: subtitle mode (off,
+  sidecar file, embedded), languages reported by analysis, auto-caption
+  fallback, sidecar format (SRT/VTT), and embed flags for title and channel
+  details, thumbnail artwork, and chapter markers. Choices seed from the new
+  Settings Video files defaults, clamp when FFmpeg is missing, and ride with
+  video admissions only. Durable jobs keep their output choices across retries
+  and relaunch, and the queue inspector shows a note for non-default choices.
 
 ### Changed
 
