@@ -513,12 +513,11 @@ describe('Home analysis authority', () => {
 
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    expect(await screen.findByRole('button', { name: 'Type' })).toHaveTextContent('Video');
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeEnabled();
     expect(screen.getByRole('radio', { name: 'Video plan' })).toHaveAttribute('aria-checked', 'true');
 
-    await user.click(screen.getByRole('button', { name: 'Type' }));
-    await user.click(await screen.findByRole('option', { name: 'Audio' }));
-    expect(screen.getByRole('button', { name: 'Type' })).toHaveTextContent('Audio');
+    await user.click(screen.getByRole('button', { name: 'Audio' }));
+    expect(screen.getByRole('button', { name: 'Audio' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('radio', { name: 'Audio plan' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Download' }).querySelector('svg')).toBeTruthy();
@@ -601,9 +600,10 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Subtitles & details/ }));
-    await user.click(screen.getByRole('button', { name: 'Subtitle file' }));
-    await user.click(screen.getByLabelText('English'));
+    await user.click(screen.getByRole('radio', { name: 'Subtitle file' }));
+    expect(screen.getByRole('button', { name: 'Subtitle language' })).toHaveTextContent('English');
+    await user.click(screen.getByRole('button', { name: 'Subtitle language' }));
+    expect(screen.getByRole('option', { name: 'English' })).toHaveAttribute('aria-selected', 'true');
     await user.click(screen.getByLabelText('Title & channel details'));
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
@@ -626,11 +626,10 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Subtitles & details/ }));
-    await user.click(screen.getByRole('button', { name: 'Subtitle file' }));
-    await user.click(screen.getByLabelText('English'));
-    await user.click(screen.getByRole('button', { name: 'Type' }));
-    await user.click(await screen.findByRole('option', { name: 'Audio' }));
+    await user.click(screen.getByRole('radio', { name: 'Subtitle file' }));
+    await user.click(screen.getByRole('button', { name: 'Subtitle language' }));
+    await user.click(screen.getByRole('option', { name: 'English' }));
+    await user.click(screen.getByRole('button', { name: 'Audio' }));
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
     await waitFor(() => expect(StartDownload).toHaveBeenCalledTimes(1));

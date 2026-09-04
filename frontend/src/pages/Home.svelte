@@ -3,7 +3,6 @@
   import { api } from '../lib/api.js';
   import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
   import { formatBytes, formatPlanSize, formatViewCount, shortTitle } from '../lib/format.js';
-  import FormatPicker from '../lib/components/FormatPicker.svelte';
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
   import type { BatchAnalysisView, InfoSummary, OutputOptions, OutputPlan, PlaylistSummary, Quality, SubtitleLanguage, UrlCheckResult } from '../lib/types.js';
 
@@ -222,10 +221,20 @@
       delete seeded.embedThumbnail;
       delete seeded.embedChapters;
     }
-    if (seeded.subtitleMode && !seeded.subtitleLanguages?.length && languages.some((language) => language.code === 'en')) {
-      seeded.subtitleLanguages = ['en'];
+    const preferred = preferredSubtitleLanguage(languages);
+    if (seeded.subtitleMode && preferred && !seeded.subtitleLanguages?.length) {
+      seeded.subtitleLanguages = [preferred];
+    }
+    if (seeded.subtitleMode === 'sidecar' || seeded.subtitleMode === 'embed') {
+      seeded.subtitleAutoCaptions = true;
     }
     return seeded;
+  }
+
+  function preferredSubtitleLanguage(languages: SubtitleLanguage[]): string | undefined {
+    const manual = languages.filter((language) => !language.auto);
+    const pool = manual.length ? manual : languages;
+    return (pool.find((language) => /^en([-_]|$)/i.test(language.code)) ?? pool[0])?.code;
   }
 
   // Subtitles only ride along with video outputs; captions cannot be embedded
@@ -750,6 +759,49 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
 {/snippet}
 
+{#snippet outputBlock(kind: string, kinds: Array<{ id: string; label: string }>, plans: Array<{ id: string; label: string }>, planValue: string, onKind: (id: string) => void, onPlan: (id: string) => void, disableConvertedAudio: boolean, emptyCopy: string, mp3Hint: boolean)}
+  <div class="opt-sec">
+    <div class="sec-head">
+      <h3>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/></svg>
+        Output
+      </h3>
+      {#if kinds.length}
+        <div class="type-pills" role="group" aria-label="Media format type">
+          {#each kinds as option (option.id)}
+            <button
+              type="button"
+              class:active={kind === option.id}
+              aria-pressed={kind === option.id}
+              on:click={() => onKind(option.id)}
+            >{option.label}</button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+    {#if plans.length}
+      <div class="chips" role="radiogroup" aria-label={kind === 'audio' ? 'Audio format' : 'Video format'}>
+        {#each plans as option (option.id)}
+          <button
+            type="button"
+            class="seg"
+            class:on={planValue === option.id}
+            role="radio"
+            aria-checked={planValue === option.id}
+            disabled={disableConvertedAudio && option.id !== 'original'}
+            on:click={() => onPlan(option.id)}
+          >{option.label}</button>
+        {/each}
+      </div>
+    {:else if emptyCopy}
+      <p class="note">{emptyCopy}</p>
+    {/if}
+    {#if mp3Hint}
+      <p class="hint">MP3 conversion needs FFmpeg. Original audio remains available.</p>
+    {/if}
+  </div>
+{/snippet}
+
 <section class="page home" class:fill={hasDock} aria-label="Home">
   <form class="composer" on:submit|preventDefault={submitPaste}>
     <div class="fieldwrap">
@@ -844,7 +896,7 @@
     {@const policy = playlistPolicyCopy()}
     <div class="playlist-pane">
     <section class="dock" aria-label="Playlist">
-      <div class="drow drow2">
+      <div class="drow drow2 nofmt">
         <div class="thumb">
           {#if playlist.thumbnail}<img src={playlist.thumbnail} alt="" referrerpolicy="no-referrer" on:error={hideBrokenImage} />{/if}
         </div>
@@ -860,21 +912,6 @@
             </button>
           {/if}
         </div>
-        <div class="dformat">
-          <FormatPicker label="Type" options={KIND_OPTIONS} value={playlistTab} onChange={setPlaylistTab} />
-          <div class="chips" role="radiogroup" aria-label="Format">
-            {#each playlistPlanOptions as option (option.id)}
-              <button
-                type="button"
-                class="seg"
-                class:on={playlistFormatValue === option.id}
-                role="radio"
-                aria-checked={playlistFormatValue === option.id}
-                on:click={() => setPlaylistFormat(option.id)}
-              >{option.label}</button>
-            {/each}
-          </div>
-        </div>
       </div>
       <OutputOptionsEditor
         bind:value={playlistOptions}
@@ -882,7 +919,11 @@
         allowSubtitles={playlistTab === 'video'}
         ffmpegAvailable={$ffmpeg.available}
         on:goto-settings={() => dispatch('goto', 'settings')}
-      />
+      >
+        <svelte:fragment slot="output">
+          {@render outputBlock(playlistTab, KIND_OPTIONS, playlistPlanOptions, playlistFormatValue, setPlaylistTab, setPlaylistFormat, playlistTab === 'audio' && !$ffmpeg.available, '', playlistTab === 'audio' && !$ffmpeg.available)}
+        </svelte:fragment>
+      </OutputOptionsEditor>
       <button type="button" class="ddisc has" aria-expanded={detailsOpen} on:click={() => detailsOpen = !detailsOpen}>
         <span class="chev">▸</span>
         <span class="dlnk">{policy.link}</span>
@@ -951,7 +992,7 @@
     </div>
   {:else if preview}
     <section class="dock" aria-label="Video">
-      <div class="drow drow2 v2">
+      <div class="drow drow2 v2 nofmt">
         <div class="thumb thumbnail">
           {#if preview.thumbnail}<img src={preview.thumbnail} alt="" referrerpolicy="no-referrer" />{/if}
           {#if preview.duration}<span>{preview.duration}</span>{/if}
@@ -978,29 +1019,6 @@
             </button>
           {/if}
         </div>
-        {#if kindOptions.length}
-          <div class="dformat">
-            <FormatPicker label="Type" options={kindOptions} value={tab} onChange={(kind) => setTab(kind === 'audio' ? 'audio' : 'video')} />
-            {#if videoPlanOptions.length}
-              <div class="chips" role="radiogroup" aria-label="Format">
-                {#each videoPlanOptions as plan (plan.id)}
-                  <button
-                    type="button"
-                    class="seg"
-                    class:on={selectedPlanId === plan.id}
-                    role="radio"
-                    aria-checked={selectedPlanId === plan.id}
-                    on:click={() => selectedPlanId = plan.id}
-                  >{plan.label}</button>
-                {/each}
-              </div>
-            {:else}
-              <span class="dmeta">No {tab} outputs were reported for this video.</span>
-            {/if}
-          </div>
-        {:else}
-          <span class="dformat dmeta">No outputs were reported for this video.</span>
-        {/if}
       </div>
       <OutputOptionsEditor
         bind:value={videoOptions}
@@ -1008,7 +1026,11 @@
         allowSubtitles={tab === 'video'}
         ffmpegAvailable={$ffmpeg.available}
         on:goto-settings={() => dispatch('goto', 'settings')}
-      />
+      >
+        <svelte:fragment slot="output">
+          {@render outputBlock(tab, kindOptions, videoPlanOptions, selectedPlanId, (kind) => setTab(kind === 'audio' ? 'audio' : 'video'), (id) => selectedPlanId = id, false, kindOptions.length ? `No ${tab} outputs were reported for this video.` : 'No outputs were reported for this video.', false)}
+        </svelte:fragment>
+      </OutputOptionsEditor>
       <footer class="dfoot">
         <span class="dleft">
           <button type="button" class="dbtn" on:click={pickFolder}>Change</button>
@@ -1019,7 +1041,7 @@
     </section>
   {:else if batchReview}
     <section class="dock" aria-label="Batch">
-      <div class="drow drow2 v2">
+      <div class="drow drow2 v2 nofmt">
         <div class="thumb count">{batchReview.counts.pasted}</div>
         <div class="dmain dmain2">
           <div class="dtop">
@@ -1032,21 +1054,9 @@
             <button type="button" class="tlink" on:click={() => detailsOpen = !detailsOpen}>{batchReview.items.length} titles</button>
           </div>
         </div>
-        <div class="dformat">
-          <FormatPicker label="Type" options={KIND_OPTIONS} value={batchTab} onChange={setBatchTab} />
-          <div class="chips" role="radiogroup" aria-label="Format">
-            {#each batchPlanOptions as option (option.id)}
-              <button
-                type="button"
-                class="seg"
-                class:on={batchFormatValue === option.id}
-                role="radio"
-                aria-checked={batchFormatValue === option.id}
-                on:click={() => setBatchFormat(option.id)}
-              >{option.label}</button>
-            {/each}
-          </div>
-        </div>
+      </div>
+      <div class="opt-sections">
+        {@render outputBlock(batchTab, KIND_OPTIONS, batchPlanOptions, batchFormatValue, setBatchTab, setBatchFormat, batchTab === 'audio' && !$ffmpeg.available, '', batchTab === 'audio' && !$ffmpeg.available)}
       </div>
       {#if detailsOpen}
         <div class="batch-lines" role="list" aria-label="Reviewed batch URLs">
@@ -1334,11 +1344,15 @@
   }
   .drow2 {
     display: grid;
-    grid-template-columns: 160px minmax(0, 1fr) auto;
-    grid-template-areas: 'thumb identity format';
+    grid-template-columns: 160px minmax(0, 1fr);
+    grid-template-areas: 'thumb identity';
     gap: 10px 14px;
     align-items: start;
     padding: 16px 16px 0;
+  }
+  .drow2.nofmt {
+    grid-template-columns: 160px minmax(0, 1fr);
+    grid-template-areas: 'thumb identity';
   }
   .drow2 .thumb {
     grid-area: thumb;
@@ -1394,20 +1408,64 @@
     min-width: 0;
     padding-bottom: 8px;
   }
-  .dformat {
-    display: flex;
-    flex-direction: column;
-    grid-area: format;
-    align-items: stretch;
-    gap: 6px;
-    width: max-content;
-    min-width: 148px;
-    max-width: 240px;
-    justify-self: end;
-    padding-bottom: 8px;
+  .opt-sections {
+    border-top: 1px solid var(--border-subtle);
+    background: var(--surface-subtle);
+    margin-top: 8px;
   }
-  .dformat :global(.fmt) {
-    width: 100%;
+  .opt-sec {
+    padding: 10px 12px 12px;
+    min-width: 0;
+  }
+  .sec-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .sec-head h3 {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .sec-head h3 svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+  .type-pills {
+    display: inline-flex;
+    padding: 2px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    gap: 2px;
+  }
+  .type-pills button {
+    min-height: 22px;
+    padding: 0 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .type-pills button.active {
+    background: var(--surface-base);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-card);
+  }
+  .opt-sec .note,
+  .opt-sec .hint {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.45;
   }
   .chips {
     display: flex;
@@ -1781,19 +1839,13 @@
   @media (max-width: 860px) {
     .drow { grid-template-columns: 72px 1fr; }
     .drow2,
-    .drow2.v2 {
+    .drow2.v2,
+    .drow2.nofmt {
       grid-template-columns: 96px minmax(0, 1fr);
-      grid-template-areas:
-        'thumb identity'
-        'thumb format';
+      grid-template-areas: 'thumb identity';
     }
     .drow2 .thumb { width: 96px; height: 54px; }
     .drow2.v2 .thumb { width: 96px; height: 54px; max-height: 54px; min-height: 0; }
-    .dformat {
-      justify-self: stretch;
-      width: auto;
-      max-width: none;
-    }
   }
   @media (max-width: 720px) {
     .batch-line { grid-template-columns: 28px 72px minmax(0, 1fr); }
