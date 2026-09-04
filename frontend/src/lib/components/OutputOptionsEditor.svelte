@@ -1,8 +1,8 @@
 <script lang="ts">
-  // Always-visible Design D extras: Subtitles column + full-width Metadata.
-  // Output (Video | Audio + format chips) is passed in as a slot so video,
-  // playlist, and batch can keep their own plan lists. FFmpeg-dependent
-  // choices stay disabled and are clamped away while FFmpeg is missing.
+  // Inspector rows under identity: Output (slot), Subtitles, In the file.
+  // Audio greys Subtitles in place so the card does not jump. Download still
+  // strips captions via effectiveOptions. FFmpeg-dependent choices stay
+  // disabled and are clamped away while FFmpeg is missing.
   import { createEventDispatcher, onMount } from 'svelte';
   import type { OutputOptions, SubtitleLanguage } from '../types.js';
 
@@ -18,14 +18,12 @@
   const TRANSLATED_PREVIEW = 8;
   const MAX_LANGUAGES = 16;
 
-  let lastDelivery: 'sidecar' | 'embed' = 'sidecar';
   let langOpen = false;
   let fmtOpen = false;
   let langRoot: HTMLDivElement | undefined;
   let fmtRoot: HTMLDivElement | undefined;
 
   $: mode = value.subtitleMode ?? '';
-  $: if (mode === 'sidecar' || mode === 'embed') lastDelivery = mode;
   $: selectedLanguages = new Set(value.subtitleLanguages ?? []);
   $: manualLanguages = uniqueLanguages(languages.filter((language) => !language.auto));
   $: autoLanguages = uniqueLanguages(languages.filter((language) => language.auto));
@@ -33,7 +31,18 @@
   $: noLanguagesReported = !collectionMode && languages.length === 0;
   $: subtitleChoiceBlocked = !allowSubtitles || noLanguagesReported;
   $: embedBlocked = !ffmpegAvailable;
-  $: subtitlesOff = mode === '' && !subtitleChoiceBlocked;
+  $: subtitlesOff = mode === '';
+  $: langDisabled = subtitleChoiceBlocked || subtitlesOff;
+  $: fmtDisabled = subtitleChoiceBlocked || subtitlesOff || mode === 'embed' || !ffmpegAvailable;
+  $: rowLockReason = !allowSubtitles
+    ? 'Subtitles need a video output.'
+    : noLanguagesReported
+      ? 'No subtitles were reported for this video.'
+      : '';
+  $: if (subtitleChoiceBlocked) {
+    langOpen = false;
+    fmtOpen = false;
+  }
   $: formatValue = value.subtitleFormat ?? '';
   $: formatLabel = formatValue === 'srt' ? 'SRT' : formatValue === 'vtt' ? 'VTT' : 'Original';
   $: languageButtonLabel = languageSummary(manualLanguages, split.asr, split.translated, selectedLanguages);
@@ -135,7 +144,7 @@
   }
 
   function setMode(next: '' | 'sidecar' | 'embed') {
-    if (subtitleChoiceBlocked && next !== '') return;
+    if (subtitleChoiceBlocked) return;
     if (next === 'embed' && embedBlocked) return;
     const nextValue: OutputOptions = { ...value, subtitleMode: next, subtitleAutoCaptions: next !== '' };
     if (next === '') {
@@ -144,7 +153,6 @@
     } else if (next === 'sidecar' && !nextValue.subtitleFormat && ffmpegAvailable) {
       nextValue.subtitleFormat = 'srt';
     }
-    if (next === 'sidecar' || next === 'embed') lastDelivery = next;
     if (next !== '' && !collectionMode && !nextValue.subtitleLanguages?.length) {
       const preferred = defaultLanguage()?.code;
       if (preferred) nextValue.subtitleLanguages = [preferred];
@@ -152,17 +160,8 @@
     value = nextValue;
   }
 
-  function toggleSubtitles() {
-    if (subtitleChoiceBlocked) return;
-    if (mode === '') {
-      const restore = lastDelivery === 'embed' && embedBlocked ? 'sidecar' : lastDelivery;
-      setMode(restore);
-      return;
-    }
-    setMode('');
-  }
-
   function toggleLanguage(code: string) {
+    if (langDisabled) return;
     const next = new Set(value.subtitleLanguages ?? []);
     if (next.has(code)) next.delete(code);
     else if (next.size < MAX_LANGUAGES) next.add(code);
@@ -172,6 +171,7 @@
   }
 
   function setFormat(next: string) {
+    if (fmtDisabled) return;
     if (next !== '' && next !== 'srt' && next !== 'vtt') return;
     value = { ...value, subtitleFormat: next };
     fmtOpen = false;
@@ -187,207 +187,206 @@
 </script>
 
 <div class="opt-sections">
-  <div class="cols">
-    <div class="col">
+  <div class="erow">
+    <span class="elab">Output</span>
+    <div class="ectl">
       <slot name="output" />
     </div>
-    <div class="col">
-      <div class="opt-sec">
-        <h3>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 12h4M7 15.5h7M14.5 12H17"/></svg>
-          Subtitles
-          <span class="hswitch">
-            <button
-              type="button"
-              class="switch"
-              class:on={mode !== ''}
-              role="switch"
-              aria-checked={mode !== ''}
-              aria-label="Subtitles on or off"
-              disabled={subtitleChoiceBlocked}
-              on:click={toggleSubtitles}
-            ><span class="knob"></span></button>
-          </span>
-        </h3>
-        {#if !allowSubtitles}
-          <p class="note">Subtitles need a video output.</p>
-        {:else if noLanguagesReported}
-          <p class="note">No subtitles were reported for this video.</p>
-        {:else}
-          {#if collectionMode}
-            <p class="note">Every video uses English or its first available language.</p>
-          {/if}
-          <div class="subblock" class:off={subtitlesOff}>
-            <div class="chips" role="radiogroup" aria-label="Subtitle mode">
-              <button
-                type="button"
-                class="seg"
-                class:on={mode === 'sidecar'}
-                role="radio"
-                aria-checked={mode === 'sidecar'}
-                disabled={subtitleChoiceBlocked}
-                on:click={() => setMode('sidecar')}
-              >Subtitle file</button>
-              <button
-                type="button"
-                class="seg"
-                class:on={mode === 'embed'}
-                role="radio"
-                aria-checked={mode === 'embed'}
-                disabled={subtitleChoiceBlocked || embedBlocked}
-                title={embedBlocked ? 'Embedding needs FFmpeg' : ''}
-                on:click={() => setMode('embed')}
-              >Embed in video</button>
+  </div>
+
+  <div
+    class="erow"
+    class:disabled={subtitleChoiceBlocked}
+    aria-disabled={subtitleChoiceBlocked}
+    title={rowLockReason}
+  >
+    <span class="elab">Subtitles</span>
+    <div class="ectl">
+      <div class="triad" role="radiogroup" aria-label="Subtitle mode">
+        <button
+          type="button"
+          class:on={mode === ''}
+          role="radio"
+          aria-checked={mode === ''}
+          aria-label="Subtitles off"
+          disabled={subtitleChoiceBlocked}
+          on:click={() => setMode('')}
+        >Off</button>
+        <button
+          type="button"
+          class:on={mode === 'sidecar'}
+          class:file={mode === 'sidecar'}
+          role="radio"
+          aria-checked={mode === 'sidecar'}
+          aria-label="Subtitle file"
+          disabled={subtitleChoiceBlocked}
+          on:click={() => setMode('sidecar')}
+        >File</button>
+        <button
+          type="button"
+          class:on={mode === 'embed'}
+          class:file={mode === 'embed'}
+          role="radio"
+          aria-checked={mode === 'embed'}
+          aria-label="Embed in video"
+          disabled={subtitleChoiceBlocked || embedBlocked}
+          title={embedBlocked ? 'Embedding needs FFmpeg' : ''}
+          on:click={() => setMode('embed')}
+        >Embed</button>
+      </div>
+
+      {#if collectionMode}
+        <span class="dd static" title="Every video uses English or its first available language.">
+          <span class="cat">Language</span>
+          English or first available
+        </span>
+      {:else}
+        <div class="ddwrap" bind:this={langRoot}>
+          <button
+            type="button"
+            class="dd"
+            class:open={langOpen}
+            disabled={langDisabled}
+            aria-haspopup="listbox"
+            aria-expanded={langOpen}
+            aria-label="Subtitle language"
+            on:click={() => { if (!langDisabled) { langOpen = !langOpen; fmtOpen = false; } }}
+          >
+            <span class="cat">Language</span>
+            <span class="dd-v">{languageButtonLabel || '—'}</span>
+            <span class="chev" aria-hidden="true">▾</span>
+          </button>
+          {#if langOpen && !langDisabled}
+            <div class="fmt-menu" role="listbox" aria-label="Subtitle language" aria-multiselectable="true">
+              {#each manualLanguages as language (language.code)}
+                <button
+                  type="button"
+                  class="fmt-opt"
+                  class:on={selectedLanguages.has(language.code)}
+                  role="option"
+                  aria-selected={selectedLanguages.has(language.code)}
+                  aria-label={displayName(language)}
+                  on:click={() => toggleLanguage(language.code)}
+                >
+                  <span class="fmt-check" aria-hidden="true">{selectedLanguages.has(language.code) ? '✓' : ''}</span>
+                  <span class="fmt-lab">{displayName(language)}</span>
+                  {#if isDefaultLanguage(language)}<span class="tag">Default</span>{/if}
+                </button>
+              {/each}
+              {#if split.asr.length}
+                <div class="fmt-sep">Auto-generated</div>
+                {#each split.asr as language (`${language.code}:auto`)}
+                  <button
+                    type="button"
+                    class="fmt-opt"
+                    class:on={selectedLanguages.has(language.code)}
+                    role="option"
+                    aria-selected={selectedLanguages.has(language.code)}
+                    aria-label={`${displayName(language)} (auto-generated)`}
+                    on:click={() => toggleLanguage(language.code)}
+                  >
+                    <span class="fmt-check" aria-hidden="true">{selectedLanguages.has(language.code) ? '✓' : ''}</span>
+                    <span class="fmt-lab">{displayName(language)}</span>
+                  </button>
+                {/each}
+              {/if}
+              {#if split.translated.length}
+                <div class="fmt-sep">Auto-translated · from English</div>
+                {#each split.translated.slice(0, TRANSLATED_PREVIEW) as language (`${language.code}:auto-tr`)}
+                  <button
+                    type="button"
+                    class="fmt-opt"
+                    class:on={selectedLanguages.has(language.code)}
+                    role="option"
+                    aria-selected={selectedLanguages.has(language.code)}
+                    aria-label={`${displayName(language)} (auto-translated)`}
+                    on:click={() => toggleLanguage(language.code)}
+                  >
+                    <span class="fmt-check" aria-hidden="true">{selectedLanguages.has(language.code) ? '✓' : ''}</span>
+                    <span class="fmt-lab">{displayName(language)}</span>
+                    <span class="auto-badge" title="Auto-translated" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 3l1.9 5.6 5.6 1.4-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/><path d="M19 15l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
+                    </span>
+                  </button>
+                {/each}
+                <div class="fmt-more">…and more on YouTube</div>
+              {/if}
             </div>
-            {#if !collectionMode && languages.length}
-              <div class="langrow">
-                <span class="inline-label">Language</span>
-                <div class="fmt hug" bind:this={langRoot}>
-                  <button
-                    type="button"
-                    class="fmt-btn"
-                    class:open={langOpen}
-                    disabled={subtitlesOff}
-                    aria-haspopup="listbox"
-                    aria-expanded={langOpen}
-                    aria-label="Subtitle language"
-                    on:click={() => { if (!subtitlesOff) { langOpen = !langOpen; fmtOpen = false; } }}
-                  >
-                    <span class="fmt-v">{languageButtonLabel}</span>
-                    <span class="fmt-chev" aria-hidden="true">▾</span>
-                  </button>
-                  {#if langOpen && !subtitlesOff}
-                    <div class="fmt-menu" role="listbox" aria-label="Subtitle language" aria-multiselectable="true">
-                      {#each manualLanguages as language (language.code)}
-                        <button
-                          type="button"
-                          class="fmt-opt"
-                          class:on={selectedLanguages.has(language.code)}
-                          role="option"
-                          aria-selected={selectedLanguages.has(language.code)}
-                          aria-label={displayName(language)}
-                          on:click={() => toggleLanguage(language.code)}
-                        >
-                          <span class="fmt-check" aria-hidden="true">{selectedLanguages.has(language.code) ? '✓' : ''}</span>
-                          <span class="fmt-lab">{displayName(language)}</span>
-                          {#if isDefaultLanguage(language)}<span class="tag">Default</span>{/if}
-                        </button>
-                      {/each}
-                      {#if split.asr.length}
-                        <div class="fmt-sep">Auto-generated</div>
-                        {#each split.asr as language (`${language.code}:auto`)}
-                          <button
-                            type="button"
-                            class="fmt-opt"
-                            class:on={selectedLanguages.has(language.code)}
-                            role="option"
-                            aria-selected={selectedLanguages.has(language.code)}
-                            aria-label={`${displayName(language)} (auto-generated)`}
-                            on:click={() => toggleLanguage(language.code)}
-                          >
-                            <span class="fmt-check" aria-hidden="true">{selectedLanguages.has(language.code) ? '✓' : ''}</span>
-                            <span class="fmt-lab">{displayName(language)}</span>
-                          </button>
-                        {/each}
-                      {/if}
-                      {#if split.translated.length}
-                        <div class="fmt-sep">Auto-translated · from English</div>
-                        {#each split.translated.slice(0, TRANSLATED_PREVIEW) as language (`${language.code}:auto-tr`)}
-                          <button
-                            type="button"
-                            class="fmt-opt"
-                            class:on={selectedLanguages.has(language.code)}
-                            role="option"
-                            aria-selected={selectedLanguages.has(language.code)}
-                            aria-label={`${displayName(language)} (auto-translated)`}
-                            on:click={() => toggleLanguage(language.code)}
-                          >
-                            <span class="fmt-check" aria-hidden="true">{selectedLanguages.has(language.code) ? '✓' : ''}</span>
-                            <span class="fmt-lab">{displayName(language)}</span>
-                            <span class="auto-badge" title="Auto-translated" aria-hidden="true">
-                              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 3l1.9 5.6 5.6 1.4-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/><path d="M19 15l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
-                            </span>
-                          </button>
-                        {/each}
-                        <div class="fmt-more">…and more on YouTube</div>
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/if}
-            {#if mode !== 'embed'}
-              <div class="langrow">
-                <span class="inline-label">Format</span>
-                <div class="fmt hug" bind:this={fmtRoot}>
-                  <button
-                    type="button"
-                    class="fmt-btn"
-                    class:open={fmtOpen}
-                    disabled={subtitlesOff || !ffmpegAvailable}
-                    aria-haspopup="listbox"
-                    aria-expanded={fmtOpen}
-                    aria-label="Subtitle format"
-                    on:click={() => { if (!subtitlesOff && ffmpegAvailable) { fmtOpen = !fmtOpen; langOpen = false; } }}
-                  >
-                    <span class="fmt-v">{formatLabel}</span>
-                    <span class="fmt-chev" aria-hidden="true">▾</span>
-                  </button>
-                  {#if fmtOpen && !subtitlesOff}
-                    <div class="fmt-menu" role="listbox" aria-label="Subtitle format">
-                      {#each [['', 'Original'], ['srt', 'SRT'], ['vtt', 'VTT']] as [id, label] (id)}
-                        <button
-                          type="button"
-                          class="fmt-opt"
-                          class:on={formatValue === id}
-                          role="option"
-                          aria-selected={formatValue === id}
-                          on:click={() => setFormat(id)}
-                        >
-                          <span class="fmt-check" aria-hidden="true">{formatValue === id ? '✓' : ''}</span>
-                          <span class="fmt-lab">{label}</span>
-                        </button>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-                {#if !ffmpegAvailable}
-                  <p class="hint">FFmpeg converts subtitle files; the original format is kept without it.</p>
-                {/if}
-              </div>
-            {/if}
+          {/if}
+        </div>
+      {/if}
+
+      <div class="ddwrap" bind:this={fmtRoot}>
+        <button
+          type="button"
+          class="dd"
+          class:open={fmtOpen}
+          disabled={fmtDisabled}
+          aria-haspopup="listbox"
+          aria-expanded={fmtOpen}
+          aria-label="Subtitle format"
+          title={!ffmpegAvailable ? 'FFmpeg converts subtitle files; the original format is kept without it.' : ''}
+          on:click={() => { if (!fmtDisabled) { fmtOpen = !fmtOpen; langOpen = false; } }}
+        >
+          <span class="cat">Format</span>
+          <span class="dd-v">{formatLabel}</span>
+          <span class="chev" aria-hidden="true">▾</span>
+        </button>
+        {#if fmtOpen && !fmtDisabled}
+          <div class="fmt-menu" role="listbox" aria-label="Subtitle format">
+            {#each [['', 'Original'], ['srt', 'SRT'], ['vtt', 'VTT']] as [id, label] (id)}
+              <button
+                type="button"
+                class="fmt-opt"
+                class:on={formatValue === id}
+                role="option"
+                aria-selected={formatValue === id}
+                on:click={() => setFormat(id)}
+              >
+                <span class="fmt-check" aria-hidden="true">{formatValue === id ? '✓' : ''}</span>
+                <span class="fmt-lab">{label}</span>
+              </button>
+            {/each}
           </div>
         {/if}
       </div>
     </div>
   </div>
-  <div class="opt-sec meta-full-row">
-    <div class="meta-inline-head">
-      <h3>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7l9 9-7 7-9-9Z"/><circle cx="9" cy="9" r="1.4"/></svg>
-        Metadata
-      </h3>
-      <div class="meta-checks">
-        <label class="check">
-          <input type="checkbox" disabled={embedBlocked} checked={!!value.embedMetadata} on:change={(event) => setFlag('embedMetadata', event.currentTarget.checked)} />
-          Title &amp; channel details
-        </label>
-        <label class="check">
-          <input type="checkbox" disabled={embedBlocked} checked={!!value.embedThumbnail} on:change={(event) => setFlag('embedThumbnail', event.currentTarget.checked)} />
-          Thumbnail artwork
-        </label>
-        <label class="check">
-          <input type="checkbox" disabled={embedBlocked} checked={!!value.embedChapters} on:change={(event) => setFlag('embedChapters', event.currentTarget.checked)} />
-          Chapter markers
-        </label>
-      </div>
-    </div>
-    {#if embedBlocked}
-      <p class="hint">
-        Embedding needs FFmpeg.
+
+  <div class="erow">
+    <span class="elab">In the file</span>
+    <div class="ectl">
+      <button
+        type="button"
+        class="also"
+        class:on={!!value.embedMetadata}
+        aria-pressed={!!value.embedMetadata}
+        aria-label="Title & channel details"
+        disabled={embedBlocked}
+        on:click={() => setFlag('embedMetadata', !value.embedMetadata)}
+      >Title &amp; channel</button>
+      <button
+        type="button"
+        class="also"
+        class:on={!!value.embedThumbnail}
+        aria-pressed={!!value.embedThumbnail}
+        aria-label="Thumbnail artwork"
+        disabled={embedBlocked}
+        on:click={() => setFlag('embedThumbnail', !value.embedThumbnail)}
+      >Artwork</button>
+      <button
+        type="button"
+        class="also"
+        class:on={!!value.embedChapters}
+        aria-pressed={!!value.embedChapters}
+        aria-label="Chapter markers"
+        disabled={embedBlocked}
+        on:click={() => setFlag('embedChapters', !value.embedChapters)}
+      >Chapters</button>
+      {#if embedBlocked}
         <button type="button" class="link" on:click={() => dispatch('goto-settings')}>Open Settings</button>
-      </p>
-    {/if}
+      {/if}
+    </div>
   </div>
 </div>
 
@@ -398,150 +397,90 @@
     margin-top: 8px;
     flex-shrink: 0;
   }
-  .cols {
+  .erow {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .cols > .col { min-width: 0; }
-  .cols > .col + .col { border-left: 1px solid var(--border-subtle); }
-  .opt-sec {
-    padding: 10px 12px 12px;
-    min-width: 0;
-  }
-  .cols .opt-sec { border-top: 0; }
-  .opt-sec h3 {
-    margin: 0 0 8px;
-    color: var(--text-muted);
-    font-size: 10px;
-    font-weight: 650;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    display: flex;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
     align-items: center;
-    gap: 7px;
+    padding: 10px 14px;
+    min-height: 44px;
   }
-  .opt-sec h3 svg,
-  .meta-inline-head h3 svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-  }
-  .hswitch { margin-left: 8px; display: inline-flex; }
-  .switch {
-    position: relative;
-    width: 34px;
-    height: 18px;
-    border-radius: 999px;
-    flex-shrink: 0;
-    border: 1px solid var(--border-strong);
-    background: var(--surface-base);
-    cursor: pointer;
-  }
-  .switch .knob {
-    position: absolute;
-    top: 1px;
-    left: 1px;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    transition: transform 120ms ease, background 120ms ease;
-  }
-  .switch.on {
-    background: var(--accent-soft);
-    border-color: rgba(59, 130, 246, 0.5);
-  }
-  .switch.on .knob {
-    transform: translateX(16px);
-    background: var(--accent-400);
-  }
-  .switch:disabled { cursor: default; opacity: 0.45; }
-  .note, .hint {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 11px;
-    line-height: 1.45;
-  }
-  .subblock {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 10px;
-    align-items: flex-end;
-  }
-  .subblock > .chips { flex: 1 1 100%; }
-  .subblock.off { opacity: 0.55; }
-  .chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    min-width: 0;
-  }
-  .seg {
-    height: 26px;
-    padding: 0 8px;
-    border: 1px solid var(--border-default);
-    border-radius: 7px;
-    background: var(--surface-base);
+  .erow + .erow { border-top: 1px solid var(--border-subtle); }
+  .erow.disabled { opacity: 0.42; }
+  .elab {
     color: var(--text-secondary);
     font-size: 12px;
-    white-space: nowrap;
-    transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+    font-weight: 550;
   }
-  .seg:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-primary); }
-  .seg.on {
-    border-color: rgba(59, 130, 246, 0.55);
-    background: var(--accent-soft);
-    color: #93C5FD;
-  }
-  .seg:disabled { opacity: 0.45; cursor: default; }
-  .langrow {
+  .ectl {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
   }
-  .inline-label {
-    color: var(--text-secondary);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    flex-shrink: 0;
-  }
-  .fmt { position: relative; min-width: 0; }
-  .fmt.hug { width: fit-content; min-width: 0; }
-  .fmt-btn {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    height: 28px;
-    padding: 0 10px;
+  .triad {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
     border: 1px solid var(--border-default);
     border-radius: 8px;
     background: var(--surface-base);
-    color: var(--text-primary);
-    text-align: left;
-    cursor: pointer;
   }
-  .fmt-btn:hover:not(:disabled) { border-color: var(--border-strong); }
-  .fmt-btn.open { border-color: var(--accent-500); }
-  .fmt-btn:disabled { opacity: 0.45; cursor: default; }
-  .fmt-v {
-    min-width: 0;
-    flex: 1;
-    overflow: hidden;
+  .triad button {
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 550;
+    border: 0;
+    background: transparent;
+  }
+  .triad button.on {
+    background: var(--surface-raised);
+    color: var(--text-primary);
+  }
+  .triad button.on.file {
+    color: #93C5FD;
+    background: var(--accent-soft);
+  }
+  .triad button:disabled { cursor: default; }
+  .ddwrap { position: relative; }
+  .dd {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: var(--surface-base);
     color: var(--text-primary);
     font-size: 12px;
-    font-weight: 500;
+    cursor: pointer;
+  }
+  .dd.static {
+    cursor: default;
+    color: var(--text-secondary);
+  }
+  .dd:hover:not(:disabled):not(.static) { border-color: var(--border-strong); }
+  .dd.open { border-color: var(--accent-500); }
+  .dd:disabled { opacity: 0.45; cursor: default; }
+  .dd .cat { color: var(--text-muted); }
+  .dd-v {
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .fmt-chev { flex-shrink: 0; color: var(--text-muted); font-size: 10px; }
-  .fmt-btn.open .fmt-chev { transform: rotate(180deg); }
+  .chev { color: var(--text-muted); font-size: 10px; }
+  .dd.open .chev { transform: rotate(180deg); }
   .fmt-menu {
     position: absolute;
     z-index: 30;
     top: calc(100% + 4px);
     left: 0;
-    right: auto;
     min-width: 100%;
     width: max-content;
     max-width: min(320px, calc(100vw - 32px));
@@ -611,40 +550,21 @@
     color: #4ade80;
     flex-shrink: 0;
   }
-  .meta-full-row {
-    border-top: 1px solid var(--border-subtle);
-    background: var(--surface-subtle);
-    padding: 10px 14px 11px;
+  .also {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 99px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
   }
-  .meta-inline-head {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    flex-wrap: wrap;
+  .also.on {
+    border-color: rgba(59, 130, 246, 0.45);
+    background: var(--accent-soft);
+    color: #93C5FD;
   }
-  .meta-inline-head h3 {
-    margin: 0;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .meta-checks {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .check {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--fs-xs);
-    font-weight: 550;
-    color: var(--text-primary);
-    cursor: pointer;
-  }
-  .check input { flex-shrink: 0; }
-  .check input:disabled { cursor: default; }
+  .also:disabled { opacity: 0.45; cursor: default; }
   .link {
     padding: 0;
     border: 0;
@@ -653,9 +573,5 @@
     font-size: 11px;
     font-weight: 650;
     text-decoration: underline;
-  }
-  @media (max-width: 760px) {
-    .cols { grid-template-columns: minmax(0, 1fr); }
-    .cols > .col + .col { border-left: 0; border-top: 1px solid var(--border-subtle); }
   }
 </style>

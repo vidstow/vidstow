@@ -90,6 +90,15 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /aria-label="Media format type"/);
   assert.doesNotMatch(home, /label="Type"/);
   assert.match(home, /class="opt-sections"/);
+  assert.match(home, /class="erow"/);
+  assert.match(home, />Output</);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />Subtitles</);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />In the file</);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitle file"/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitles off"/);
+  assert.doesNotMatch(await read('../src/lib/components/OutputOptionsEditor.svelte'), /class="cols"/);
+  assert.doesNotMatch(await read('../src/lib/components/OutputOptionsEditor.svelte'), />Metadata</);
+  assert.doesNotMatch(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitles on or off"/);
   assert.match(home, /class="chips"/);
   assert.match(home, /class="seg"/);
   assert.match(home, /aria-label=\{kind === 'audio' \? 'Audio format' : 'Video format'\}/);

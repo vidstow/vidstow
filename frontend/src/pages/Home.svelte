@@ -760,25 +760,19 @@
 {/snippet}
 
 {#snippet outputBlock(kind: string, kinds: Array<{ id: string; label: string }>, plans: Array<{ id: string; label: string }>, planValue: string, onKind: (id: string) => void, onPlan: (id: string) => void, disableConvertedAudio: boolean, emptyCopy: string, mp3Hint: boolean)}
-  <div class="opt-sec">
-    <div class="sec-head">
-      <h3>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/></svg>
-        Output
-      </h3>
-      {#if kinds.length}
-        <div class="type-pills" role="group" aria-label="Media format type">
-          {#each kinds as option (option.id)}
-            <button
-              type="button"
-              class:active={kind === option.id}
-              aria-pressed={kind === option.id}
-              on:click={() => onKind(option.id)}
-            >{option.label}</button>
-          {/each}
-        </div>
-      {/if}
-    </div>
+  <div class="output-controls">
+    {#if kinds.length}
+      <div class="type-pills" role="group" aria-label="Media format type">
+        {#each kinds as option (option.id)}
+          <button
+            type="button"
+            class:active={kind === option.id}
+            aria-pressed={kind === option.id}
+            on:click={() => onKind(option.id)}
+          >{option.label}</button>
+        {/each}
+      </div>
+    {/if}
     {#if plans.length}
       <div class="chips" role="radiogroup" aria-label={kind === 'audio' ? 'Audio format' : 'Video format'}>
         {#each plans as option (option.id)}
@@ -1056,7 +1050,12 @@
         </div>
       </div>
       <div class="opt-sections">
-        {@render outputBlock(batchTab, KIND_OPTIONS, batchPlanOptions, batchFormatValue, setBatchTab, setBatchFormat, batchTab === 'audio' && !$ffmpeg.available, '', batchTab === 'audio' && !$ffmpeg.available)}
+        <div class="erow">
+          <span class="elab">Output</span>
+          <div class="ectl">
+            {@render outputBlock(batchTab, KIND_OPTIONS, batchPlanOptions, batchFormatValue, setBatchTab, setBatchFormat, batchTab === 'audio' && !$ffmpeg.available, '', batchTab === 'audio' && !$ffmpeg.available)}
+          </div>
+        </div>
       </div>
       {#if detailsOpen}
         <div class="batch-lines" role="list" aria-label="Reviewed batch URLs">
@@ -1413,31 +1412,32 @@
     background: var(--surface-subtle);
     margin-top: 8px;
   }
-  .opt-sec {
-    padding: 10px 12px 12px;
+  .erow {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 10px 14px;
+    min-height: 44px;
+  }
+  .elab {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 550;
+  }
+  .ectl {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     min-width: 0;
   }
-  .sec-head {
+  .output-controls {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-  .sec-head h3 {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 10px;
-    font-weight: 650;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .sec-head h3 svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
+    gap: 8px;
+    min-width: 0;
   }
   .type-pills {
     display: inline-flex;
@@ -1460,8 +1460,8 @@
     color: var(--text-primary);
     box-shadow: var(--shadow-card);
   }
-  .opt-sec .note,
-  .opt-sec .hint {
+  .output-controls .note,
+  .output-controls .hint {
     margin: 6px 0 0;
     color: var(--text-muted);
     font-size: 11px;

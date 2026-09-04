@@ -630,6 +630,8 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Subtitle language' }));
     await user.click(screen.getByRole('option', { name: 'English' }));
     await user.click(screen.getByRole('button', { name: 'Audio' }));
+    expect(screen.getByRole('radio', { name: 'Subtitle file' })).toBeDisabled();
+    expect(screen.getByText('Subtitles')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
     await waitFor(() => expect(StartDownload).toHaveBeenCalledTimes(1));

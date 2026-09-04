@@ -157,22 +157,22 @@ The URL field stays pinned to the top of Home, empty or after Analyze. The dock,
 
 **Failed Analyze.** Stay on Home. Show the error on the page. **Paste another link** focuses the field and selects the current URL so the next paste replaces it.
 
-**Single video after analysis.** Three columns: thumbnail, title and meta, then **Type** plus format chips hugging the right. Footer under that.
+**Single video after analysis.** Thumbnail, title and meta on the identity. Footer under the inspector rows.
 
 - Thumbnail, title, channel, optional Short badge, duration, view count
 - If the original link also contained a playlist: a swap line `Part of playlist: <title> · N videos →`
-- **Type** is a dropdown (Video / Audio) stacked above compact chips (`1440p`, `M4A (Original)`)
+- **Video / Audio** pills and format chips (`1440p`, `M4A (Original)`) sit on an **Output** row under the identity, not beside the thumbnail
 - Title uses a two-line clamp. Hover still shows the full name
 - Under the channel line: muted container · codecs, then size. Updates with the selected chip
-- **Subtitles & details** disclosure under the dock header, never beside the quality chips. Subtitle mode (Off / Subtitle file / Embed in video), languages reported by analysis with auto-generated tracks marked, auto-caption fallback, sidecar format when a file was chosen, and embed flags for title & channel details, artwork, and chapters. Choices seed from Settings; English is pre-selected when the video offers it. FFmpeg-dependent controls stay disabled with an Open Settings link while FFmpeg is missing. Audio hides the subtitle side entirely
+- Inspector rows: **Output**, **Subtitles** (**Off** / **File** / **Embed**, language, sidecar format), **In the file** (title & channel, artwork, chapters). Choices seed from Settings; English is pre-selected when the video offers it. FFmpeg-dependent controls stay disabled with an Open Settings link while FFmpeg is missing. Audio greys **Subtitles** in place so the card does not jump; captions are not written on audio downloads
 - Footer: **Change**, the path, **Download**. Success: banner `Queued for download`, then Queue. The dock clears; the URL stays
 
 Changing the URL clears analysis. Confirm before starting downloads (off by default) asks `Add this download?` before enqueue.
 
 **Playlist after analysis.** Same dock, adapted:
 
-- Thumbnail, title, Playlist · N videos · duration · channel, unavailable count. Duration is the sum of available entry lengths when every available video reported one. Channel comes from the playlist, or the first child that named one. **Type** is the same dropdown; format chips follow. No invented 1080p coverage or playlist file-size total
-- The same **Subtitles & details** disclosure appears once, above the episode disclosure. One output policy for the collection: each video uses its English or first-available track, plus the shared embed flags. A video without a usable track downloads without subtitles
+- Thumbnail, title, Playlist · N videos · duration · channel, unavailable count. Duration is the sum of available entry lengths when every available video reported one. Channel comes from the playlist, or the first child that named one. **Output** is the same Video / Audio pills and format chips. No invented 1080p coverage or playlist file-size total
+- The same inspector rows appear once, above the episode disclosure. One output policy for the collection: each video uses its English or first-available track, plus the shared embed flags. A video without a usable track downloads without subtitles. Audio greys **Subtitles** in place
 - Disclosure: episode count and the chosen policy. Cap note when 500 entries were returned. The list stays collapsed until that disclosure is opened
 - Episode review: `N of M selected`, All, None, Range as two position fields plus Apply. All fills the fields with first–last index. None clears them. Rows are checkbox, title, duration. Unavailable rows are visible, dimmed, not selectable
 - Range Apply with an invalid span shows `Enter positions from N to M` on the header. Selection is by original index
@@ -184,7 +184,7 @@ Confirm before starting downloads, or more than 100 selected videos, asks `Add t
 
 **Batch after analysis.** Reached by pasting 2 to 20 lines (or more than one `http` URL on a line), not by flipping a mode. Review list: line number, thumbnail, title or raw input, URL, channel · duration, status chip (Ready, Duplicate, Invalid URL, Analysis failed) plus a reason when not ready. Expired review: `This review expired. Edit the lines and review them again.`
 
-Shared **Type** dropdown and format chips for every ready item. The title list opens from an underlined `{N} titles` hint. Footer: **Change**, the path, **Edit URLs**, **Download N videos**. N is ready count, not pasted count. Disabled unless the token is still valid, ready ≥ 2, and a folder is set. Success navigates to Queue. Edit URLs returns to the field without losing the text.
+Shared **Video / Audio** pills and format chips for every ready item. The title list opens from an underlined `{N} titles` hint. Footer: **Change**, the path, **Edit URLs**, **Download N videos**. N is ready count, not pasted count. Disabled unless the token is still valid, ready ≥ 2, and a folder is set. Success navigates to Queue. Edit URLs returns to the field without losing the text.
 
 **FFmpeg.** Most video plans and all MP3 plans require it. Subtitles and embedded details need it too. Missing FFmpeg opens a dialog with Open Settings, and notes that original audio without merging remains available.
 
