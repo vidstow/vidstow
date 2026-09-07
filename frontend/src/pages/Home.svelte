@@ -2,7 +2,7 @@
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { api } from '../lib/api.js';
   import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
-  import { formatBytes, formatPlanSize, formatViewCount, shortTitle } from '../lib/format.js';
+  import { formatBytes, formatPlanSize, formatViewCount, shortAudioChip, shortTitle } from '../lib/format.js';
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
   import type { BatchAnalysisView, InfoSummary, OutputOptions, OutputPlan, PlaylistSummary, Quality, SubtitleLanguage, UrlCheckResult } from '../lib/types.js';
 
@@ -90,11 +90,15 @@
       plans.some((plan) => plan.available && plan.kind === 'audio') ? { id: 'audio', label: 'Audio' } : null,
     ] as Array<{ id: string; label: string } | null>
   ).filter((option): option is { id: string; label: string } => option !== null);
-  $: videoPlanOptions = visiblePlans.map((plan) => ({
-    id: plan.id,
-    label: plan.label,
-    size: plan.approxBytes ? `${plan.sizeIsApproximate ? '~' : ''}${formatBytes(plan.approxBytes)}` : undefined,
-  }));
+  $: videoPlanOptions = visiblePlans.map((plan) => {
+    const chip = shortAudioChip(plan.label);
+    return {
+      id: plan.id,
+      label: chip.label,
+      title: chip.title,
+      size: plan.approxBytes ? `${plan.sizeIsApproximate ? '~' : ''}${formatBytes(plan.approxBytes)}` : undefined,
+    };
+  });
   $: playlistPlanOptions = playlistTab === 'audio'
     ? AUDIO_CHOICES.map((option) => ({ id: option.value, label: option.label }))
     : PLAYLIST_VIDEO_QUALITIES.map((option) => ({ id: option.value, label: option.label }));
@@ -575,7 +579,8 @@
   }
 
   function planDetail(plan: OutputPlan) {
-    return [plan.container, plan.kind === 'video' ? plan.videoCodec : '', plan.audioCodec].filter(Boolean).join(' · ');
+    const fps = plan.kind === 'video' && plan.fps && plan.fps > 30 ? `${plan.fps} fps` : '';
+    return [plan.container, plan.kind === 'video' ? plan.videoCodec : '', plan.audioCodec, fps].filter(Boolean).join(' · ');
   }
 
   function toggle(index: number) {
@@ -685,15 +690,6 @@
         modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
       }
     };
-    if ($settings.confirmBeforeDownload) {
-      modal.set({
-        kind: 'confirm',
-        title: 'Add this download?',
-        message: `${selectedPlan.label} · ${selectedPlan.container}${selectedPlan.approxBytes ? ` · about ${formatBytes(selectedPlan.approxBytes)}` : ''}`,
-        actions: [{ label: 'Download', primary: true, action: start }],
-      });
-      return;
-    }
     await start();
   }
 
@@ -736,7 +732,7 @@
         modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
       }
     };
-    if (selectedItems.size > 100 || $settings.confirmBeforeDownload) {
+    if (selectedItems.size > 100) {
       modal.set({
         kind: 'confirm',
         title: 'Add this playlist?',
@@ -759,7 +755,7 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
 {/snippet}
 
-{#snippet outputBlock(kind: string, kinds: Array<{ id: string; label: string }>, plans: Array<{ id: string; label: string }>, planValue: string, onKind: (id: string) => void, onPlan: (id: string) => void, disableConvertedAudio: boolean, emptyCopy: string, mp3Hint: boolean)}
+{#snippet outputBlock(kind: string, kinds: Array<{ id: string; label: string }>, plans: Array<{ id: string; label: string; title?: string }>, planValue: string, onKind: (id: string) => void, onPlan: (id: string) => void, disableConvertedAudio: boolean, emptyCopy: string, mp3Hint: boolean)}
   <div class="output-controls">
     {#if kinds.length}
       <div class="type-pills" role="group" aria-label="Media format type">
@@ -782,6 +778,7 @@
             class:on={planValue === option.id}
             role="radio"
             aria-checked={planValue === option.id}
+            title={option.title}
             disabled={disableConvertedAudio && option.id !== 'original'}
             on:click={() => onPlan(option.id)}
           >{option.label}</button>
@@ -797,7 +794,7 @@
 {/snippet}
 
 <section class="page home" class:fill={hasDock} aria-label="Home">
-  <form class="composer" on:submit|preventDefault={submitPaste}>
+  <form class="composer" on:submit|preventDefault={() => submitPaste()}>
     <div class="fieldwrap">
       <label class="visually-hidden" for="video-url">YouTube video, Short, or playlist URL</label>
       <textarea
@@ -1002,6 +999,7 @@
           {#if selectedPlan && (planDetail(selectedPlan) || planSizeCopy(selectedPlan))}
             <div class="dplan">
               {#if planDetail(selectedPlan)}<span class="dcodec">{planDetail(selectedPlan)}</span>{/if}
+              {#if planDetail(selectedPlan) && planSizeCopy(selectedPlan)}<span class="dsep" aria-hidden="true">·</span>{/if}
               {#if planSizeCopy(selectedPlan)}<span class="dcost">{planSizeCopy(selectedPlan)}</span>{/if}
             </div>
           {/if}
@@ -1469,7 +1467,7 @@
   }
   .chips {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
     min-width: 0;
   }
@@ -1596,12 +1594,17 @@
   .dacts { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
   .dplan {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
     margin-top: 5px;
     min-width: 0;
     background: none;
+  }
+  .dsep {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 13px;
   }
   .dcodec,
   .dcost {

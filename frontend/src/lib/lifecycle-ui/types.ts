@@ -68,6 +68,7 @@ export interface QueueFailureViewModel {
   recommendedAction: string;
   retryable: boolean;
   partialOutput: boolean;
+  evidence?: { stage: string; code: string; httpStatus?: number; at: string };
 }
 
 /**
@@ -80,6 +81,7 @@ export interface LifecycleJobViewModel {
   collectionId?: string;
   collectionIndex?: number;
   title: string;
+  qualityLabel?: string;
   metadata?: string;
   thumbnailUrl?: string;
   lifecycle: DurableLifecycle;
@@ -277,6 +279,12 @@ export function isValidConflictToken(value: unknown): value is string {
 }
 
 export const isValidCommandToken = isValidConflictToken;
+
+/** Cleaning up is only while leftover temp data still exists. Remove means it settled. */
+export function visiblePhase(job: Pick<LifecycleJobViewModel, 'phase' | 'capabilities'>): PresentationPhase | undefined {
+  if (job.phase === 'cleaning-up' && job.capabilities?.remove === true) return undefined;
+  return job.phase;
+}
 
 export function lifecycleLabel(
   lifecycle: DurableLifecycle,

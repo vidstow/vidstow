@@ -36,7 +36,8 @@ export interface OutputPlan {
   approxBytes?: number;
   sizeIsApproximate?: boolean;
   requiresFfmpeg?: boolean;
-  audioBitrateKbps?: number;
+	audioBitrateKbps?: number;
+  fps?: number;
   recommended?: boolean;
   available: boolean;
 }
@@ -116,7 +117,6 @@ export interface Settings {
   windowHeight: number;
   downloadConcurrency: number;
   perVideoSubfolder: boolean;
-  confirmBeforeDownload: boolean;
   outputOptions: OutputOptions;
   automaticDiagnostics: '' | 'enabled' | 'disabled';
 }

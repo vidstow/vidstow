@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -485,8 +486,8 @@ func TestSubmitPropagatesOutputOptionsToEngineRequest(t *testing.T) {
 				if *req.EmbedChapters != options.EmbedChapters {
 					t.Fatalf("EmbedChapters = %v; want %v", *req.EmbedChapters, options.EmbedChapters)
 				}
-				if req.Thumbnails.Write != options.EmbedThumbnail || req.Thumbnails.Embed != options.EmbedThumbnail {
-					t.Fatalf("Thumbnails = %#v; want Write/Embed %v", req.Thumbnails, options.EmbedThumbnail)
+				if req.Thumbnails.Write || req.Thumbnails.Embed {
+					t.Fatalf("Thumbnails = %#v; artwork embed is skipped until engine preflight names one image", req.Thumbnails)
 				}
 			case <-time.After(time.Second):
 				t.Fatal("download runner did not receive a request")
@@ -577,6 +578,266 @@ func TestHumanErrorYouTubeChallengeTimeout(t *testing.T) {
 	}
 }
 
+func TestResumeSessionCompatible(t *testing.T) {
+	video := &outputplan.Plan{Container: "MP4"}
+	mp3 := &outputplan.Plan{Container: "MP3"}
+	cases := []struct {
+		name    string
+		options jobmodel.OutputOptions
+		plan    *outputplan.Plan
+		want    bool
+	}{
+		{name: "plain video", plan: video, want: true},
+		{name: "nil plan", want: true},
+		{name: "embed subtitles", options: jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed}, plan: video, want: false},
+		{name: "sidecar subtitles", options: jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeSidecar}, plan: video, want: false},
+		{name: "embedded metadata", options: jobmodel.OutputOptions{EmbedMetadata: true}, plan: video, want: false},
+		{name: "embedded thumbnail", options: jobmodel.OutputOptions{EmbedThumbnail: true}, plan: video, want: false},
+		{name: "embedded chapters", options: jobmodel.OutputOptions{EmbedChapters: true}, plan: video, want: false},
+		{name: "mp3 extract", plan: mp3, want: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := resumeSessionCompatible(testCase.options, testCase.plan); got != testCase.want {
+				t.Fatalf("resumeSessionCompatible() = %v; want %v", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestV2OutputExtrasSkipResumeSession(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras")
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{
+		SubtitleMode:      jobmodel.SubtitleModeEmbed,
+		SubtitleLanguages: []string{"en"},
+		EmbedMetadata:     true,
+	}
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4"), Bytes: 1}, nil
+	}
+	if _, err := manager.SubmitAdmitted("job-extras", Request{
+		URL: "https://www.youtube.com/watch?v=abc123", VideoID: "abc123", Title: "Demo",
+		PlanID: plan.ID, OutputDir: root,
+		Options: store.state.Jobs[0].Request.OutputOptions,
+	}, &plan, AdmittedOutput{Basename: "Demo [abc123] [1080p].mp4"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if request.Filesystem.Resume.SessionID != "" {
+			t.Fatalf("extras request used a resume session: %#v", request.Filesystem.Resume)
+		}
+		if request.Overwrite {
+			t.Fatal("extras request must keep no-replace overwrite")
+		}
+		if !request.Subtitles.Embed || !request.EmbedMetadata {
+			t.Fatalf("extras flags dropped: subtitles=%#v metadata=%v", request.Subtitles, request.EmbedMetadata)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("download runner did not receive a request")
+	}
+}
+
+func TestV2OutputExtrasRetrySkipsMissingSession(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras-retry")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "unsupported"
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{
+		SubtitleMode:  jobmodel.SubtitleModeEmbed,
+		EmbedMetadata: true,
+	}
+	originalSession := store.state.Jobs[0].SessionID
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.inspectResume = func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+		t.Fatal("extras retry must not inspect a resume workspace")
+		return engine.ResumeSummary{}, errors.New("inspection unavailable")
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4"), Bytes: 1}, nil
+	}
+	if err := manager.Retry("job-extras-retry"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if request.Filesystem.Resume.SessionID != "" {
+			t.Fatalf("extras retry used a resume session: %#v", request.Filesystem.Resume)
+		}
+		if !request.Overwrite {
+			t.Fatal("extras retry must replace the reserved leftover file")
+		}
+		if !request.Subtitles.Embed || !request.EmbedMetadata {
+			t.Fatalf("extras flags dropped on retry: %#v", request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("extras retry did not start a download")
+	}
+	completed := waitForV2Job(t, store, "job-extras-retry", jobmodel.LifecycleCompleted)
+	if completed.SessionID == originalSession || completed.RetryMode != jobmodel.RetryModeRestartNewSession {
+		t.Fatalf("extras retry identity/mode = %#v; want a fresh classic restart", completed)
+	}
+	_ = plan
+}
+
+func TestV2OutputExtrasRetryReplacesReservedLeftover(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras-leftover")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "invalid_input"
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{
+		SubtitleMode:      jobmodel.SubtitleModeEmbed,
+		SubtitleLanguages: []string{"en"},
+		EmbedMetadata:     true,
+		EmbedChapters:     true,
+	}
+	leftover := filepath.Join(root, "Demo [abc123] [1080p].mp4")
+	if err := os.WriteFile(leftover, []byte("previous attempt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		if err := os.WriteFile(leftover, []byte("retry with extras"), 0o600); err != nil {
+			return engine.Result{}, err
+		}
+		return engine.Result{Filename: leftover, Bytes: int64(len("retry with extras"))}, nil
+	}
+	if err := manager.Retry("job-extras-leftover"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if !request.Overwrite || request.Filesystem.Resume.SessionID != "" {
+			t.Fatalf("leftover extras retry = %#v; want replace without a session", request)
+		}
+		if !request.Subtitles.Embed || !request.EmbedMetadata || request.EmbedChapters == nil || !*request.EmbedChapters {
+			t.Fatalf("queued extras dropped on leftover retry: %#v", request)
+		}
+		if request.Thumbnails.Write || request.Thumbnails.Embed {
+			t.Fatalf("artwork must stay unsent: %#v", request.Thumbnails)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("leftover extras retry did not start a download")
+	}
+	waitForV2Job(t, store, "job-extras-leftover", jobmodel.LifecycleCompleted)
+	body, err := os.ReadFile(leftover)
+	if err != nil || string(body) != "retry with extras" {
+		t.Fatalf("reserved file = %q, %v; want replaced contents", body, err)
+	}
+	_ = plan
+}
+
+func TestV2OutputExtrasRetryFailureLeavesOriginalFile(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras-keep")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "invalid_input"
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeSidecar}
+	leftover := filepath.Join(root, "Demo [abc123] [1080p].mp4")
+	if err := os.WriteFile(leftover, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		if !request.Overwrite {
+			t.Fatal("extras retry must ask the engine to replace after a finished attempt")
+		}
+		return engine.Result{}, errors.New("embed failed after transfer")
+	}
+	if err := manager.Retry("job-extras-keep"); err != nil {
+		t.Fatal(err)
+	}
+	waitForV2Job(t, store, "job-extras-keep", jobmodel.LifecycleFailed)
+	body, err := os.ReadFile(leftover)
+	if err != nil || string(body) != "keep me" {
+		t.Fatalf("original file = %q, %v; VidStow must not delete before the runner", body, err)
+	}
+	_ = plan
+}
+
+func TestV2PlainRetryKeepsNoReplace(t *testing.T) {
+	store, root, _ := newV2TestStore(t, "job-plain-retry")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	originalSession := store.state.Jobs[0].SessionID
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.inspectResume = func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+		return engine.ResumeSummary{HasManifest: true, Classification: "available"}, nil
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4"), Bytes: 1}, nil
+	}
+	if err := manager.Retry("job-plain-retry"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if request.Overwrite {
+			t.Fatal("plain media retry must keep no-replace")
+		}
+		if request.Filesystem.Resume.SessionID != originalSession {
+			t.Fatalf("plain retry session = %q; want %q", request.Filesystem.Resume.SessionID, originalSession)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("plain retry did not start a download")
+	}
+}
+
+func TestHumanErrorResumeExtrasIsNotVideoUnavailable(t *testing.T) {
+	err := &engine.Error{
+		Category: engine.ErrorUnsupported,
+		Op:       "validate session output",
+		Err:      errors.New("resumable sessions do not support output sidecars or processing"),
+	}
+	if got := humanError(err); got != "VidStow could not save subtitles or extra details with this download" {
+		t.Fatalf("humanError() = %q", got)
+	}
+	if got := errorReason(err); got != "internal" {
+		t.Fatalf("errorReason() = %q; want internal so the queue does not say the video is gone", got)
+	}
+}
+
 func TestHumanErrorOtherUnsupportedIsUnchanged(t *testing.T) {
 	err := &engine.Error{
 		Category: engine.ErrorUnsupported,
@@ -586,6 +847,27 @@ func TestHumanErrorOtherUnsupportedIsUnchanged(t *testing.T) {
 
 	if got := humanError(err); got != "This link is not supported" {
 		t.Fatalf("humanError() = %q; want ordinary unsupported message", got)
+	}
+}
+
+func TestDestinationExistsIsNotCouldNotStart(t *testing.T) {
+	err := &engine.Error{
+		Category: engine.ErrorInvalidInput,
+		Op:       "inspect destination",
+		Err:      errors.New("destination already exists: Demo [abc123] [1080p].mp4"),
+	}
+	if got := errorReason(err); got != "destination-exists" {
+		t.Fatalf("errorReason() = %q; want destination-exists", got)
+	}
+	if got := humanError(err); got != "A file is already in the save folder" {
+		t.Fatalf("humanError() = %q", got)
+	}
+	collision := errors.New("output destination collision: probe.jpg")
+	if isDestinationExists(collision) {
+		t.Fatal("thumbnail collision must not count as destination exists")
+	}
+	if !isOutputDestinationCollision(collision) {
+		t.Fatal("thumbnail collision detector missed output destination collision")
 	}
 }
 

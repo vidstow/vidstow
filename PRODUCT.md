@@ -161,13 +161,13 @@ The URL field stays pinned to the top of Home, empty or after Analyze. The dock,
 
 - Thumbnail, title, channel, optional Short badge, duration, view count
 - If the original link also contained a playlist: a swap line `Part of playlist: <title> · N videos →`
-- **Video / Audio** pills and format chips (`1440p`, `M4A (Original)`) sit on an **Output** row under the identity, not beside the thumbnail
+- **Video / Audio** pills and format chips (`1440p`, `M4A`) sit on an **Output** row under the identity, not beside the thumbnail. Original audio chips keep a tooltip for Original
 - Title uses a two-line clamp. Hover still shows the full name
-- Under the channel line: muted container · codecs, then size. Updates with the selected chip
-- Inspector rows: **Output**, **Subtitles** (**Off** / **File** / **Embed**, language, sidecar format), **In the file** (title & channel, artwork, chapters). Choices seed from Settings; English is pre-selected when the video offers it. FFmpeg-dependent controls stay disabled with an Open Settings link while FFmpeg is missing. Audio greys **Subtitles** in place so the card does not jump; captions are not written on audio downloads
+- Under the channel line: one muted receipt (`M4A · AAC · 302 KB`). Updates with the selected chip
+- Inspector rows: **Output**, **Subtitles** (**Off** / **File** / **Embed**, language, sidecar format), **In the file** (title & channel, artwork, chapters). Choices seed from Settings; English is pre-selected when the video offers it. FFmpeg-dependent controls stay disabled with an Open Settings link while FFmpeg is missing. Audio greys **Subtitles** in place so the card does not jump, labels the row **Video only**, and drops File’s accent while the choice is remembered. Captions are not written on audio downloads
 - Footer: **Change**, the path, **Download**. Success: banner `Queued for download`, then Queue. The dock clears; the URL stays
 
-Changing the URL clears analysis. Confirm before starting downloads (off by default) asks `Add this download?` before enqueue.
+Changing the URL clears analysis.
 
 **Playlist after analysis.** Same dock, adapted:
 
@@ -178,7 +178,7 @@ Changing the URL clears analysis. Confirm before starting downloads (off by defa
 - Range Apply with an invalid span shows `Enter positions from N to M` on the header. Selection is by original index
 - Footer: **Change** then the playlist folder path. **Download N videos**. N is selected count. Success navigates to Queue
 
-Confirm before starting downloads, or more than 100 selected videos, asks `Add this playlist?` before enqueue.
+More than 100 selected videos asks `Add this playlist?` before enqueue.
 
 **Link that is both video and playlist.** Before any dock, Home shows `This link includes a playlist` / `Choose what to download.` Two cards: the pasted **Video** and **Playlist** (primary). Esc cancels. After a choice, a swap line on the dock switches. The other side is cached so the swap does not re-paste.
 
@@ -202,15 +202,17 @@ Queue is operations. Master-detail: dense rows on the left, inspector on the rig
 
 A job row is thumbnail, title, progress bar, and a mono tail (speed · ETA, paused, waiting · slot, or the failure heading). Actions do not sit on the row. Selecting a row drives the inspector. Space toggles pause/resume on the focused job.
 
-**Inspector (right).** For a video: title, still, metadata, Speed / ETA / Progress / Status, bar, then authorized actions. Non-default output choices appear as a backend-authored note at the end of the metadata line. Failed jobs add the error card and **Copy details**. For a playlist: title, still, `Playlist · N/M finished`, live children, then authorized parent actions. Batch collections stay count-badge only. Cancel and Remove confirm: completed files remain on disk.
+**Inspector (right).** For a video: title, still, metadata, Speed / ETA / Progress / Status, bar, then authorized actions. Non-default output choices appear as a backend-authored note at the end of the metadata line. Failed jobs add zinc failure copy, then the next click (**Retry**, **Start again**, or **Change**) beside **Remove**. **Retry** of a subtitles or extras download uses the options already on that row and replaces that row’s leftover file only after the new attempt finishes. First save stays no-replace. **Cancel** is not shown on a failed row. **Open source** and **Copy link** appear only when the failure is a refused download or a genuinely unavailable video. For a playlist: title, still, `Playlist · N/M finished`, live children, then authorized parent actions. Batch collections stay count-badge only. Cancel and Remove confirm: completed files remain on disk.
 
 Action buttons are the authorized set for that job or collection. Labels that exist when authorized: Pause, Cancel, Resume / Restart download, Retry, Download again, Start again, Open source, Copy link, Review, Open, Remove. Start again sends the URL back to Home for re-analysis.
 
 Pause all copy on success: `Pause requested for N jobs.` The product does not claim every job paused instantly. Footer: `Jobs are saved automatically.` when persistence is healthy.
 
-Occupancy is a real product fact (N of M active slots). It sits beside the Queue title and in the status bar. Do not invent a second scheduler UI.
+Occupancy is a real product fact (N of M active slots). When idle, the Queue header says `No active downloads` and reports failed/canceled counts. Bulk controls appear only when applicable. In-progress work, Needs attention, and collapsed Canceled attempts are separate sections; completed files stay in Downloads. Rows include output quality and lifecycle, with authorized Retry or Remove actions directly on the row. Settled cancellations have no progress bars or transfer statistics.
 
-**Lifecycle labels** (do not collapse these into generic Downloading): Queued, Preparing, Downloading, Waiting for processing, Finalizing, Ready to publish, Publishing, Pausing, Paused, Canceling, Failed, Canceled, Completed, Action required, Cleaning up.
+New failures keep structured stage, reason code, HTTP status when available, and timestamp across restarts. Failure details exposes those values; raw engine errors, signed URLs, and credentials are never persisted. Historical rows without this evidence do not invent a failure time or reason.
+
+**Lifecycle labels** (do not collapse these into generic Downloading): Queued, Preparing, Downloading, Waiting for processing, Finalizing, Ready to publish, Publishing, Pausing, Paused, Canceling, Failed, Canceled, Completed, Action required, Cleaning up. **Cleaning up** is only while temporary data is still being removed. After that the row says **Canceled**.
 
 Progress, speed, and ETA are live presentation. They do not authorize buttons.
 
@@ -241,7 +243,6 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 
 - Default download folder, Show in Finder, **Change Folder**. Show in Finder is hard-coded on every OS.
 - Create a subfolder for each download (switch). Playlist admission still uses a playlist folder under that root.
-- Confirm before starting downloads (switch, off by default)
 - Interrupted jobs are a fixed value, `In progress continues`. The download that was in progress continues on launch. Waiting stays waiting. Paused stays paused.
 
 **Performance**
@@ -283,7 +284,7 @@ Never display the string `yt-dlp` as the engine name. The branded engine is `ytd
 
 **Destination conflict.** `Choose a new filename`. VidStow will not replace the existing file. Authority is the opaque conflict token, never the displayed filename.
 
-**Action required review.** Eyebrow `Action required`, heading and item title from the backend, then only the buttons the review model enables: Remove from queue, Discard saved data, Retry cleanup, Try recovery again, Retry with fresh link, Start over from Home. Closing the dialog leaves the row in the queue. Start over returns the URL to Home.
+**Action required review.** Compact confirms match ordinary dialogs: title, one secondary sentence, **Remove** and **Retry**. No red eyebrow. When leftover bytes or uncertain saved data exist, the larger review keeps Remove from queue, Discard saved data, Retry cleanup, Try recovery again, Retry with fresh link, and Start over from Home. Closing the dialog leaves the row in the queue. Start over returns the URL to Home. A session that never wrote a file offers **Retry** on the inspector and does not open Review.
 
 **Cannot save.** `VidStow cannot save this session`. The data folder is not writable or is unsafe. Open data folder. No sidebar, no queue.
 
@@ -317,7 +318,7 @@ Honor `prefers-reduced-motion`. No page-route animation, no skeleton shimmer, no
 
 **Toasts vs dialogs.** Success and short info go to the banner. Failures that need a decision go to a modal.
 
-**Confirm only when the action is destructive or ambiguous.** Adding to the queue does not confirm unless Confirm before starting downloads is on, or a playlist has more than 100 selected videos. Canceling a collection does. Deleting a file does. Discarding saved session data does.
+**Confirm only when the action is destructive or ambiguous.** Adding to the queue does not confirm unless a playlist has more than 100 selected videos. Canceling a collection does. Deleting a file does. Discarding saved session data does.
 
 **Capability + token.** Every mutating queue control is disabled unless both the capability flag is true and the command token is valid. Persistence failure strips capabilities.
 

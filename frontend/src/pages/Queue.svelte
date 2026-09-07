@@ -142,13 +142,14 @@
   async function removeActionRequired() {
     if (!actionRequiredAuthority || startingOver) return;
     const authority = actionRequiredAuthority;
+    const preserved = Boolean(actionRequiredReview?.preservationNotice);
     startingOver = true;
     try {
       await api.queue.remove(authority.jobId, authority.commandToken);
       actionRequiredReview = null;
       actionRequiredAuthority = null;
       await refresh();
-      showBanner('info', 'Removed from the queue. Saved temporary data was left on disk.');
+      showBanner('info', preserved ? 'Removed from the queue. Saved temporary data was left on disk.' : 'Removed from the queue.');
     } catch (err) {
       await reloadActionRequiredReview(authority.jobId);
       showError(err, 'Could not remove this download');
@@ -184,7 +185,7 @@
       actionRequiredReview = null;
       actionRequiredAuthority = null;
       await refresh();
-      showBanner('info', 'Retrying in place with a freshly resolved media link. The uncertain session was retained for safe cleanup.');
+      showBanner('info', 'Retrying this download.');
     } catch (err) {
       actionRequiredReview = null;
       actionRequiredAuthority = null;

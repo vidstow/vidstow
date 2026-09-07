@@ -72,12 +72,42 @@ func TestPlanPrivateSelectorsAreNotJSONFields(t *testing.T) {
 	}
 }
 
+func TestBuildSplitsStandardAndHighFrameRates(t *testing.T) {
+	info := map[string]any{
+		"formats": []any{
+			formatFPS("299", "mp4", "avc1.64002A", "none", 1920, 1080, 60, 8000, 0, 0),
+			formatFPS("137", "mp4", "avc1.640028", "none", 1920, 1080, 30, 4500, 0, 0),
+			format("140", "m4a", "none", "mp4a.40.2", 0, 0, 129, 129, 2_000_000),
+		},
+	}
+	plans := Build(info, 120)
+	if len(plans) < 2 {
+		t.Fatalf("plans = %#v", plans)
+	}
+	high := plans[0]
+	if high.ID != "video-1080-60-mp4" || high.Label != "1080p60" || high.FPS != 60 || high.Selector != "299+140" || !high.Recommended {
+		t.Fatalf("60fps plan = %#v", high)
+	}
+	standard := plans[1]
+	if standard.ID != "video-1080-mp4" || standard.Label != "1080p" || standard.FPS != 30 || standard.Selector != "137+140" {
+		t.Fatalf("30fps plan = %#v", standard)
+	}
+}
+
 func format(id, ext, video, audio string, width, height int64, tbr, abr float64, size int64) map[string]any {
-	return map[string]any{
+	return formatFPS(id, ext, video, audio, width, height, 0, tbr, abr, size)
+}
+
+func formatFPS(id, ext, video, audio string, width, height, fps int64, tbr, abr float64, size int64) map[string]any {
+	object := map[string]any{
 		"format_id": id, "ext": ext, "vcodec": video, "acodec": audio,
 		"width": float64(width), "height": float64(height), "tbr": tbr, "abr": abr,
 		"filesize": float64(size),
 	}
+	if fps > 0 {
+		object["fps"] = float64(fps)
+	}
+	return object
 }
 
 func itoa(value int) string {

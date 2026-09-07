@@ -34,6 +34,7 @@ type Plan struct {
 	SizeIsApproximate bool   `json:"sizeIsApproximate,omitempty"`
 	RequiresFFmpeg    bool   `json:"requiresFfmpeg,omitempty"`
 	AudioBitrateKbps  int    `json:"audioBitrateKbps,omitempty"`
+	FPS               int64  `json:"fps,omitempty"`
 	Recommended       bool   `json:"recommended,omitempty"`
 	// Available is informational. A returned curated plan remains the sole
 	// product contract for whether the UI may offer it.
@@ -43,18 +44,24 @@ type Plan struct {
 	SourceFormatIDs []string `json:"-"`
 }
 
+type videoSlot struct {
+	height int64
+	fps    int64
+}
+
 type mediaFormat struct {
 	id, ext, vcodec, acodec string
-	width, height           int64
+	width, height, fps      int64
 	tbr, abr                float64
 	filesize, approx        int64
 }
 
 var safeFormatID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
-// Build returns one recommended video output per available resolution,
-// original M4A/Opus audio choices, and MP3 conversions at 128/192/256 kbps.
-// Raw private media URLs are never retained in a Plan.
+// Build returns one recommended video output per available resolution and
+// frame-rate family (30 / 60 / 120), original M4A/Opus audio choices, and MP3
+// conversions at 128/192/256 kbps. Raw private media URLs are never retained
+// in a Plan.
 func Build(info map[string]any, durationSeconds int64) []Plan {
 	formats := decodeFormats(info["formats"])
 	if len(formats) == 0 {
@@ -62,25 +69,31 @@ func Build(info map[string]any, durationSeconds int64) []Plan {
 	}
 
 	audios := make([]mediaFormat, 0)
-	videosByHeight := make(map[int64][]mediaFormat)
+	videosBySlot := make(map[videoSlot][]mediaFormat)
 	for _, format := range formats {
 		if hasAudio(format) && !hasVideo(format) {
 			audios = append(audios, format)
 		}
 		if hasVideo(format) && format.height > 0 {
-			videosByHeight[format.height] = append(videosByHeight[format.height], format)
+			slot := videoSlot{height: format.height, fps: fpsFamily(format.fps)}
+			videosBySlot[slot] = append(videosBySlot[slot], format)
 		}
 	}
 
-	heights := make([]int64, 0, len(videosByHeight))
-	for height := range videosByHeight {
-		heights = append(heights, height)
+	slots := make([]videoSlot, 0, len(videosBySlot))
+	for slot := range videosBySlot {
+		slots = append(slots, slot)
 	}
-	sort.Slice(heights, func(i, j int) bool { return heights[i] > heights[j] })
+	sort.Slice(slots, func(i, j int) bool {
+		if slots[i].height != slots[j].height {
+			return slots[i].height > slots[j].height
+		}
+		return slots[i].fps > slots[j].fps
+	})
 
-	plans := make([]Plan, 0, len(heights)+5)
-	for _, height := range heights {
-		if plan, ok := bestVideoPlan(videosByHeight[height], audios, durationSeconds); ok {
+	plans := make([]Plan, 0, len(slots)+5)
+	for _, slot := range slots {
+		if plan, ok := bestVideoPlan(videosBySlot[slot], audios, durationSeconds, slot.fps); ok {
 			plans = append(plans, plan)
 		}
 	}
@@ -131,6 +144,7 @@ func decodeFormats(raw any) []mediaFormat {
 			acodec:   strings.ToLower(text(object, "acodec")),
 			width:    integer(object, "width"),
 			height:   integer(object, "height"),
+			fps:      roundedNumber(object, "fps"),
 			tbr:      number(object, "tbr"),
 			abr:      number(object, "abr"),
 			filesize: integer(object, "filesize"),
@@ -144,7 +158,7 @@ func decodeFormats(raw any) []mediaFormat {
 	return formats
 }
 
-func bestVideoPlan(videos, audios []mediaFormat, duration int64) (Plan, bool) {
+func bestVideoPlan(videos, audios []mediaFormat, duration, fps int64) (Plan, bool) {
 	type candidate struct {
 		video mediaFormat
 		audio mediaFormat
@@ -189,15 +203,16 @@ func bestVideoPlan(videos, audios []mediaFormat, duration int64) (Plan, bool) {
 	}
 
 	return Plan{
-		ID:                fmt.Sprintf("video-%d-%s", best.video.height, container),
+		ID:                videoPlanID(best.video.height, container, fps),
 		Kind:              KindVideo,
-		Label:             resolutionLabel(best.video.height),
+		Label:             videoPlanLabel(best.video.height, fps),
 		Resolution:        resolutionLabel(best.video.height),
 		Container:         strings.ToUpper(container),
 		VideoCodec:        displayVideoCodec(best.video.vcodec),
 		AudioCodec:        displayAudioCodec(audioCodec),
 		Width:             best.video.width,
 		Height:            best.video.height,
+		FPS:               fps,
 		ApproxBytes:       approxBytes,
 		SizeIsApproximate: approximate,
 		RequiresFFmpeg:    requiresFFmpeg,
@@ -343,6 +358,32 @@ func formatSize(format mediaFormat, duration int64) (int64, bool) {
 	return 0, false
 }
 
+func videoPlanID(height int64, container string, fps int64) string {
+	if fps > 30 {
+		return fmt.Sprintf("video-%d-%d-%s", height, fps, container)
+	}
+	return fmt.Sprintf("video-%d-%s", height, container)
+}
+
+func videoPlanLabel(height, fps int64) string {
+	base := resolutionLabel(height)
+	if fps > 30 {
+		return fmt.Sprintf("%s%d", base, fps)
+	}
+	return base
+}
+
+func fpsFamily(fps int64) int64 {
+	switch {
+	case fps >= 90:
+		return 120
+	case fps >= 45:
+		return 60
+	default:
+		return 30
+	}
+}
+
 func resolutionLabel(height int64) string {
 	switch height {
 	case 2160:
@@ -425,6 +466,14 @@ func firstInteger(object map[string]any, keys ...string) int64 {
 		}
 	}
 	return 0
+}
+
+func roundedNumber(object map[string]any, key string) int64 {
+	value := number(object, key)
+	if value <= 0 {
+		return 0
+	}
+	return int64(value + 0.5)
 }
 
 func number(object map[string]any, key string) float64 {

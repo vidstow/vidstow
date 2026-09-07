@@ -1,11 +1,21 @@
 import { describe, expect, test } from 'vitest';
 
-import { formatDiscardConfirm, formatEngineVersion, formatPlanSize, formatRelative, formatViewCount, youtubeUrlFromText } from '../src/lib/format.js';
+import { formatDiscardConfirm, formatEngineVersion, formatPlanSize, formatRelative, formatViewCount, shortAudioChip, youtubeUrlFromText } from '../src/lib/format.js';
 
 describe('formatPlanSize', () => {
   test('keeps approximate and exact sizes as plain labels', () => {
     expect(formatPlanSize(65.3 * 1024 * 1024)).toBe('65.3 MB');
     expect(formatPlanSize(478.6 * 1024 * 1024, true)).toBe('~478.6 MB');
+  });
+});
+
+describe('shortAudioChip', () => {
+  test('shortens original and kbps labels for the Output row', () => {
+    expect(shortAudioChip('M4A (Original)')).toEqual({ label: 'M4A', title: 'Original' });
+    expect(shortAudioChip('Opus (Original)')).toEqual({ label: 'Opus', title: 'Original' });
+    expect(shortAudioChip('MP3 128 kbps')).toEqual({ label: 'MP3 128' });
+    expect(shortAudioChip('MP3 256 kbps')).toEqual({ label: 'MP3 256' });
+    expect(shortAudioChip('1080p')).toEqual({ label: '1080p' });
   });
 });
 

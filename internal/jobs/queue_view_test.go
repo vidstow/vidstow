@@ -254,6 +254,63 @@ func TestActionRequiredCollectionChildrenCanBeDismissedWithoutOrphaningParent(t 
 	}
 }
 
+func TestActionRequiredReviewCompactsWhenInspectFailsWithoutLeftoverBytes(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "action-empty")
+	job := &store.state.Jobs[0]
+	job.Lifecycle = jobmodel.LifecycleActionRequired
+	job.Desired = jobmodel.DesiredPaused
+	job.ActionRequiredCode = "recovery-session-unavailable"
+	job.LastErrorCode = job.ActionRequiredCode
+	job.LastFailureCommittedBytes = 0
+
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	view := manager.QueueView()
+	if len(view.Rows) != 1 || !view.Rows[0].Capabilities.Retry || view.Rows[0].Capabilities.Review || !view.Rows[0].Capabilities.Remove {
+		t.Fatalf("empty inspect capabilities = %#v", view.Rows)
+	}
+	if view.Rows[0].Failure == nil || view.Rows[0].Failure.Heading != "Download could not start" || view.Rows[0].Failure.Message != "Nothing was saved." {
+		t.Fatalf("empty inspect failure = %#v", view.Rows[0].Failure)
+	}
+	review, err := manager.QueueActionRequiredReview(job.ID, view.Rows[0].CommandToken)
+	if err == nil {
+		t.Fatalf("compact inspect still exposed Review: %#v", review)
+	}
+}
+
+func TestActionRequiredReviewKeepsRecoveryKitWhenLeftoverBytesExist(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "action-leftover")
+	job := &store.state.Jobs[0]
+	job.Lifecycle = jobmodel.LifecycleActionRequired
+	job.Desired = jobmodel.DesiredPaused
+	job.ActionRequiredCode = "recovery-session-unavailable"
+	job.LastErrorCode = job.ActionRequiredCode
+	job.LastFailureCommittedBytes = 4 << 20
+
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	view := manager.QueueView()
+	review, err := manager.QueueActionRequiredReview(job.ID, view.Rows[0].CommandToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if review.Heading != "This download needs your decision" || review.PreservationNotice == "" || !review.CanStartOver || !review.CanRetryRecovery || !review.CanDiscard || !review.CanRemove {
+		t.Fatalf("leftover inspect review = %#v", review)
+	}
+}
+
 func TestQueueActionRequiredReviewIsAuthorizedAndPreservesEvidence(t *testing.T) {
 	m := New(nil, nil)
 	defer m.Close()
@@ -488,6 +545,28 @@ func TestCleanupEvidenceBlocksRemovalAndQuarantineCanBeRetried(t *testing.T) {
 	}
 	if got := store.Snapshot().Cleanup[0].State; got != jobmodel.CleanupPending {
 		t.Fatalf("cleanup state = %q; want pending", got)
+	}
+}
+
+func TestSettledCanceledCleanupDoesNotKeepCleaningUpPhase(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "cleanup-settled")
+	job := store.state.Jobs[0]
+	job.Lifecycle = jobmodel.LifecycleCanceled
+	job.Desired = jobmodel.DesiredCanceled
+	job.Phase = jobmodel.PhaseCleaningUp
+	store.state.Jobs[0] = job
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	view := manager.QueueView()
+	row := view.Rows[0]
+	if row.Lifecycle != jobmodel.LifecycleCanceled || row.Phase != "" || !row.Capabilities.Remove || row.Capabilities.Pause {
+		t.Fatalf("settled canceled row = %#v", row)
 	}
 }
 

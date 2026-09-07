@@ -318,7 +318,7 @@ func TestOpenV2SalvagesSettingsWhenQueueJSONIsUnreadable(t *testing.T) {
 	if len(got.Jobs) != 0 {
 		t.Fatalf("invalid-jobs left queue rows: %#v", got.Jobs)
 	}
-	if got.Settings.DownloadFolder != "/tmp/salvaged-downloads" || got.Settings.DownloadConcurrency != 3 || !got.Settings.ConfirmBeforeDownload || got.Settings.AutomaticDiagnostics != "disabled" {
+	if got.Settings.DownloadFolder != "/tmp/salvaged-downloads" || got.Settings.DownloadConcurrency != 3 || got.Settings.AutomaticDiagnostics != "disabled" {
 		t.Fatalf("invalid-jobs did not salvage settings: %#v", got.Settings)
 	}
 	_ = s.Close()
@@ -350,7 +350,7 @@ func TestOpenV2SalvagesSettingsFromUnsupportedVersion(t *testing.T) {
 	if got.Version != jobmodel.StateVersion || len(got.Jobs) != 0 {
 		t.Fatalf("unsupported-version did not write a fresh v2 queue: %#v", got)
 	}
-	if got.Settings.DownloadFolder != "/tmp/salvaged-from-v99" || got.Settings.DownloadConcurrency != 4 || got.Settings.PerVideoSubfolder || !got.Settings.ConfirmBeforeDownload || got.Settings.AutomaticDiagnostics != "enabled" {
+	if got.Settings.DownloadFolder != "/tmp/salvaged-from-v99" || got.Settings.DownloadConcurrency != 4 || got.Settings.PerVideoSubfolder || got.Settings.AutomaticDiagnostics != "enabled" {
 		t.Fatalf("unsupported-version did not salvage settings: %#v", got.Settings)
 	}
 	_ = s.Close()
@@ -1390,11 +1390,11 @@ func TestV2StoreRereadsLatestImageUnderLock(t *testing.T) {
 	if err := first.Transaction(nil, func(state *jobmodel.State) error { state.Settings.FFmpegPath = "first"; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if err := second.Transaction(nil, func(state *jobmodel.State) error { state.Settings.ConfirmBeforeDownload = true; return nil }); err != nil {
+	if err := second.Transaction(nil, func(state *jobmodel.State) error { state.Settings.DownloadConcurrency = 7; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	got := second.Snapshot()
-	if got.Settings.FFmpegPath != "first" || !got.Settings.ConfirmBeforeDownload {
+	if got.Settings.FFmpegPath != "first" || got.Settings.DownloadConcurrency != 7 {
 		t.Fatalf("lost cross-store update: %#v", got.Settings)
 	}
 }
@@ -1452,5 +1452,42 @@ func TestV2SettingsOutputOptionsRoundTrip(t *testing.T) {
 	}
 	if got := s.Settings(); !got.OutputOptions.Equal(want.OutputOptions) {
 		t.Fatalf("invalid write changed settings: %#v", got.OutputOptions)
+	}
+}
+
+func TestV2FailureEvidenceSurvivesReopenAndSnapshotIsolation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	s, _, err := OpenV2(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := testJob()
+	job.Lifecycle = jobmodel.LifecycleFailed
+	job.LastErrorCode = "authentication"
+	want := jobmodel.FailureEvidence{Stage: "extraction", Code: "authentication", At: time.Now().UTC()}
+	job.LastFailure = &want
+	if err := s.Transaction(nil, func(state *jobmodel.State) error {
+		state.Jobs = []jobmodel.DurableJob{job}
+		state.NextQueueOrdinal = 2
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := s.Snapshot()
+	snapshot.Jobs[0].LastFailure.Code = "mutated"
+	if s.Snapshot().Jobs[0].LastFailure.Code != "authentication" {
+		t.Fatal("snapshot shares failure evidence")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, status, err := OpenV2(path)
+	if err != nil || !status.Healthy() {
+		t.Fatalf("reopen: %+v %v", status, err)
+	}
+	defer reopened.Close()
+	got := reopened.Snapshot().Jobs[0].LastFailure
+	if got == nil || *got != want {
+		t.Fatalf("failure evidence = %+v; want %+v", got, want)
 	}
 }

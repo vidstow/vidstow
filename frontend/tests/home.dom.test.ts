@@ -19,8 +19,8 @@ function videoSummary(raw: string) {
       { code: 'en', name: 'English (auto-generated)', auto: true },
     ],
     plans: [
-      { id: 'video', kind: 'video', label: 'Video plan', container: 'mp4', available: true, recommended: true },
-      { id: 'audio', kind: 'audio', label: 'Audio plan', container: 'm4a', available: true },
+      { id: 'video', kind: 'video', label: 'Video plan', container: 'MP4', videoCodec: 'H.264', audioCodec: 'AAC', approxBytes: 309248, available: true, recommended: true },
+      { id: 'audio', kind: 'audio', label: 'M4A (Original)', container: 'M4A', audioCodec: 'AAC', approxBytes: 309248, available: true },
     ],
   };
 }
@@ -53,7 +53,7 @@ function installBindings() {
   const AnalyzeBatchURLs = vi.fn();
   const StartBatchDownload = vi.fn();
   const StartDownload = vi.fn(async () => 'job-1');
-  const StartPlaylistDownload = vi.fn(async () => ({ collectionId: 'playlist-1', admitted: 2 }));
+  const StartPlaylistDownload = vi.fn(async (_req: { selectedItems: number[] }) => ({ collectionId: 'playlist-1', admitted: 2 }));
   (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload } } };
   return { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload };
 }
@@ -115,7 +115,7 @@ describe('Home analysis authority', () => {
     pendingUrl.set('');
     modal.set(null);
     banner.set(null);
-    settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', confirmBeforeDownload: false }));
+    settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads' }));
     installBindings();
   });
 
@@ -515,10 +515,15 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByRole('button', { name: 'Download' })).toBeEnabled();
     expect(screen.getByRole('radio', { name: 'Video plan' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('MP4 · H.264 · AAC')).toBeInTheDocument();
+    expect(screen.getByText('302 KB')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Audio' }));
     expect(screen.getByRole('button', { name: 'Audio' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('radio', { name: 'Audio plan' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'M4A' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: 'M4A' })).toHaveAttribute('title', 'Original');
+    expect(screen.getByText('M4A · AAC')).toBeInTheDocument();
+    expect(screen.queryByText('Video only')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Download' }).querySelector('svg')).toBeTruthy();
   });
@@ -629,9 +634,12 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('radio', { name: 'Subtitle file' }));
     await user.click(screen.getByRole('button', { name: 'Subtitle language' }));
     await user.click(screen.getByRole('option', { name: 'English' }));
+    expect(screen.queryByText('Video only')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Audio' }));
     expect(screen.getByRole('radio', { name: 'Subtitle file' })).toBeDisabled();
-    expect(screen.getByText('Subtitles')).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'Subtitle file' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText(/Subtitles/)).toBeInTheDocument();
+    expect(screen.getByText('Video only')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Download' }));
 
     await waitFor(() => expect(StartDownload).toHaveBeenCalledTimes(1));

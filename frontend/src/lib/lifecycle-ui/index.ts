@@ -40,6 +40,7 @@ export {
   lifecycleLabel,
   lifecycleMessage,
   lifecycleTone,
+  visiblePhase,
   isValidConflictToken,
   isValidCommandToken,
   queuePositionLabel,

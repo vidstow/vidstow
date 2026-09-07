@@ -49,7 +49,7 @@ describe('backend-authored capabilities', () => {
   test('empty Queue still shows how many slots can run', () => {
     render(QueueOverview, { props: { model: queueModel() } });
     expect(screen.getByRole('heading', { name: 'Queue' })).toBeInTheDocument();
-    expect(screen.getByText('0 of 2 slots in use')).toBeInTheDocument();
+    expect(screen.getByText('No active downloads')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Pause all' })).not.toBeInTheDocument();
   });
@@ -73,13 +73,8 @@ describe('backend-authored capabilities', () => {
       events: { 'pause-all': onPauseAll, 'resume-all': onResumeAll },
     });
 
-    const pauseAll = screen.getByRole('button', { name: 'Pause all' });
-    const resumeAll = screen.getByRole('button', { name: 'Resume all' });
-    expect(pauseAll).toBeDisabled();
-    expect(resumeAll).toBeDisabled();
-
-    await user.click(pauseAll);
-    await user.click(resumeAll);
+    expect(screen.queryByRole('button', { name: 'Pause all' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume all' })).not.toBeInTheDocument();
     expect(onPauseAll).not.toHaveBeenCalled();
     expect(onResumeAll).not.toHaveBeenCalled();
   });
@@ -402,8 +397,8 @@ describe('backend-authored capabilities', () => {
     render(QueueOverview, {
       props: { model: queueModel({ commandToken: undefined, canPauseAll: false, canClearCompleted: false, jobs: [{ id: 'active-1', title: 'Active', lifecycle: 'active', occupiesSlot: true, capabilities: {}, commandToken: undefined }] }) },
     });
-    expect(screen.getByRole('button', { name: 'Pause all' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Resume all' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Pause all' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume all' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
   });
@@ -430,11 +425,81 @@ describe('backend-authored capabilities', () => {
       },
     });
 
-    expect(screen.getByText('Save folder is missing')).toBeInTheDocument();
+    expect(screen.getAllByText('Save folder is missing').length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: 'Change' }));
     expect(onAction.mock.calls[0][0]).toEqual({
       jobId: 'missing-folder', commandToken: 'folder-token', action: 'change-folder',
     });
+  });
+
+  test('failed inspector keeps Retry and Remove without Cancel or Open source', () => {
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'start-failed', title: 'Could not start', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'could_not_start', messageKey: 'queue.failure.could_not_start',
+              heading: 'Download could not start',
+              message: 'Nothing was saved.',
+              recommendedAction: 'Retry this item.',
+              retryable: true, partialOutput: false,
+            },
+            capabilities: { retry: true, remove: true }, commandToken: 'start-token',
+          }],
+        }),
+      },
+    });
+    expect(screen.getAllByText('Download could not start').length).toBeGreaterThan(0);
+    expect(screen.getByText('Nothing was saved.')).toBeInTheDocument();
+    expect(screen.queryByText(/hint:/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open source' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument();
+  });
+
+  test('canceled inspector drops Pause and does not stay on Cleaning up after Remove is authorized', async () => {
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'canceled', title: 'Canceled video', lifecycle: 'canceled', phase: 'cleaning-up', occupiesSlot: false,
+            capabilities: { remove: true }, commandToken: 'canceled-token',
+          }],
+        }),
+      },
+    });
+    await userEvent.click(screen.getByText('Canceled (1)'));
+    expect(screen.getAllByText('Canceled').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Cleaning up')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+  });
+
+  test('refused download inspector offers Retry, Open source, Copy link, and Remove', () => {
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'refused', title: 'Public video', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'authentication_required', messageKey: 'queue.failure.authentication_required',
+              heading: 'Download was refused',
+              message: 'The page may still play in a browser. Try again.', recommendedAction: 'Retry this item.',
+              retryable: true, partialOutput: false,
+            },
+            capabilities: { retry: true, remove: true, openSource: true, copyLink: true }, commandToken: 'auth-token',
+          }],
+        }),
+      },
+    });
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open source' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 
   test('unusable leftover paused rows offer Resume and Discard', async () => {
@@ -518,6 +583,40 @@ describe('action-required recovery', () => {
     await user.click(screen.getByRole('button', { name: 'Retry cleanup' }));
     expect(onRetryCleanup).toHaveBeenCalledOnce();
     expect(screen.queryByRole('button', { name: 'Discard saved data' })).not.toBeInTheDocument();
+  });
+
+  test('empty inspect review offers Retry this download and Remove only', async () => {
+    const onRetryFreshLink = vi.fn();
+    const onRemove = vi.fn();
+    const user = userEvent.setup();
+    render(ActionRequiredReviewDialog, {
+      props: {
+        open: true,
+        review: {
+          ...review,
+          heading: 'Download could not start',
+          message: 'Nothing was saved.',
+          preservationNotice: '',
+          canStartOver: false,
+          canRetryRecovery: false,
+          canRetryFreshLink: true,
+          canDiscard: false,
+          canRemove: true,
+          canRetryCleanup: false,
+        },
+        onRetryFreshLink,
+        onRemove,
+      },
+    });
+    expect(screen.queryByText('What happens to the saved data?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start over from Home' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try recovery again' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Discard saved data' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry with fresh link' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetryFreshLink).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(onRemove).toHaveBeenCalledOnce();
   });
 });
 
@@ -640,5 +739,44 @@ describe('modal keyboard focus', () => {
     rendered.unmount();
     expect(outside).toHaveFocus();
     outside.remove();
+  });
+});
+
+describe('restored historical attempts', () => {
+  test('separates failed and canceled resolutions, hides idle controls, and preserves action authority', async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    const { container, rerender } = render(QueueOverview, { props: {
+      model: queueModel({ jobs: [
+        { id: 'failed', title: 'Same video', qualityLabel: '480p', lifecycle: 'failed', occupiesSlot: false, capabilities: { retry: true }, commandToken: 'retry-token', failure: { category: 'authentication_required', messageKey: 'queue.failure.authentication_required', heading: 'Download was refused', message: 'Try again.', recommendedAction: 'Retry.', retryable: true, partialOutput: false, evidence: { stage: 'extraction', code: 'authentication', at: '2026-09-07T20:00:00Z' } } },
+        { id: 'canceled', title: 'Same video', qualityLabel: '1080p60', lifecycle: 'canceled', phase: 'cleaning-up', occupiesSlot: false, capabilities: { remove: true }, commandToken: 'remove-token' },
+        { id: 'done', title: 'Completed video', qualityLabel: '360p', lifecycle: 'completed', occupiesSlot: false },
+      ] }), onAction,
+    } });
+    expect(screen.getByText('No active downloads · 1 failed · 1 canceled')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Needs attention/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^In progress/ })).not.toBeInTheDocument();
+    expect(screen.getByText('480p · Failed')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Remove Same video' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Completed video')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume all' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry Same video' }));
+    expect(onAction).toHaveBeenLastCalledWith({ action: 'retry', jobId: 'failed', commandToken: 'retry-token' });
+    await user.click(screen.getByText('Failure details'));
+    expect(screen.getByText('extraction · authentication')).toBeVisible();
+    await user.click(screen.getByText('Canceled (1)'));
+    expect(screen.getByText('1080p60 · Canceled')).toBeVisible();
+    const canceledRow = screen.getByText('1080p60 · Canceled').closest('.qrow')!;
+    expect(canceledRow.querySelector('.qbar')).toBeNull();
+    await user.click(canceledRow);
+    expect(screen.getByText('Temporary data removed.')).toBeVisible();
+    expect(container.querySelector('.qinsp .istats')).toBeNull();
+    expect(container.querySelector('.qinsp .ibar')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Remove Same video' }));
+    expect(onAction).toHaveBeenLastCalledWith({ action: 'remove', jobId: 'canceled', commandToken: 'remove-token' });
+    await rerender({ model: queueModel({ jobs: [{ id: 'failed', title: 'Same video', qualityLabel: '480p', lifecycle: 'pending', occupiesSlot: false, capabilities: { pause: true }, commandToken: 'new-token' }] }), onAction });
+    expect(screen.getByRole('heading', { name: /^In progress/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Needs attention/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry Same video' })).not.toBeInTheDocument();
   });
 });

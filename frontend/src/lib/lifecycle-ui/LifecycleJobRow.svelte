@@ -4,6 +4,7 @@
   import {
     lifecycleMessage,
     queuePositionLabel,
+    visiblePhase,
     type LifecycleJobAction,
     type LifecycleJobEventDetail,
     type LifecycleJobEventName,
@@ -43,7 +44,7 @@
   const progress = $derived(
     job.progress === undefined ? undefined : Math.max(0, Math.min(100, Math.round(job.progress * 100))),
   );
-  const displayPhase = $derived(job.phase === 'cleaning-up' && enabled('remove') ? undefined : job.phase);
+  const displayPhase = $derived(visiblePhase(job));
   const message = $derived(lifecycleMessage({ ...job, phase: displayPhase }));
   const queueLabel = $derived(job.queueLabel ?? queuePositionLabel(job.queuePosition));
   const hasProgress = $derived(

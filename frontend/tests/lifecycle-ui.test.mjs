@@ -109,7 +109,7 @@ test('transitional and terminal row copy stays distinct', async () => {
 });
 
 test('durable outcomes cannot be masked by retained engine phases', async () => {
-  const { lifecycleLabel, lifecycleMessage, lifecycleTone } = await loadLifecycleTypes();
+  const { lifecycleLabel, lifecycleMessage, lifecycleTone, visiblePhase } = await loadLifecycleTypes();
   const base = { id: 'job-1', title: 'Example', occupiesSlot: false };
 
   assert.equal(lifecycleLabel('action-required', 'ready-to-publish'), 'Action required');
@@ -120,6 +120,8 @@ test('durable outcomes cannot be masked by retained engine phases', async () => 
   assert.equal(lifecycleLabel('active', 'publishing'), 'Publishing');
   assert.equal(lifecycleLabel('canceling', 'cleaning-up'), 'Cleaning up');
   assert.equal(lifecycleTone('canceling', 'cleaning-up'), 'neutral');
+  assert.equal(visiblePhase({ phase: 'cleaning-up', capabilities: { remove: true } }), undefined);
+  assert.equal(visiblePhase({ phase: 'cleaning-up', capabilities: { review: true } }), 'cleaning-up');
 });
 
 test('modal dialogs trap focus and only claim a destination preview when confirmed', async () => {

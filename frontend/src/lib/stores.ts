@@ -12,7 +12,6 @@ export const settings = writable<Settings>({
   windowHeight: 760,
   downloadConcurrency: 2,
   perVideoSubfolder: true,
-  confirmBeforeDownload: false,
   outputOptions: {},
   automaticDiagnostics: '',
 });

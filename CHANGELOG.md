@@ -19,13 +19,16 @@ does not exist yet.
   repeats the wordmark or an About item.
 - Home Try chips that fill the field with a sample video, playlist, or several
   links. Analyze is still the only submit.
-- Queue header occupancy `{n} of {limit} slots in use`, including on the empty
-  page. Pause all stays hidden until there is a list.
+- Queue separates in-progress work, attempts needing attention, and collapsible
+  canceled attempts. Rows show output quality and recovery actions; idle headers
+  explain failed/canceled counts and hide irrelevant bulk controls. Settled
+  cancellations no longer show progress or transfer statistics.
+- New download failures preserve safe stage, reason code, HTTP status when
+  available, and timestamp across restarts, available under Failure details.
 - Downloads rows with relative time, a chevron to expand, Open as the primary
   action, and Reveal as a ghost.
 - A clickable status-bar folder path that reveals the download folder. `Not set`
   is not clickable.
-- Confirm before starting downloads, off by default.
 - Settings colophon (version, license, platform, source, docs, built-with) in
   place of a separate About page. The About route still renders Settings.
 - Cannot-save stop when the data folder is unwritable or unsafe. An unreadable
@@ -37,9 +40,15 @@ does not exist yet.
   Subtitles in place; captions are not written on audio downloads. Durable
   jobs keep their output choices across retries and relaunch, and the queue
   inspector shows a note for non-default choices.
+- Home video chips split 30fps and 60fps when Analyze reports both at the same
+  height (`1080p` and `1080p60`). The identity line shows `60 fps` on the high
+  rate. Audio is unchanged.
 
 ### Changed
 
+- Home identity puts codec and size on one receipt line. Audio chips use short
+  labels (`M4A`, `MP3 128`). Disabled Subtitles shows **Video only** and keeps
+  File remembered without the blue selected chrome.
 - Ordinary quit leaves in-progress downloads running, the same as a crash. Pause
   downloads and quit is the path that records paused intent first.
 - Interrupted jobs are a fixed In progress continues policy. Waiting stays
@@ -49,8 +58,37 @@ does not exist yet.
 - The macOS window uses Dark Aqua so traffic lights and the title sit on the
   zinc canvas.
 - Start over from Action required returns the URL to Home.
+- Queue inspector actions use the shared app buttons and sit on one wrapping
+  row.
+
+### Removed
+
+- **Confirm before starting downloads.** Home **Download** queues immediately.
+  A playlist with more than 100 selected videos still asks first.
 
 ### Fixed
+
+- Queue rows no longer report **Video unavailable** when a download includes
+  subtitles or embedded extras. Those jobs skip the resume session, which cannot
+  publish sidecars, and use the classic save path instead. Embedded artwork is
+  skipped for now: the engine treats every YouTube thumbnail as the same file
+  and aborts the download.
+- Failed downloads that never started say **Download could not start**, not
+  **Video unavailable**. **Retry** stays the next click. **Open source** and
+  **Copy link** are not offered for that failure.
+- **Retry** of a subtitles or extras download replaces that row’s leftover
+  file after the new attempt finishes, using the options already queued.
+  A leftover collision says **File already in the folder**, not **Nothing
+  was saved.**
+- Action required with no leftover file uses the same inspector as a failed
+  start: **Retry** and **Remove**. Review is reserved for leftover saved data.
+- A YouTube refusal no longer says **Sign-in required**. It says **Download
+  was refused**, and **Retry** is the next click. **Open source** still opens
+  the page. VidStow cannot sign in to YouTube.
+- Canceled jobs no longer sit on **Cleaning up** after leftover temp data is
+  gone. The row says **Canceled**, and the inspector no longer offers **Pause**.
+- Queue confirms use the compact dialog chrome. Action required no longer
+  uses a red **Action required** eyebrow.
 
 - Active and queued downloads stay above completed work when collections and
   standalone videos are mixed in the queue.

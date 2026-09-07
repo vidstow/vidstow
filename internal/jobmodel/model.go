@@ -63,13 +63,14 @@ const (
 // Settings has no restoration preference. The in-progress download continues
 // on launch; waiting and paused jobs stay put.
 type Settings struct {
-	DownloadFolder        string `json:"downloadFolder"`
-	FFmpegPath            string `json:"ffmpegPath"`
-	WindowWidth           int    `json:"windowWidth"`
-	WindowHeight          int    `json:"windowHeight"`
-	DownloadConcurrency   int    `json:"downloadConcurrency"`
-	PerVideoSubfolder     bool   `json:"perVideoSubfolder"`
-	ConfirmBeforeDownload bool   `json:"confirmBeforeDownload"`
+	DownloadFolder      string `json:"downloadFolder"`
+	FFmpegPath          string `json:"ffmpegPath"`
+	WindowWidth         int    `json:"windowWidth"`
+	WindowHeight        int    `json:"windowHeight"`
+	DownloadConcurrency int    `json:"downloadConcurrency"`
+	PerVideoSubfolder   bool   `json:"perVideoSubfolder"`
+	// ConfirmBeforeDownload is unused. Kept so existing state.json still decodes.
+	ConfirmBeforeDownload bool   `json:"confirmBeforeDownload,omitempty"`
 	AutomaticDiagnostics  string `json:"automaticDiagnostics,omitempty"`
 	// OutputOptions seeds the per-download output choices shown before a
 	// download is queued. The zero value keeps VidStow's historical output.
@@ -281,6 +282,15 @@ type DurableCollection struct {
 	UpdatedAt   time.Time      `json:"updatedAt"`
 }
 
+// FailureEvidence contains only classified values, never raw engine errors,
+// request URLs, headers, cookies, or filesystem paths.
+type FailureEvidence struct {
+	Stage      string    `json:"stage"`
+	Code       string    `json:"code"`
+	HTTPStatus int       `json:"httpStatus,omitempty"`
+	At         time.Time `json:"at"`
+}
+
 type DurableJob struct {
 	ID                 string           `json:"id"`
 	CollectionID       string           `json:"collectionId,omitempty"`
@@ -299,6 +309,7 @@ type DurableJob struct {
 	RetryMode          RetryMode        `json:"retryMode"`
 	ActionRequiredCode string           `json:"actionRequiredCode,omitempty"`
 	LastErrorCode      string           `json:"lastErrorCode,omitempty"`
+	LastFailure        *FailureEvidence `json:"lastFailure,omitempty"`
 	// StartupResume marks the job that was downloading when VidStow last
 	// exited. Restore starts only these rows; waiting jobs stay waiting.
 	StartupResume bool `json:"startupResume,omitempty"`
@@ -396,6 +407,10 @@ func CloneState(in State) State {
 		out.Collections[i].ChildJobIDs = append([]string(nil), in.Collections[i].ChildJobIDs...)
 	}
 	for i := range out.Jobs {
+		if in.Jobs[i].LastFailure != nil {
+			evidence := *in.Jobs[i].LastFailure
+			out.Jobs[i].LastFailure = &evidence
+		}
 		out.Jobs[i].Reservation.Artifacts = append([]ReservedArtifact(nil), in.Jobs[i].Reservation.Artifacts...)
 		out.Jobs[i].Request.OutputOptions = in.Jobs[i].Request.OutputOptions.Clone()
 	}

@@ -200,7 +200,7 @@
     aria-disabled={subtitleChoiceBlocked}
     title={rowLockReason}
   >
-    <span class="elab">Subtitles</span>
+    <span class="elab">Subtitles{#if !allowSubtitles}<span class="only">Video only</span>{/if}</span>
     <div class="ectl">
       <div class="triad" role="radiogroup" aria-label="Subtitle mode">
         <button
@@ -304,9 +304,6 @@
                   >
                     <span class="fmt-check" aria-hidden="true">{selectedLanguages.has(language.code) ? '✓' : ''}</span>
                     <span class="fmt-lab">{displayName(language)}</span>
-                    <span class="auto-badge" title="Auto-translated" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 3l1.9 5.6 5.6 1.4-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/><path d="M19 15l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/></svg>
-                    </span>
                   </button>
                 {/each}
                 <div class="fmt-more">…and more on YouTube</div>
@@ -411,6 +408,16 @@
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 550;
+    line-height: 1.2;
+  }
+  .elab .only {
+    display: block;
+    margin-top: 1px;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1.2;
   }
   .ectl {
     display: flex;
@@ -445,6 +452,11 @@
     color: #93C5FD;
     background: var(--accent-soft);
   }
+  .erow.disabled .triad button.on,
+  .erow.disabled .triad button.on.file {
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+  }
   .triad button:disabled { cursor: default; }
   .ddwrap { position: relative; }
   .dd {
@@ -467,6 +479,8 @@
   .dd:hover:not(:disabled):not(.static) { border-color: var(--border-strong); }
   .dd.open { border-color: var(--accent-500); }
   .dd:disabled { opacity: 0.45; cursor: default; }
+  .erow.disabled .dd,
+  .erow.disabled .dd:disabled { opacity: 1; }
   .dd .cat { color: var(--text-muted); }
   .dd-v {
     min-width: 0;
@@ -507,8 +521,7 @@
     text-align: left;
     cursor: pointer;
   }
-  .fmt-opt:has(.tag),
-  .fmt-opt:has(.auto-badge) { grid-template-columns: 16px minmax(0, 1fr) auto; }
+  .fmt-opt:has(.tag) { grid-template-columns: 16px minmax(0, 1fr) auto; }
   .fmt-opt:hover,
   .fmt-opt.on { background: var(--surface-hover); color: var(--text-primary); }
   .fmt-check { color: var(--accent-400); font-size: 11px; }
@@ -541,14 +554,6 @@
     border-radius: 99px;
     padding: 1px 7px;
     white-space: nowrap;
-  }
-  .auto-badge {
-    display: inline-flex;
-    padding: 3px;
-    border-radius: 6px;
-    background: rgba(34, 197, 94, 0.14);
-    color: #4ade80;
-    flex-shrink: 0;
   }
   .also {
     height: 26px;

@@ -2,7 +2,8 @@
   import { modal } from '../stores.js';
   function close() { modal.set(null); }
   $: current = $modal;
-  $: choice = current?.kind === 'confirm' || current?.kind === 'ffmpeg-missing' || current?.kind?.startsWith('confirm-');
+  $: compact = current?.kind === 'confirm' || !!current?.kind?.startsWith('confirm-');
+  $: choice = compact || current?.kind === 'ffmpeg-missing';
 </script>
 
 <svelte:window on:keydown={(event) => event.key === 'Escape' && close()} />
@@ -12,6 +13,7 @@
     <div
       class:ffmpeg={current.kind === 'ffmpeg-missing'}
       class:confirm={choice}
+      class:compact
       class="dialog"
       role="dialog"
       aria-modal="true"
@@ -27,7 +29,7 @@
       {/if}
       {#if current.detail}<pre>{current.detail}</pre>{/if}
       <footer>
-        <button type="button" class="app-btn" on:click={close}>Close</button>
+        <button type="button" class="app-btn" on:click={close}>{compact ? 'Cancel' : 'Close'}</button>
         {#each current.actions || [] as action}
           <button class="app-btn" class:primary={action.primary} type="button" on:click={() => { action.action(); close(); }}>{action.label}</button>
         {/each}
@@ -54,10 +56,22 @@
     border-radius: var(--r-lg);
     box-shadow: var(--shadow-modal);
   }
+  .dialog.compact {
+    width: min(320px, 94vw);
+    padding: 14px 16px 12px;
+  }
   h2 { margin: 0; font-size: 17px; letter-spacing: -0.01em; }
+  .dialog.compact h2 { font-size: 15px; font-weight: 650; letter-spacing: -0.02em; }
   .lead { margin: 14px 0; color: var(--text-secondary); font-size: 13px; line-height: 1.55; }
+  .dialog.compact .lead {
+    margin: 8px 0 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+  }
   .fine-print { margin: 10px 0; color: var(--text-muted); font-size: 11px; }
   footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  .dialog.compact footer { margin-top: 14px; }
 
   header {
     display: grid;

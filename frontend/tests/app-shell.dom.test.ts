@@ -49,7 +49,6 @@ function installBindings() {
           windowHeight: 760,
           downloadConcurrency: 2,
           perVideoSubfolder: true,
-          confirmBeforeDownload: false,
           automaticDiagnostics: 'disabled',
         })),
         ListJobs: vi.fn(async () => []),
@@ -101,7 +100,6 @@ describe('Home analysis survives navigation', () => {
       ...current,
       downloadFolder: '/tmp/downloads',
       automaticDiagnostics: 'disabled',
-      confirmBeforeDownload: false,
     }));
     installBindings();
   });
@@ -200,7 +198,6 @@ describe('unreadable queue notice', () => {
       ...current,
       downloadFolder: '/tmp/downloads',
       automaticDiagnostics: 'enabled',
-      confirmBeforeDownload: false,
     }));
     installBindings();
     const app = (window as any).go.main.App;
@@ -212,7 +209,6 @@ describe('unreadable queue notice', () => {
       windowHeight: 760,
       downloadConcurrency: 2,
       perVideoSubfolder: true,
-      confirmBeforeDownload: false,
       automaticDiagnostics: 'enabled',
     }));
   });

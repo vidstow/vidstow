@@ -92,10 +92,12 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /class="opt-sections"/);
   assert.match(home, /class="erow"/);
   assert.match(home, />Output</);
-  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />Subtitles</);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />Subtitles\{#if !allowSubtitles\}<span class="only">Video only</);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />In the file</);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitle file"/);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitles off"/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /\.erow\.disabled \.triad button\.on\.file/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /\.erow\.disabled \.dd:disabled \{ opacity: 1; \}/);
   assert.doesNotMatch(await read('../src/lib/components/OutputOptionsEditor.svelte'), /class="cols"/);
   assert.doesNotMatch(await read('../src/lib/components/OutputOptionsEditor.svelte'), />Metadata</);
   assert.doesNotMatch(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitles on or off"/);
@@ -110,8 +112,14 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /-webkit-line-clamp: 2/);
   assert.match(home, /class="dplan"/);
   assert.match(home, /class="dcost"/);
+  assert.match(home, /class="dsep"/);
   assert.match(home, /planSizeCopy\(selectedPlan\)\}<span class="dcost">/);
   assert.match(home, /formatPlanSize\(/);
+  assert.match(home, /shortAudioChip\(/);
+  assert.doesNotMatch(home, /mp3Hint: boolean\)\}}/);
+  assert.match(home, /mp3Hint: boolean\)}/);
+  assert.match(home, /\.dplan \{\s*display: flex;\s*flex-direction: row;/);
+  assert.doesNotMatch(home, /\.dplan \{\s*display: flex;\s*flex-direction: column;/);
   assert.doesNotMatch(home, /class="dacts"[\s\S]*?class="dcost"/);
   assert.doesNotMatch(home, /\.dcost \{[^}]*width: 10ch;/);
   assert.doesNotMatch(home, /\.dcodec,[^{]*\{[^}]*font-family: var\(--font-mono\)/);

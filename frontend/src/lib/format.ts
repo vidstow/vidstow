@@ -32,6 +32,16 @@ export function formatPlanSize(bytes: number, approximate = false): string {
   return `${approximate ? '~' : ''}${formatBytes(bytes)}`;
 }
 
+// Chip copy for original audio plans. Engine labels stay "M4A (Original)";
+// the Output row needs the short form so five chips stay on one line.
+export function shortAudioChip(label: string): { label: string; title?: string } {
+  const original = /^(M4A|Opus) \(Original\)$/.exec(label);
+  if (original) return { label: original[1], title: 'Original' };
+  const kbps = /^MP3 (\d+) kbps$/.exec(label);
+  if (kbps) return { label: `MP3 ${kbps[1]}` };
+  return { label };
+}
+
 export function formatDiscardConfirm(bytes: number): string {
   if (!bytes || bytes < 0) return 'Delete the saved data for this download?';
   const mb = 1024 * 1024;

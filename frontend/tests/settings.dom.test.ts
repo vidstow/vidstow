@@ -20,7 +20,6 @@ function installBindings(overrides: Record<string, unknown> = {}) {
       windowHeight: 760,
       downloadConcurrency: 2,
       perVideoSubfolder: true,
-      confirmBeforeDownload: false,
       automaticDiagnostics: value,
     })),
     PickDownloadFolder: vi.fn(async () => '/tmp/chosen'),
@@ -60,7 +59,6 @@ describe('Settings page', () => {
       windowHeight: 760,
       downloadConcurrency: 2,
       perVideoSubfolder: true,
-      confirmBeforeDownload: false,
       automaticDiagnostics: 'disabled',
       outputOptions: {},
     });
@@ -83,8 +81,6 @@ describe('Settings page', () => {
     expect(screen.getByRole('button', { name: 'Change Folder' })).toBeInTheDocument();
     expect(screen.getByText('Create a subfolder for each download')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Create a subfolder for each download' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText('Confirm before starting downloads')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Confirm before starting downloads' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText('Interrupted jobs')).toBeInTheDocument();
     expect(screen.getByText('In progress continues')).toBeInTheDocument();
     expect(screen.getByText('The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.')).toBeInTheDocument();

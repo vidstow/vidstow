@@ -510,7 +510,7 @@ func TestStartupSkipsUnreadableQueueAndKeepsSettings(t *testing.T) {
 	if !status.Healthy() || status.Warning != store.WarningQueueReset {
 		t.Fatalf("startup = %#v; want healthy queue-reset", status)
 	}
-	if got := app.GetSettings(); got.DownloadFolder != downloads || got.DownloadConcurrency != 3 || !got.ConfirmBeforeDownload {
+	if got := app.GetSettings(); got.DownloadFolder != downloads || got.DownloadConcurrency != 3 || got.AutomaticDiagnostics != "enabled" {
 		t.Fatalf("startup dropped salvaged settings: %#v", got)
 	}
 	if jobs := app.ListJobs(); len(jobs) != 0 {

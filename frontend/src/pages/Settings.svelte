@@ -150,24 +150,6 @@
 
       <div class="srow">
         <div class="scopy">
-          <strong>Confirm before starting downloads</strong>
-          <span>Shows the selected output before adding it to the queue.</span>
-        </div>
-        <div class="sact">
-          <button
-            type="button"
-            class="switch"
-            class:on={$settings.confirmBeforeDownload}
-            role="switch"
-            aria-checked={$settings.confirmBeforeDownload}
-            aria-label="Confirm before starting downloads"
-            on:click={() => update({ ...$settings, confirmBeforeDownload: !$settings.confirmBeforeDownload })}
-          ><span class="switch-thumb"></span></button>
-        </div>
-      </div>
-
-      <div class="srow">
-        <div class="scopy">
           <strong>Interrupted jobs</strong>
           <span>The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.</span>
         </div>
