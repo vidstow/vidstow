@@ -206,7 +206,10 @@
     const speed = children.find((child) => child.speedLabel)?.speedLabel;
     const counts = `${collection.completed}/${collection.total}`;
     if (anyActive) return speed ? `${counts} · ${speed}` : counts;
-    return `${counts} · paused`;
+    if (collection.paused > 0) return `${counts} · paused`;
+    if (collection.failed > 0) return `${counts} · needs attention`;
+    if (collection.canceled > 0) return `${counts} · canceled`;
+    return counts;
   }
 
   function collectionArtwork(collection: QueueCollectionViewModel, children: LifecycleJobViewModel[]): string {
@@ -267,21 +270,6 @@
     onGoHome?.();
   }
 
-  function onRowKey(event: KeyboardEvent, select: () => void, space?: () => void): void {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      select();
-    }
-    if (event.key === ' ' && space) {
-      event.preventDefault();
-      space();
-    }
-  }
-
-  function jobSpace(job: LifecycleJobViewModel): void {
-    if (job.lifecycle === 'paused') trigger(job, 'resume');
-    else trigger(job, 'pause');
-  }
 </script>
 
 {#snippet icon(name: string)}
@@ -289,72 +277,70 @@
 {/snippet}
 
 {#snippet queueRows(items: QueueDisplayItem[])}
-<div role="listbox" aria-label="Download attempts">
+<div role="list" aria-label="Download attempts">
           {#each items as item (item.key)}
             {#if item.kind === 'collection'}
               {@const sel = selected?.type === 'col' && selected.id === item.collection.id}
               {@const tail = collectionTail(item.collection, item.children)}
               {@const art = collectionArtwork(item.collection, item.children)}
-              <div
+              <div role="listitem">
+              <button
+                type="button"
                 class="qrow"
                 class:sel
-                role="option"
-                tabindex="0"
-                aria-selected={sel}
+                aria-pressed={sel}
                 aria-label={item.collection.title}
                 data-policy={item.collection.policy}
                 onclick={() => selectCollection(item.collection)}
-                onkeydown={(event) => onRowKey(event, () => selectCollection(item.collection))}
               >
-                <div class="qth">
+                <span class="qth">
                   {#if art}
                     <img src={art} alt="" referrerpolicy="no-referrer" />
                   {:else}
                     <span class="cnt">{item.collection.total}</span>
                   {/if}
-                </div>
-                <div class="qmid">
+                </span>
+                <span class="qmid">
                   <span class="qt">
                     <span class="qtitle">{item.collection.title}</span>
                     <em class="qkind">{item.collection.kind === 'batch' ? 'Batch' : 'Playlist'}</em>
                   </span>
                   <span class="qbar"><i style={`width:${progressPct(item.collection.progress)}%`}></i></span>
-                </div>
+                </span>
                 <span class="qtail">{tail}</span>
+              </button>
               </div>
             {:else}
               {@const sel = selected?.type === 'job' && selected.id === item.job.id}
               {@const tail = jobTail(item.job)}
               {@const failed = item.job.lifecycle === 'failed' || item.job.lifecycle === 'action-required'}
-              <div class="qentry" class:selected-entry={sel} class:failed-entry={failed}>
-              <div
+              <div role="listitem" class="qentry" class:selected-entry={sel} class:failed-entry={failed}>
+              <button
+                type="button"
                 class="qrow"
                 class:sel
                 class:fail={failed}
                 class:live-row={!failed && item.job.lifecycle !== 'canceled'}
-                role="option"
-                tabindex="0"
-                aria-selected={sel}
+                aria-pressed={sel}
                 aria-label={item.job.title}
                 onclick={() => selectJob(item.job)}
-                onkeydown={(event) => onRowKey(event, () => selectJob(item.job), () => jobSpace(item.job))}
               >
-                <div class="qth">
+                <span class="qth">
                   {#if item.job.thumbnailUrl}
                     <img src={item.job.thumbnailUrl} alt="" referrerpolicy="no-referrer" />
                   {/if}
-                </div>
-                <div class="qmid">
+                </span>
+                <span class="qmid">
                   <span class="qt"><span class="qtitle" title={item.job.title}>{item.job.title}</span></span>
                   <span class="qvariant" class:attention-status={failed}><span class="status-dot" aria-hidden="true"></span>{[item.job.qualityLabel, lifecycleLabel(item.job.lifecycle, visiblePhase(item.job))].filter(Boolean).join(' · ')}</span>
                   {#if !failed && item.job.lifecycle !== 'canceled'}
                   <span class="qbar"><i style={`width:${progressPct(item.job.progress)}%`}></i></span>
                   {/if}
-                </div>
+                </span>
                 {#if !failed && item.job.lifecycle !== 'canceled'}
                   <span class="qtail" class:err={tail.err}>{tail.text}</span>
                 {/if}
-              </div>
+              </button>
               {#if item.job.capabilities?.retry}
                 <button class="app-btn primary row-action" aria-label={`Retry ${item.job.title}`} disabled={!jobEnabled(item.job, 'retry')} onclick={() => trigger(item.job, 'retry')}>{@render icon('retry')} Retry</button>
               {:else if item.job.lifecycle === 'canceled' && item.job.capabilities?.remove}
@@ -553,7 +539,7 @@
             <img class="ibig" src={art} alt="" referrerpolicy="no-referrer" />
           {/if}
           <div class="imeta" id="c-meta">
-            {collection.kind === 'batch' ? 'Batch' : 'Playlist'} · {collection.completed}/{collection.total} finished · {anyActive ? (speed ?? 'working') : 'paused'}
+            {collection.kind === 'batch' ? 'Batch' : 'Playlist'} · {collection.completed}/{collection.total} finished · {anyActive ? (speed ?? 'working') : collection.paused > 0 ? 'paused' : collection.failed > 0 ? 'needs attention' : collection.canceled > 0 ? 'canceled' : 'finished'}
           </div>
           <div class="ibar"><i style={`width:${progressPct(collection.progress)}%`}></i></div>
           {#if done}
@@ -583,17 +569,21 @@
             {/each}
           </div>
           <div class="ibtns">
+            {#if collection.capabilities?.pause || collection.capabilities?.resume}
             <button
               type="button"
               class="app-btn"
               class:primary={!anyActive}
               disabled={!collectionEnabled(collection, anyActive ? 'pause' : 'resume')}
               onclick={() => triggerCollection(collection, anyActive ? 'pause' : 'resume')}
-            >{anyActive ? 'Pause collection' : 'Resume collection'}</button>
-            {#if collection.capabilities?.retry}
-              <button type="button" class="app-btn" disabled={!collectionEnabled(collection, 'retry')} onclick={() => triggerCollection(collection, 'retry')}>Retry failed</button>
+            >{@render icon(anyActive ? 'pause' : 'play')} {anyActive ? 'Pause collection' : 'Resume collection'}</button>
             {/if}
+            {#if collection.capabilities?.retry}
+              <button type="button" class="app-btn" disabled={!collectionEnabled(collection, 'retry')} onclick={() => triggerCollection(collection, 'retry')}>{@render icon('retry')} Retry failed</button>
+            {/if}
+            {#if collection.capabilities?.cancel}
             <button type="button" class="app-btn danger" disabled={!collectionEnabled(collection, 'cancel')} onclick={() => triggerCollection(collection, 'cancel')}>{@render icon('remove')} Cancel</button>
+            {/if}
             {#if collection.capabilities?.remove}
               <button type="button" class="app-btn" disabled={!collectionEnabled(collection, 'remove')} onclick={() => triggerCollection(collection, 'remove')}>{@render icon('remove')} Remove</button>
             {/if}
@@ -699,6 +689,12 @@
   .inspector-empty > .action-icon { width: 24px; height: 24px; }
   .inspector-empty p { color: var(--text-secondary); margin: 12px 0 4px; font-weight: 600; }
   .qrow {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: inherit;
+    text-align: left;
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr) 150px;
     gap: 12px;
@@ -711,7 +707,6 @@
   }
   .qrow:hover { background: #131316; }
   .qrow.sel { background: var(--surface-raised); }
-  .qrow.fail { box-shadow: inset 2px 0 0 var(--status-danger); }
   .qth {
     width: 34px;
     height: 22px;
@@ -723,7 +718,7 @@
   }
   .qth img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .cnt { color: #93C5FD; font-size: 10px; font-weight: 700; }
-  .qmid { min-width: 0; }
+  .qmid { display: block; min-width: 0; }
   .qt {
     display: flex;
     align-items: baseline;
@@ -829,6 +824,18 @@
   .ierr span { color: var(--text-secondary); }
   .ibtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
   .ibtns .app-btn { padding: 0 10px; }
+  .ibtns .app-btn.primary { flex: 1 0 100%; }
+  .ibtns .app-btn.quiet { margin-left: auto; }
+  .qslots { line-height: 1.5; }
+  @media (max-width: 1050px) {
+    .qwrap { grid-template-columns: minmax(0, 1fr) 280px; }
+    .qhead { align-items: flex-start; }
+    .qident { flex-direction: column; gap: 4px; }
+    .qentry { gap: 6px; padding-right: 8px; }
+    .row-action { padding: 0 9px; }
+    .qentry .qrow.live-row { grid-template-columns: 48px minmax(0, 1fr); }
+    .qentry .qtail { grid-column: 2; text-align: left; font-size: 10px; padding-bottom: 4px; }
+  }
   .kids { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px; }
   .kid {
     display: grid;

@@ -1813,7 +1813,7 @@ func friendlyAnalyzeError(err error) string {
 			if isYouTubeChallengeTimeout(err) {
 				return "YouTube challenge timed out — retry"
 			}
-			return "That link is not a supported single YouTube video."
+			return "We could not read this YouTube link. It may be unavailable or unsupported."
 		case engine.ErrorAuthentication:
 			return "That video requires sign-in and is not available in this version."
 		case engine.ErrorInvalidInput:

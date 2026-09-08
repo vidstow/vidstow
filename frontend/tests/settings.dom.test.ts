@@ -118,7 +118,7 @@ describe('Settings page', () => {
     const App = installBindings();
     render(Settings);
     expect(screen.getByRole('heading', { name: 'Video files' })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'Embed thumbnail artwork' })).toBeEnabled();
+    expect(screen.getByRole('switch', { name: 'Embed thumbnail artwork' })).toBeDisabled();
 
     await user.selectOptions(screen.getByLabelText('Default subtitle mode'), 'sidecar');
     await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({

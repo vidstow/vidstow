@@ -270,18 +270,16 @@
       <div class="srow">
         <div class="scopy">
           <strong>Embed thumbnail artwork</strong>
-          <span>Shows the video's artwork in media players.</span>
+          <span>Temporarily unavailable. Artwork is not added to downloads.</span>
         </div>
         <div class="sact">
           <button
             type="button"
             class="switch"
-            class:on={!!$settings.outputOptions?.embedThumbnail}
             role="switch"
-            aria-checked={!!$settings.outputOptions?.embedThumbnail}
+            aria-checked="false"
             aria-label="Embed thumbnail artwork"
-            disabled={!$ffmpeg.available}
-            on:click={() => updateOutputOptions({ embedThumbnail: !$settings.outputOptions?.embedThumbnail })}
+            disabled
           ><span class="switch-thumb"></span></button>
         </div>
       </div>

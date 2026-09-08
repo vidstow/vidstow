@@ -772,6 +772,13 @@ describe('restored historical attempts', () => {
     expect(screen.getByText('Temporary data removed.')).toBeVisible();
     expect(container.querySelector('.qinsp .istats')).toBeNull();
     expect(container.querySelector('.qinsp .ibar')).toBeNull();
+    const failedButton = screen.getAllByRole('button', { name: 'Same video' })[0];
+    failedButton.focus();
+    await user.keyboard(' ');
+    expect(failedButton).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Download was refused')).toBeVisible();
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.qinsp .istats')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Remove Same video' }));
     expect(onAction).toHaveBeenLastCalledWith({ action: 'remove', jobId: 'canceled', commandToken: 'remove-token' });
     await rerender({ model: queueModel({ jobs: [{ id: 'failed', title: 'Same video', qualityLabel: '480p', lifecycle: 'pending', occupiesSlot: false, capabilities: { pause: true }, commandToken: 'new-token' }] }), onAction });

@@ -70,11 +70,11 @@ test('page titles and controls match the approved redesign', async () => {
   assert.doesNotMatch(home, /aria-label="Search playlist"/);
   assert.match(home, /aria-label="Range start"/);
   assert.match(home, /class="eprow"/);
-  assert.match(home, />Change</);
+  assert.match(home, /'Change' : 'Choose folder'/);
   assert.doesNotMatch(home, /Save to /);
   assert.match(home, /Paste another link/);
-  assert.match(home, /<footer class="dfoot">[\s\S]*?Download</);
-  assert.match(home, /\{@render downloadMark\(\)\}Download<\/button>/);
+  assert.match(home, /<footer class="dfoot">[\s\S]*?Download\{\/if\}</);
+  assert.match(home, /\{@render downloadMark\(\)\}Download\{\/if\}<\/button>/);
   assert.doesNotMatch(home, />Add to Queue</);
   assert.match(home, /class="drow drow2 v2 nofmt"/);
   assert.match(home, /\.drow2 \.thumb \{[^}]*max-height: 90px/);
@@ -218,7 +218,7 @@ test('first launch asks for explicit diagnostic consent without a default', asyn
 
 test('analysis failures stay on Home with a paste-another-link recovery', async () => {
   const home = await read('../src/pages/Home.svelte');
-  assert.match(home, /title: 'Unsupported URL'/);
+  assert.match(home, /title: validated \? 'Could not read this link' : 'Check this link'/);
   assert.match(home, /analyzeError = \{/);
   assert.match(home, /class="dbtn query" on:click=\{pasteAnotherLink\}>Paste another link</);
   assert.doesNotMatch(home, /app-btn/);

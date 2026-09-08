@@ -1,6 +1,15 @@
 <script lang="ts">
   import { modal } from '../stores.js';
+  import { trapModalFocus } from '../lifecycle-ui/modal.js';
   function close() { modal.set(null); }
+  async function runAction(action: () => void) {
+    close();
+    try {
+      await action();
+    } catch (err) {
+      modal.set({ kind: 'error', title: 'Action could not finish', message: err instanceof Error ? err.message : String(err) });
+    }
+  }
   $: current = $modal;
   $: compact = current?.kind === 'confirm' || !!current?.kind?.startsWith('confirm-');
   $: choice = compact || current?.kind === 'ffmpeg-missing';
@@ -15,6 +24,8 @@
       class:confirm={choice}
       class:compact
       class="dialog"
+      use:trapModalFocus
+      tabindex="-1"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -31,7 +42,7 @@
       <footer>
         <button type="button" class="app-btn" on:click={close}>{compact ? 'Cancel' : 'Close'}</button>
         {#each current.actions || [] as action}
-          <button class="app-btn" class:primary={action.primary} type="button" on:click={() => { action.action(); close(); }}>{action.label}</button>
+          <button class="app-btn" class:primary={action.primary} type="button" on:click={() => runAction(action.action)}>{action.label}</button>
         {/each}
       </footer>
     </div>

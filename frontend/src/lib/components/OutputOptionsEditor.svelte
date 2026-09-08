@@ -365,11 +365,10 @@
       <button
         type="button"
         class="also"
-        class:on={!!value.embedThumbnail}
-        aria-pressed={!!value.embedThumbnail}
+        aria-pressed="false"
         aria-label="Thumbnail artwork"
-        disabled={embedBlocked}
-        on:click={() => setFlag('embedThumbnail', !value.embedThumbnail)}
+        disabled
+        title="Artwork embedding is temporarily unavailable."
       >Artwork</button>
       <button
         type="button"

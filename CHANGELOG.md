@@ -19,6 +19,13 @@ does not exist yet.
   repeats the wordmark or an About item.
 - Home Try chips that fill the field with a sample video, playlist, or several
   links. Analyze is still the only submit.
+- Analysis shows its current step, a slow-request explanation, retry, and a
+  stop-waiting action. Edited links and interrupted requests ignore late results.
+- Download review prevents duplicate submissions, preserves choices on start
+  errors, and explains missing folders, empty playlist selections, and expired
+  batch reviews. A batch with one ready video can continue as a single download.
+- Confirmation dialogs trap keyboard focus, restore it on close, and preserve
+  follow-up error dialogs. Unavailable artwork embedding is disabled explicitly.
 - Queue separates in-progress work, attempts needing attention, and collapsible
   canceled attempts. Rows show output quality and recovery actions; idle headers
   explain failed/canceled counts and hide irrelevant bulk controls. Settled
@@ -45,6 +52,10 @@ does not exist yet.
   rate. Audio is unchanged.
 
 ### Changed
+
+- Queue rows use labeled action icons, larger thumbnails, and a separate quality/status
+  line. Keyboard-accessible row buttons select details without starting work. Failure
+  recovery replaces empty transfer statistics, and narrow windows keep actions visible.
 
 - Home identity puts codec and size on one receipt line. Audio chips use short
   labels (`M4A`, `MP3 128`). Disabled Subtitles shows **Video only** and keeps

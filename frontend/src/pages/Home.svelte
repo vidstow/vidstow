@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
-  import { api } from '../lib/api.js';
+  import { api, type StartRequest, type StartPlaylistRequest } from '../lib/api.js';
   import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
   import { formatBytes, formatPlanSize, formatViewCount, shortAudioChip, shortTitle } from '../lib/format.js';
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
@@ -44,6 +44,12 @@
   let urlField: HTMLTextAreaElement | undefined;
   let analysisGeneration = 0;
   let busy = false;
+  let admitting: 'video' | 'playlist' | 'batch' | null = null;
+  let admissionError: { title: string; message: string } | null = null;
+  let analysisStage = 'Checking link…';
+  let analysisStartedAt = 0;
+  let operationNow = Date.now();
+  let folderBusy = false;
   let batchText = '';
   let batchGeneration = 0;
   let batchBusy = false;
@@ -70,17 +76,23 @@
   let scopeChoice: UrlCheckResult | null = null;
   let scopeVideo: InfoSummary | null = null;
   let scopePlaylist: PlaylistSummary | null = null;
-  let scopePlaylistTask: Promise<PlaylistSummary> | null = null;
+  let scopePlaylistTask: Promise<PlaylistSummary | null> | null = null;
+  let scopePlaylistFailed = false;
   let scopeFocus: 'video' | 'playlist' = 'playlist';
-  let analyzeError: { title: string; message: string } | null = null;
+  let analyzeError: { title: string; message: string; retry?: boolean } | null = null;
   let detailsOpen = false;
 
   const batchExpiryTimer = setInterval(() => {
     if (batchReview) batchNow = Date.now();
+    if (busy || batchBusy) operationNow = Date.now();
   }, 1000);
-  onDestroy(() => clearInterval(batchExpiryTimer));
+  onDestroy(() => {
+    clearInterval(batchExpiryTimer);
+    analysisGeneration += 1;
+    batchGeneration += 1;
+  });
 
-  $: folder = $settings.downloadFolder || folder;
+  $: folder = $settings.downloadFolder;
   $: plans = preview?.plans ?? [];
   $: selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
   $: visiblePlans = plans.filter((plan) => plan.available && plan.kind === tab);
@@ -114,14 +126,15 @@
   $: batchReadyCount = batchReview?.counts.ready ?? 0;
   $: batchExpiry = batchReview?.expiresAt ? Date.parse(batchReview.expiresAt) : Number.NaN;
   $: batchTokenValid = !!batchReview?.token && Number.isFinite(batchExpiry) && batchExpiry > batchNow;
-  $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy;
+  $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy && !admitting && !folderBusy;
+  $: analysisTakingLong = (busy || batchBusy) && operationNow - analysisStartedAt >= 12000;
   $: hasDock = !!(preview || playlist || batchReview || scopeChoice);
   $: linkedSwap = !!(linkedPlaylist?.playlistUrl && linkedPlaylist.videoUrl && (preview || playlist));
   $: scopeVideoPlan = scopeVideo?.plans.find((plan) => plan.recommended) ?? scopeVideo?.plans[0] ?? null;
   $: scopeVideoMeta = [scopeVideo?.channel, scopeVideo?.duration, scopeVideoPlan?.approxBytes ? `${scopeVideoPlan.sizeIsApproximate ? '~' : ''}${formatBytes(scopeVideoPlan.approxBytes)}` : ''].filter(Boolean).join(' · ');
   $: scopePlaylistMeta = scopePlaylist
     ? [`${scopePlaylist.entryCount} videos`, scopePlaylist.duration, scopePlaylist.channel].filter(Boolean).join(' · ')
-    : scopePlaylistTask ? 'Reading playlist…' : 'Review every video in this list';
+    : scopePlaylistFailed ? 'Preview unavailable. Choose playlist to try again.' : scopePlaylistTask ? 'Reading playlist…' : 'Review every video in this list';
   $: playlistMeta = playlist
     ? [
         'Playlist',
@@ -144,7 +157,7 @@
     queueMicrotask(syncFieldHeight);
   }
 
-  $: if ($pendingUrl) {
+  $: if ($pendingUrl && !admitting) {
     const droppedURL = $pendingUrl;
     pendingUrl.set('');
     applyUrl(droppedURL);
@@ -216,8 +229,10 @@
   // Seeds the per-download extras from the saved defaults. Language preference
   // is not persisted: English is pre-selected when the video offers it,
   // otherwise the engine's first-available default applies.
-  function seedOutputOptions(languages: SubtitleLanguage[]): OutputOptions {
+  function seedOutputOptions(languages: SubtitleLanguage[], collectionMode = false): OutputOptions {
     const seeded = { ...($settings.outputOptions ?? {}) };
+    delete seeded.embedThumbnail;
+    if (!collectionMode && !languages.length) seeded.subtitleMode = '';
     if (!$ffmpeg.available) {
       if (seeded.subtitleMode === 'embed') seeded.subtitleMode = '';
       delete seeded.subtitleFormat;
@@ -244,8 +259,10 @@
   // Subtitles only ride along with video outputs; captions cannot be embedded
   // in or written beside audio-only downloads.
   function effectiveOptions(options: OutputOptions, subtitlesAllowed: boolean): OutputOptions {
-    if (subtitlesAllowed) return options;
-    return { ...options, subtitleMode: '', subtitleLanguages: undefined, subtitleAutoCaptions: false, subtitleFormat: '' };
+    const supported = { ...options };
+    delete supported.embedThumbnail;
+    if (subtitlesAllowed) return supported;
+    return { ...supported, subtitleMode: '', subtitleLanguages: undefined, subtitleAutoCaptions: false, subtitleFormat: '' };
   }
 
   function optionsNeedFFmpeg(options: OutputOptions): boolean {
@@ -265,6 +282,7 @@
     scopePlaylist = null;
     scopePlaylistTask = null;
     scopeFocus = 'playlist';
+    scopePlaylistFailed = false;
   }
 
   function clearAnalysis() {
@@ -276,15 +294,31 @@
     if (next === url) return;
     url = next;
     analysisGeneration += 1;
+    batchGeneration += 1;
     busy = false;
-    linkedPlaylist = null;
+    batchBusy = false;
     analyzeError = null;
-    if (preview || playlist || scopeChoice) clearAnalysis();
-    if (batchReview) {
-      batchGeneration += 1;
-      batchBusy = false;
-      batchReview = null;
-    }
+    admissionError = null;
+    batchReview = null;
+    clearAnalysis();
+  }
+
+  function stopWaiting() {
+    analysisGeneration += 1;
+    batchGeneration += 1;
+    busy = false;
+    batchBusy = false;
+    scopePlaylistTask = null;
+    analyzeError = null;
+    urlField?.focus();
+  }
+
+  function beginAnalysis(stage: string) {
+    analysisStage = stage;
+    analysisStartedAt = Date.now();
+    operationNow = analysisStartedAt;
+    analyzeError = null;
+    admissionError = null;
   }
 
   function updatePaste(event: Event) {
@@ -300,7 +334,9 @@
   async function submitPaste(source?: string) {
     applyUrl(typeof source === 'string' ? source : (urlField?.value ?? url));
     const items = pasteItems(url);
-    if (!items.length || busy || batchBusy || scopeChoice) return;
+    if (!items.length || busy || batchBusy || scopeChoice || admitting) return;
+    clearAnalysis();
+    batchReview = null;
     analyzeError = null;
     if (items.length > 20) {
       analyzeError = {
@@ -320,21 +356,37 @@
   async function analyzeBatch() {
     if (!batchText.trim() || batchBusy) return;
     const requestGeneration = ++batchGeneration;
+    beginAnalysis(`Reviewing ${pasteItems(batchText).length} links…`);
     batchBusy = true;
     try {
       const review = await api.analyse.batch(batchText);
       if (requestGeneration !== batchGeneration) return;
+      batchNow = Date.now();
       batchReview = review;
       detailsOpen = true;
     } catch (err) {
       if (requestGeneration !== batchGeneration) return;
       analyzeError = {
         title: 'Batch could not be reviewed',
+        retry: true,
         message: errorMessage(err, 'Paste between 2 and 20 individual public YouTube video or Short URLs.'),
       };
     } finally {
       if (requestGeneration === batchGeneration) batchBusy = false;
     }
+  }
+
+  async function refreshBatch() {
+    if (admitting || batchBusy) return;
+    batchReview = null;
+    await analyzeBatch();
+  }
+
+  function openOnlyReadyVideo() {
+    const item = batchReview?.items.find((item) => item.status === 'ready');
+    if (!item || admitting) return;
+    applyUrl(item.input);
+    void submitPaste(item.input);
   }
 
   function editBatchURLs() {
@@ -356,18 +408,21 @@
       requireFFmpeg('MP3 conversion needs FFmpeg. Choose original audio or configure FFmpeg.');
       return;
     }
-    batchBusy = true;
+    admitting = 'batch';
+    admissionError = null;
+    const requestGeneration = batchGeneration;
     try {
       const result = await api.jobs.startBatch({ token: batchReview.token, quality, audioBitrate });
+      if (requestGeneration !== batchGeneration) return;
       showBanner('success', `Added ${result.admitted} downloads to the queue`);
       batchReview = null;
       url = '';
       batchText = '';
-      dispatch('goto', 'queue');
+      if (!$pendingUrl) dispatch('goto', 'queue');
     } catch (err) {
-      modal.set({ kind: 'error', title: 'Batch could not start', message: errorMessage(err, 'Could not add this batch to the queue.') });
+      if (requestGeneration === batchGeneration) admissionError = { title: 'Batch could not start', message: errorMessage(err, 'Could not add this batch to the queue.') };
     } finally {
-      batchBusy = false;
+      admitting = null;
     }
   }
 
@@ -375,7 +430,7 @@
     resetDock();
     preview = summary;
     videoOptions = seedOutputOptions(summary.subtitles ?? []);
-    const recommended = summary.plans.find((plan) => plan.recommended) ?? summary.plans[0];
+    const recommended = summary.plans.find((plan) => plan.available && plan.recommended) ?? summary.plans.find((plan) => plan.available);
     selectedPlanId = recommended?.id ?? '';
     tab = recommended?.kind ?? 'video';
     detailsOpen = false;
@@ -384,7 +439,7 @@
   function applyPlaylistDock(summary: PlaylistSummary) {
     resetDock();
     playlist = summary;
-    playlistOptions = seedOutputOptions([]);
+    playlistOptions = seedOutputOptions([], true);
     selectedItems = new Set(summary.entries.filter((entry) => entry.available).map((entry) => entry.index));
     rangeStart = summary.entries[0]?.index ? String(summary.entries[0].index) : '1';
     rangeEnd = summary.entries.at(-1)?.index ? String(summary.entries.at(-1)!.index) : String(summary.entryCount);
@@ -397,12 +452,14 @@
     resetDock();
     if (target.kind === 'playlist') {
       const canonicalURL = target.playlistUrl!;
+      analysisStage = 'Reading playlist…';
       const summary = await api.analyse.playlist(canonicalURL);
       if (requestGeneration !== analysisGeneration) return;
       if (!linkedPlaylist) url = canonicalURL;
       applyPlaylistDock(summary);
     } else {
       const canonicalURL = target.videoUrl!;
+      analysisStage = 'Reading video details…';
       const summary = await api.analyse.url(canonicalURL);
       if (requestGeneration !== analysisGeneration) return;
       if (!linkedPlaylist) url = canonicalURL;
@@ -412,9 +469,13 @@
 
   function prefetchLinkedPlaylist(accepted: UrlCheckResult, requestGeneration: number) {
     if (!accepted.playlistUrl) return;
+    scopePlaylistFailed = false;
     scopePlaylistTask = api.analyse.playlist(accepted.playlistUrl).then((summary) => {
       if (requestGeneration === analysisGeneration) scopePlaylist = summary;
       return summary;
+    }).catch(() => {
+      if (requestGeneration === analysisGeneration) scopePlaylistFailed = true;
+      return null;
     });
   }
 
@@ -424,11 +485,12 @@
       try {
         const summary = await scopePlaylistTask;
         if (requestGeneration !== analysisGeneration) throw new Error('stale');
+        if (!summary) throw new Error('Playlist preview unavailable');
         scopePlaylist = summary;
         return summary;
       } catch (err) {
-        scopePlaylistTask = null;
         if (requestGeneration !== analysisGeneration) throw err;
+        scopePlaylistTask = null;
       }
     }
     if (!linkedPlaylist?.playlistUrl) throw new Error('Playlist URL missing');
@@ -453,13 +515,16 @@
     }
     const requestGeneration = analysisGeneration;
     scopeChoice = null;
+    resetDock();
+    beginAnalysis('Reading playlist…');
     await withBusy(async () => {
       const summary = await ensureLinkedPlaylist(requestGeneration);
-      applyPlaylistDock(summary);
+      if (requestGeneration === analysisGeneration) applyPlaylistDock(summary);
     }, requestGeneration);
   }
 
   function cancelScope() {
+    analysisGeneration += 1;
     scopeChoice = null;
     scopeVideo = null;
     scopePlaylist = null;
@@ -487,7 +552,7 @@
       return;
     }
     if (event.key === 'Enter') {
-      if (event.target instanceof HTMLElement && event.target.closest('.scard')) return;
+      if (event.target instanceof HTMLElement && event.target.closest('button, input, textarea, select')) return;
       event.preventDefault();
       if (scopeFocus === 'playlist') void chooseScopePlaylist();
       else chooseScopeVideo();
@@ -499,12 +564,16 @@
     if (!submittedURL) return;
     const requestGeneration = ++analysisGeneration;
     busy = true;
+    beginAnalysis('Checking link…');
     clearLinkContext();
+    let validated = false;
     try {
       const accepted = await api.validation.url(submittedURL);
       if (requestGeneration !== analysisGeneration) return;
+      validated = true;
       if (accepted.kind === 'video_playlist') {
         linkedPlaylist = accepted;
+        analysisStage = 'Reading video details…';
         const summary = await api.analyse.url(accepted.videoUrl!);
         if (requestGeneration !== analysisGeneration) return;
         scopeVideo = summary;
@@ -517,7 +586,8 @@
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
       analyzeError = {
-        title: 'Unsupported URL',
+        title: validated ? 'Could not read this link' : 'Check this link',
+        retry: validated,
         message: errorMessage(err, 'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.'),
       };
     } finally {
@@ -533,7 +603,8 @@
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
       analyzeError = {
-        title: 'Could not analyze link',
+        title: 'Could not read the playlist',
+        retry: true,
         message: errorMessage(err, 'Could not analyze this link.'),
       };
     } finally {
@@ -542,14 +613,19 @@
   }
 
   async function pickFolder() {
+    if (folderBusy || admitting) return;
+    folderBusy = true;
     try {
       const path = await api.folder.pick();
       if (!path) return;
       const updated = await api.settings.update({ ...$settings, downloadFolder: path });
       settings.set(updated);
       folder = path;
+      admissionError = null;
     } catch (err) {
       modal.set({ kind: 'error', title: 'Folder could not be changed', message: errorMessage(err, 'Could not update the download folder.') });
+    } finally {
+      folderBusy = false;
     }
   }
 
@@ -660,45 +736,42 @@
   }
 
   async function enqueueVideo() {
-    if (!preview || !selectedPlan || !folder) return;
+    if (admitting || busy || batchBusy || folderBusy || !preview || !selectedPlan?.available || !folder) return;
     if (selectedPlan.requiresFfmpeg && !$ffmpeg.available) {
       requireFFmpeg('This output needs FFmpeg for merging or conversion. Install FFmpeg, set its path in Settings, or choose an original audio option.');
       return;
     }
     const options = effectiveOptions(videoOptions, tab === 'video');
     if (optionsNeedFFmpeg(options) && !$ffmpeg.available) {
-      requireFFmpeg('Subtitles and embedded details need FFmpeg. Install FFmpeg, set its path in Settings, or turn those options off.');
+      requireFFmpeg('Subtitles and embedded details need FFmpeg. Configure FFmpeg or turn those options off.');
       return;
     }
-    const start = async () => {
-      try {
-        await api.jobs.start({
-          url: preview!.url,
-          videoId: preview!.videoId,
-          title: preview!.title,
-          channel: preview!.channel,
-          planId: selectedPlan!.id,
-          outputDir: folder,
-          duration: preview!.duration,
-          thumbnail: preview!.thumbnail,
-          options,
-        });
-        showBanner('success', 'Queued for download');
-        clearAnalysis();
-        dispatch('goto', 'queue');
-      } catch (err) {
-        modal.set({ kind: 'error', title: 'Download could not start', message: errorMessage(err, 'Could not start this download.') });
-      }
+    const request: StartRequest = {
+      url: preview.url, videoId: preview.videoId, title: preview.title, channel: preview.channel,
+      planId: selectedPlan.id, outputDir: folder, duration: preview.duration, thumbnail: preview.thumbnail,
+      options: { ...options, ...(options.subtitleLanguages ? { subtitleLanguages: [...options.subtitleLanguages] } : {}) },
     };
-    await start();
+    const requestGeneration = analysisGeneration;
+    admitting = 'video';
+    admissionError = null;
+    try {
+      await api.jobs.start(request);
+      showBanner('success', 'Queued for download');
+      if (requestGeneration === analysisGeneration) {
+        clearAnalysis();
+        if (!$pendingUrl) dispatch('goto', 'queue');
+      }
+    } catch (err) {
+      if (requestGeneration === analysisGeneration) admissionError = {
+        title: 'Download could not start', message: errorMessage(err, 'Could not start this download.'),
+      };
+    } finally {
+      admitting = null;
+    }
   }
 
   async function enqueuePlaylist() {
-    if (!playlist || !selectedItems.size) return;
-    if (!folder) {
-      showBanner('warning', 'Choose a download folder before adding this playlist.');
-      return;
-    }
+    if (admitting || busy || batchBusy || folderBusy || !playlist || !selectedItems.size || !folder) return;
     const quality: Quality = playlistTab === 'audio' ? 'audio' : playlistQuality;
     const audioBitrate = playlistTab === 'audio' && audioChoice !== 'original' ? Number(audioChoice) : 0;
     if (audioBitrate && !$ffmpeg.available) {
@@ -707,42 +780,50 @@
     }
     const options = effectiveOptions(playlistOptions, playlistTab === 'video');
     if (optionsNeedFFmpeg(options) && !$ffmpeg.available) {
-      requireFFmpeg('Subtitles and embedded details need FFmpeg. Install FFmpeg, set its path in Settings, or turn those options off.');
+      requireFFmpeg('Subtitles and embedded details need FFmpeg. Configure FFmpeg or turn those options off.');
       return;
     }
+    const request: StartPlaylistRequest = {
+      url: playlist.url, playlistId: playlist.id, quality, audioBitrate,
+      selectedItems: [...selectedItems].sort((a, b) => a - b),
+      options: { ...options, ...(options.subtitleLanguages ? { subtitleLanguages: [...options.subtitleLanguages] } : {}) },
+    };
+    const requestGeneration = analysisGeneration;
     const start = async () => {
+      if (admitting || requestGeneration !== analysisGeneration) return;
+      admitting = 'playlist';
+      admissionError = null;
       try {
-        const result = await api.jobs.startPlaylist({
-          url: playlist!.url,
-          playlistId: playlist!.id,
-          quality,
-          audioBitrate,
-          selectedItems: [...selectedItems].sort((a, b) => a - b),
-          options,
-        });
+        const result = await api.jobs.startPlaylist(request);
         const admittedLabel = `${result.admitted} ${result.admitted === 1 ? 'video' : 'videos'}`;
         if (result.skipped) {
-          const skippedLabel = `${result.skipped} selected ${result.skipped === 1 ? 'video' : 'videos'}`;
-          showBanner('warning', `Added ${admittedLabel} to queue. ${skippedLabel} could not be downloaded.`);
+          showBanner('warning', `Added ${admittedLabel} to queue. ${result.skipped} selected videos could not be downloaded.`, 8000);
         } else {
           showBanner('success', `Added ${admittedLabel} to queue`);
         }
-        dispatch('goto', 'queue');
+        if (requestGeneration === analysisGeneration) {
+          clearAnalysis();
+          if (!$pendingUrl) dispatch('goto', 'queue');
+        }
       } catch (err) {
-        modal.set({ kind: 'error', title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.') });
+        if (requestGeneration === analysisGeneration) admissionError = {
+          title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.'),
+        };
+      } finally {
+        admitting = null;
       }
     };
-    if (selectedItems.size > 100) {
+    if (request.selectedItems.length > 100) {
       modal.set({
-        kind: 'confirm',
-        title: 'Add this playlist?',
-        message: `${selectedItems.size} videos will be added to the queue.`,
-        actions: [{ label: downloadVideosLabel(selectedItems.size), primary: true, action: start }],
+        kind: 'confirm', title: 'Add this playlist?',
+        message: `${request.selectedItems.length} videos will be added to the queue.`,
+        actions: [{ label: downloadVideosLabel(request.selectedItems.length), primary: true, action: start }],
       });
       return;
     }
     await start();
   }
+
 </script>
 
 <svelte:window on:keydown={onHomeKey} />
@@ -808,8 +889,10 @@
         autocomplete="off"
         spellcheck="false"
         rows="1"
+        disabled={!!admitting}
+        aria-describedby="input-help"
       ></textarea>
-      <button class="dbtn query" type="submit" disabled={busy || batchBusy || !url.trim() || !!scopeChoice} aria-busy={busy || batchBusy}>
+      <button class="dbtn query" type="submit" disabled={busy || batchBusy || !!admitting || !url.trim() || !!scopeChoice} aria-busy={busy || batchBusy}>
         {#if busy || batchBusy}
           <span class="query-spin" aria-hidden="true"></span>
         {:else}
@@ -819,6 +902,7 @@
       </button>
     </div>
   </form>
+  <p class="input-help" id="input-help">One video, a playlist, or up to 20 links. Shift + Enter adds a line.</p>
 
   {#if !hasDock && !analyzeError && !(busy || batchBusy)}
     <p class="hint">
@@ -831,15 +915,39 @@
       </span>
     </p>
   {:else if (busy || batchBusy) && !hasDock && !analyzeError}
-    <div class="skel" aria-busy="true">Reading…</div>
+    <div class="analysis-progress" role="status" aria-live="polite">
+      <span class="query-spin" aria-hidden="true"></span>
+      <div><strong>{analysisStage}</strong><span>{analysisTakingLong ? 'This is taking longer than usual. You can stop waiting and try again.' : 'Checking available formats. Nothing is downloaded yet.'}</span></div>
+      <button type="button" class="dbtn" on:click={stopWaiting}>Stop waiting</button>
+    </div>
   {:else if analyzeError}
     <div class="errslot" role="alert">
       <b>{analyzeError.title}</b>
       <span>{analyzeError.message}</span>
-      <button type="button" class="dbtn query" on:click={pasteAnotherLink}>Paste another link</button>
+      <div class="flow-actions">
+        {#if analyzeError.retry}<button type="button" class="dbtn pri" on:click={() => submitPaste()}>Try again</button>{/if}
+        {#if linkedPlaylist && scopeVideo}<button type="button" class="dbtn" on:click={() => { analyzeError = null; chooseScopeVideo(); }}>Use the video</button>{/if}
+        <button type="button" class="dbtn query" on:click={pasteAnotherLink}>Paste another link</button>
+      </div>
     </div>
   {/if}
 
+  {#if admissionError}
+    <div class="admission-error" role="alert">
+      <div><strong>{admissionError.title}</strong><span>{admissionError.message}</span></div>
+      <div class="flow-actions">
+        <button type="button" class="dbtn" on:click={pickFolder} disabled={folderBusy || !!admitting}>Change folder</button>
+        <button type="button" class="dbtn" on:click={() => submitPaste()} disabled={!!admitting}>Analyze again</button>
+        <button type="button" class="dbtn" on:click={() => dispatch('goto', 'queue')}>View queue</button>
+      </div>
+    </div>
+  {/if}
+  {#if admitting}
+    <div class="analysis-progress compact" role="status"><span class="query-spin" aria-hidden="true"></span><div><strong>Adding to queue…</strong><span>{admitting === 'playlist' ? 'Checking the selected videos and reserving their files.' : 'Reserving the destination and saving your download.'}</span></div></div>
+  {/if}
+
+  {#if hasDock}
+  <fieldset class="flow-review" disabled={!!admitting} aria-label="Download review">
   {#if scopeChoice && scopeVideo}
     <div class="sdialog" role="group" aria-labelledby="scope-title">
       <b id="scope-title">This link includes a playlist</b>
@@ -881,7 +989,7 @@
           <span class="sc-m">{scopePlaylistMeta}</span>
         </span>
       </button>
-      <div class="sdlg-foot">Esc to cancel</div>
+      <div class="sdlg-foot"><button type="button" class="dbtn" on:click={cancelScope}>Cancel</button><span>Esc to cancel</span></div>
     </div>
   {:else if playlist}
     {@const policy = playlistPolicyCopy()}
@@ -915,20 +1023,22 @@
           {@render outputBlock(playlistTab, KIND_OPTIONS, playlistPlanOptions, playlistFormatValue, setPlaylistTab, setPlaylistFormat, playlistTab === 'audio' && !$ffmpeg.available, '', playlistTab === 'audio' && !$ffmpeg.available)}
         </svelte:fragment>
       </OutputOptionsEditor>
+      {#if !availableCount}<p class="review-hint" role="status">This playlist has no available videos to download. Try another playlist or check its availability on YouTube.</p>{:else if !selectedItems.size}<p class="review-hint" role="status">Select at least one video from the list below.</p>{/if}
       <button type="button" class="ddisc has" aria-expanded={detailsOpen} on:click={() => detailsOpen = !detailsOpen}>
         <span class="chev">▸</span>
         <span class="dlnk">{policy.link}</span>
         <span class="dp">{policy.detail}</span>
         {#if playlistAtCap}<span class="cov part">VidStow can review up to {PLAYLIST_ADMIT_CAP} videos from a playlist.</span>{/if}
       </button>
+      {#if !folder}<p class="review-hint">Choose a folder to enable Download. Your format and subtitle choices will stay selected.</p>{/if}
       <footer class="dfoot">
         <span class="dleft">
-          <button type="button" class="dbtn" on:click={pickFolder}>Change</button>
+          <button type="button" class="dbtn" on:click={pickFolder} disabled={folderBusy || !!admitting}>{folderBusy ? 'Choosing…' : folder ? 'Change' : 'Choose folder'}</button>
           <span class="dpath" title={playlistSavePath || folder}>{playlistSavePath || (folder ? folder : 'Choose a download folder')}</span>
         </span>
         {#if !detailsOpen}
-          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder}>
-            {#if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
+          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || !!admitting || folderBusy}>
+            {#if admitting === 'playlist'}Adding…{:else if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Select videos{/if}
           </button>
         {/if}
       </footer>
@@ -974,8 +1084,8 @@
         </div>
         <div class="epcommit">
           <span>{selectedItems.size} selected · {policy.detail}</span>
-          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder}>
-            {#if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Nothing selected{/if}
+          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || !!admitting || folderBusy}>
+            {#if admitting === 'playlist'}Adding…{:else if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Select videos{/if}
           </button>
         </div>
       </div>
@@ -1023,12 +1133,13 @@
           {@render outputBlock(tab, kindOptions, videoPlanOptions, selectedPlanId, (kind) => setTab(kind === 'audio' ? 'audio' : 'video'), (id) => selectedPlanId = id, false, kindOptions.length ? `No ${tab} outputs were reported for this video.` : 'No outputs were reported for this video.', false)}
         </svelte:fragment>
       </OutputOptionsEditor>
+      {#if !folder}<p class="review-hint">Choose a folder to enable Download. Your format and subtitle choices will stay selected.</p>{/if}
       <footer class="dfoot">
         <span class="dleft">
-          <button type="button" class="dbtn" on:click={pickFolder}>Change</button>
+          <button type="button" class="dbtn" on:click={pickFolder} disabled={folderBusy || !!admitting}>{folderBusy ? 'Choosing…' : folder ? 'Change' : 'Choose folder'}</button>
           <span class="dpath" title={folder}>{folder ? folder : 'Choose a download folder'}</span>
         </span>
-        <button type="button" class="dbtn pri" on:click={enqueueVideo} disabled={!selectedPlan || !folder}>{@render downloadMark()}Download</button>
+        <button type="button" class="dbtn pri" on:click={enqueueVideo} disabled={!selectedPlan?.available || !folder || !!admitting || folderBusy}>{#if admitting === 'video'}Adding…{:else}{@render downloadMark()}Download{/if}</button>
       </footer>
     </section>
   {:else if batchReview}
@@ -1040,13 +1151,14 @@
             <b>Batch of public videos</b>
           </div>
           <span class="dmeta" aria-live="polite">{batchReviewSummary(batchReview)}</span>
-          {#if !batchTokenValid}<span class="dmeta expired" role="alert">This review expired. Edit the lines and review them again.</span>{/if}
+          {#if !batchTokenValid}<span class="dmeta expired" role="alert">This review expired. Review these links again to download.</span>{/if}
           <div class="dpolhint">
             {#if batchTab === 'audio' && batchAudioChoice !== 'original'}MP3 conversion requires FFmpeg · {/if}
             <button type="button" class="tlink" on:click={() => detailsOpen = !detailsOpen}>{batchReview.items.length} titles</button>
           </div>
         </div>
       </div>
+      {#if batchReadyCount < 2}<p class="review-hint">{batchReadyCount === 1 ? 'One video is ready. Review it individually, or edit this batch to include at least two ready videos.' : 'No videos are ready yet. Review the reasons below, then edit or retry these links.'}</p>{/if}
       <div class="opt-sections">
         <div class="erow">
           <span class="elab">Output</span>
@@ -1082,23 +1194,39 @@
           {/each}
         </div>
       {/if}
+      {#if !folder}<p class="review-hint">Choose a folder to enable Download. Your format and subtitle choices will stay selected.</p>{/if}
       <footer class="dfoot">
         <span class="dleft">
-          <button type="button" class="dbtn" on:click={pickFolder} disabled={batchBusy}>Change</button>
+          <button type="button" class="dbtn" on:click={pickFolder} disabled={batchBusy || folderBusy || !!admitting}>{folderBusy ? 'Choosing…' : folder ? 'Change' : 'Choose folder'}</button>
           <span class="dpath" title={folder}>{folder ? folder : 'Choose a download folder'}</span>
         </span>
         <div class="dacts">
-          <button type="button" class="dbtn" on:click={editBatchURLs} disabled={batchBusy}>Edit URLs</button>
+          <button type="button" class="dbtn" on:click={editBatchURLs} disabled={batchBusy || !!admitting}>Edit URLs</button>
+          {#if !batchTokenValid || (batchReview.counts.analysisFailed > 0 && batchReadyCount < 2)}<button type="button" class="dbtn query" on:click={refreshBatch} disabled={batchBusy || !!admitting}>Review again</button>{/if}
+          {#if batchReadyCount === 1}<button type="button" class="dbtn query" on:click={openOnlyReadyVideo}>Review ready video</button>{/if}
           <button type="button" class="dbtn pri" on:click={enqueueBatch} disabled={!batchCanStart}>
-            {@render downloadMark()}{downloadVideosLabel(batchReadyCount)}
+            {#if admitting === 'batch'}Adding…{:else}{@render downloadMark()}{downloadVideosLabel(batchReadyCount)}{/if}
           </button>
         </div>
       </footer>
     </section>
   {/if}
+  </fieldset>
+  {/if}
 </section>
 
 <style>
+  .input-help { margin: -5px 2px 0; font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
+  .flow-review { border: 0; margin: 0; padding: 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow: auto; }
+  .flow-review:disabled { opacity: .7; }
+  .analysis-progress { display: flex; align-items: center; gap: 12px; padding: 18px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--surface-subtle); }
+  .analysis-progress > div { flex: 1; min-width: 0; }
+  .analysis-progress strong, .admission-error strong { display: block; font-size: 13px; font-weight: 600; }
+  .analysis-progress span:not(.query-spin), .admission-error span { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+  .analysis-progress.compact { padding: 12px 16px; flex-shrink: 0; }
+  .flow-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .admission-error { padding: 14px 16px; border: 1px solid rgba(212, 172, 124, .3); border-radius: 9px; background: rgba(212, 172, 124, .04); flex-shrink: 0; }
+  .review-hint { margin: 0; padding: 10px 14px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; border-top: 1px solid var(--border-subtle); }
   .page.home {
     gap: 12px;
   }
@@ -1171,6 +1299,9 @@
   .fieldwrap .dbtn.query svg,
   .fieldwrap .dbtn.query .query-spin { width: 12px; height: 12px; flex-shrink: 0; }
   .query-spin {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
     box-sizing: border-box;
     border: 1.5px solid currentColor;
     border-right-color: transparent;
@@ -1223,15 +1354,6 @@
     color: var(--text-primary);
   }
 
-  .skel {
-    width: min(780px, 100%);
-    margin: 0 auto;
-    padding: 14px;
-    border: 1px dashed var(--border-default);
-    border-radius: 10px;
-    color: var(--text-muted);
-    font-size: 12px;
-  }
   .errslot {
     width: min(780px, 100%);
     margin: 0 auto;
@@ -1246,9 +1368,7 @@
   }
   .errslot b { font-size: 13px; font-weight: 600; color: #FCA5A5; }
   .errslot span { color: var(--text-secondary); font-size: 12px; }
-  .composer + .errslot,
-  .composer + .skel,
-  .composer + .sdialog { width: 100%; }
+
 
   .sdialog {
     padding: 16px 18px;

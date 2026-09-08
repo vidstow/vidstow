@@ -58,7 +58,7 @@ func TestFriendlyAnalyzeErrorOtherUnsupportedIsUnchanged(t *testing.T) {
 		Err:      errors.New("video unavailable"),
 	}
 
-	if got := friendlyAnalyzeError(err); got != "That link is not a supported single YouTube video." {
+	if got := friendlyAnalyzeError(err); got != "We could not read this YouTube link. It may be unavailable or unsupported." {
 		t.Fatalf("friendlyAnalyzeError() = %q; want ordinary unsupported message", got)
 	}
 }
@@ -83,7 +83,7 @@ func TestStartDownloadRejectsPlaylistURL(t *testing.T) {
 	if err == nil {
 		t.Fatal("StartDownload accepted a playlist URL")
 	}
-	if err.Error() == "That link is not a supported single YouTube video." {
+	if err.Error() == "We could not read this YouTube link. It may be unavailable or unsupported." {
 		t.Fatal("StartDownload used analyze-error copy instead of video-only admission")
 	}
 	if !strings.Contains(err.Error(), "video-only") {

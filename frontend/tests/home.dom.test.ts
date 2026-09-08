@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/svelte';
+import { render, screen, waitFor, act } from '@testing-library/svelte';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -313,11 +313,8 @@ describe('Home analysis authority', () => {
 
     await waitFor(() => expect(StartPlaylistDownload).toHaveBeenCalledOnce());
     expect(StartDownload).not.toHaveBeenCalled();
-    expect(get(modal)).toMatchObject({
-      kind: 'error',
-      title: 'Playlist could not start',
-      message: 'A selected video requires a channel membership and is not available in this version.',
-    });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Playlist could not start');
+    expect(get(modal)).toBeNull();
     expect(screen.getByText('Fixture playlist')).toBeInTheDocument();
   });
 
@@ -505,6 +502,8 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('This review expired');
     expect(screen.getByRole('button', { name: 'Download 2 videos' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Review again' }));
+    await waitFor(() => expect(AnalyzeBatchURLs).toHaveBeenCalledTimes(2));
   });
 
   test('switching output types selects a visible compatible plan', async () => {
@@ -535,13 +534,13 @@ describe('Home analysis authority', () => {
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    expect(await screen.findByText('Unsupported URL')).toBeInTheDocument();
+    expect(await screen.findByText('Check this link')).toBeInTheDocument();
     expect(screen.getByText('This video is private.')).toBeInTheDocument();
     const recover = screen.getByRole('button', { name: 'Paste another link' });
     expect(recover).toHaveClass('dbtn', 'query');
     const field = screen.getByLabelText('YouTube video, Short, or playlist URL');
     await user.click(recover);
-    await waitFor(() => expect(screen.queryByText('Unsupported URL')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText('Check this link')).not.toBeInTheDocument());
     expect(field).toHaveFocus();
   });
 
@@ -579,7 +578,8 @@ describe('Home analysis authority', () => {
     await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
     expect(screen.getByText('Fixture video')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled();
-    expect(get(modal)).toMatchObject({ kind: 'error', title: 'Download could not start' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Download could not start');
+    expect(get(modal)).toBeNull();
   });
 
   test('Analyze submits the live field when the DOM and Svelte state diverge', async () => {
@@ -648,4 +648,131 @@ describe('Home analysis authority', () => {
     expect(request.options.subtitleLanguages).toBeUndefined();
     expect(request.options.embedMetadata).toBeUndefined();
   });
+  test('locks a pending download against repeated clicks and preserves choices on failure', async () => {
+    const user = userEvent.setup();
+    let reject!: (error: Error) => void;
+    const { StartDownload } = installBindings();
+    StartDownload.mockImplementation(() => new Promise<string>((_, fail) => { reject = fail; }));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.dblClick(await screen.findByRole('button', { name: 'Download' }));
+    expect(StartDownload).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Adding…' })).toBeDisabled();
+    expect(screen.getByLabelText('YouTube video, Short, or playlist URL')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Audio' })).toBeDisabled();
+    await act(() => reject(new Error('Destination is not writable.')));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Destination is not writable.');
+    expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled();
+    expect(screen.getByText('Fixture video')).toBeInTheDocument();
+  });
+
+  test('stopping analysis ignores its late result and allows a fresh attempt', async () => {
+    const user = userEvent.setup();
+    let finish!: (value: ReturnType<typeof videoSummary>) => void;
+    const { AnalyzeURL } = installBindings();
+    AnalyzeURL.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByRole('button', { name: 'Stop waiting' }));
+    await act(() => finish(videoSummary(firstURL)));
+    expect(screen.queryByText('Fixture video')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(AnalyzeURL).toHaveBeenCalledTimes(2);
+  });
+
+  test('valid-link extraction errors offer retry and clear the previous review', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeURL } = installBindings();
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await screen.findByText('Fixture video');
+    AnalyzeURL.mockRejectedValueOnce(new Error('Check your connection and try again.'));
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not read this link');
+    expect(screen.queryByText('Fixture video')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+  });
+
+  test('a cleared default folder disables download and explains how to continue', async () => {
+    const user = userEvent.setup();
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await screen.findByText('Fixture video');
+    await act(() => settings.update((current) => ({ ...current, downloadFolder: '' })));
+    expect(screen.getByRole('button', { name: 'Download' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Choose folder' })).toBeEnabled();
+    expect(screen.getByText(/Choose a download folder/)).toBeInTheDocument();
+  });
+
+  test('editing a batch in flight prevents the old review from appearing', async () => {
+    const user = userEvent.setup();
+    let finish!: (value: unknown) => void;
+    const { AnalyzeBatchURLs } = installBindings();
+    AnalyzeBatchURLs.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(Home);
+    const input = screen.getByLabelText('YouTube video, Short, or playlist URL');
+    await user.type(input, `${firstURL}{Shift>}{Enter}{/Shift}https://youtu.be/fixture0002`);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await waitFor(() => expect(AnalyzeBatchURLs).toHaveBeenCalledOnce());
+    await user.clear(input);
+    await user.type(input, firstURL);
+    await act(() => finish({ token: 'late', expiresAt: new Date(Date.now() + 60000).toISOString(), counts: { ready: 2 }, items: [] }));
+    expect(screen.queryByText('Batch review')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Download 2/ })).not.toBeInTheDocument();
+  });
+
+  test('failed playlist prefetch still lets the user choose the video', async () => {
+    const user = userEvent.setup();
+    const { ValidateURL, AnalyzePlaylist } = installBindings();
+    ValidateURL.mockResolvedValue({ kind: 'video_playlist', url: firstURL, videoUrl: firstURL, playlistUrl: 'https://www.youtube.com/playlist?list=PLfixture', videoId: 'fixture0001', playlistId: 'PLfixture' });
+    AnalyzePlaylist.mockRejectedValue(new Error('Connection lost'));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await screen.findByText('Preview unavailable. Choose playlist to try again.');
+    await user.click(screen.getByRole('button', { name: /Video Fixture video/ }));
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeEnabled();
+  });
+
+  test('one ready batch item can continue through single-video review', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeBatchURLs, AnalyzeURL, StartBatchDownload } = installBindings();
+    AnalyzeBatchURLs.mockResolvedValue({
+      token: 'one-ready', expiresAt: '2099-01-01T00:00:00Z',
+      counts: { pasted: 2, ready: 1, duplicate: 0, invalid: 1, analysisFailed: 0 },
+      items: [{ lineNumber: 1, input: firstURL, status: 'ready', title: 'First' }, { lineNumber: 2, input: 'invalid', status: 'invalid', message: 'Invalid link' }],
+    });
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.click(await screen.findByRole('button', { name: 'Review ready video' }));
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeEnabled();
+    expect(AnalyzeURL).toHaveBeenCalledWith(firstURL);
+    expect(StartBatchDownload).not.toHaveBeenCalled();
+  });
+
+  test('pending playlist admission locks selection and clears its review on success', async () => {
+    const user = userEvent.setup();
+    const { ValidateURL, StartPlaylistDownload } = installBindings();
+    const url = 'https://www.youtube.com/playlist?list=PLfixture';
+    ValidateURL.mockResolvedValue({ kind: 'playlist', url, playlistUrl: url, playlistId: 'PLfixture', videoUrl: '', videoId: '' });
+    let finish!: (value: { collectionId: string; admitted: number }) => void;
+    StartPlaylistDownload.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), url);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await user.dblClick(await screen.findByRole('button', { name: 'Download 2 videos' }));
+    expect(StartPlaylistDownload).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: 'Audio' })).toBeDisabled();
+    await act(() => finish({ collectionId: 'collection-1', admitted: 2 }));
+    expect(screen.queryByText('Fixture playlist')).not.toBeInTheDocument();
+  });
+
 });
