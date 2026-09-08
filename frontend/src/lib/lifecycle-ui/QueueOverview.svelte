@@ -56,6 +56,7 @@
   interface Props {
     model: QueueOverviewViewModel;
     title?: string;
+    pendingMessage?: string;
     onPauseAll?: () => void;
     onResumeAll?: () => void;
     onClearCompleted?: () => void;
@@ -67,6 +68,7 @@
   let {
     model,
     title = 'Queue',
+    pendingMessage = '',
     onPauseAll,
     onResumeAll,
     onGoHome,
@@ -83,8 +85,8 @@
   });
   const canResumeAll = $derived(
     hasQueueAuthority &&
-      (model.jobs.some((job) => jobEnabled(job, 'resume')) ||
-        collections.some((collection) => collectionEnabled(collection, 'resume'))),
+      (model.jobs.some((job) => job.capabilities?.resume && isValidCommandToken(job.commandToken)) ||
+        collections.some((collection) => collection.capabilities?.resume && isValidCommandToken(collection.commandToken))),
   );
 
   let canceledOpen = $state(false);
@@ -162,7 +164,7 @@
   }
 
   function jobEnabled(job: LifecycleJobViewModel, action: LifecycleJobAction | LifecycleJobActionEvent['action']): boolean {
-    if (!isValidCommandToken(job.commandToken)) return false;
+    if (pendingMessage || !isValidCommandToken(job.commandToken)) return false;
     const capabilities = job.capabilities;
     if (!capabilities) return false;
     if (action === 'download-again') return capabilities.downloadAgain === true;
@@ -175,7 +177,7 @@
   }
 
   function collectionEnabled(collection: QueueCollectionViewModel, action: QueueCollectionAction): boolean {
-    return isValidCommandToken(collection.commandToken) && collection.capabilities?.[action] === true;
+    return !pendingMessage && isValidCommandToken(collection.commandToken) && collection.capabilities?.[action] === true;
   }
 
   function progressPct(progress?: number): number {
@@ -227,6 +229,12 @@
     selectedOverride = { type: 'col', id: collection.id };
   }
 
+  function recoveryAction(job: LifecycleJobViewModel): LifecycleJobAction {
+    if (['disk_full', 'permission_denied', 'folder_unavailable'].includes(job.failure?.category ?? '') && job.capabilities?.changeFolder) return 'change-folder';
+    if (['resource_unavailable', 'authentication_required'].includes(job.failure?.category ?? '') && job.capabilities?.openSource) return 'open-source';
+    return 'retry';
+  }
+
   function trigger(job: LifecycleJobViewModel, action: LifecycleJobActionEvent['action']): void {
     if (!jobEnabled(job, action) || !job.commandToken) return;
     const detail = { jobId: job.id, commandToken: job.commandToken };
@@ -242,13 +250,13 @@
   }
 
   function pauseAll(): void {
-    if (!(model.canPauseAll === true && hasQueueAuthority)) return;
+    if (pendingMessage || !(model.canPauseAll === true && hasQueueAuthority)) return;
     dispatch('pause-all');
     onPauseAll?.();
   }
 
   function resumeAll(): void {
-    if (!canResumeAll) return;
+    if (pendingMessage || !canResumeAll) return;
     dispatch('resume-all');
     onResumeAll?.();
   }
@@ -341,7 +349,11 @@
                   <span class="qtail" class:err={tail.err}>{tail.text}</span>
                 {/if}
               </button>
-              {#if item.job.capabilities?.retry}
+              {#if recoveryAction(item.job) === 'change-folder'}
+                <button class="app-btn primary row-action" aria-label={`Change folder for ${item.job.title}`} disabled={!jobEnabled(item.job, 'change-folder')} onclick={() => trigger(item.job, 'change-folder')}>{@render icon('folder')} Change folder</button>
+              {:else if recoveryAction(item.job) === 'open-source'}
+                <button class="app-btn primary row-action" aria-label={`Open source for ${item.job.title}`} disabled={!jobEnabled(item.job, 'open-source')} onclick={() => trigger(item.job, 'open-source')}>{@render icon('external')} Open source</button>
+              {:else if item.job.capabilities?.retry}
                 <button class="app-btn primary row-action" aria-label={`Retry ${item.job.title}`} disabled={!jobEnabled(item.job, 'retry')} onclick={() => trigger(item.job, 'retry')}>{@render icon('retry')} Retry</button>
               {:else if item.job.lifecycle === 'canceled' && item.job.capabilities?.remove}
                 <button class="app-btn quiet row-action" title="Remove from queue" aria-label={`Remove ${item.job.title}`} disabled={!jobEnabled(item.job, 'remove')} onclick={() => trigger(item.job, 'remove')}>{@render icon('remove')} Remove</button>
@@ -383,7 +395,7 @@
             <button
               type="button"
               class="app-btn"
-              disabled={!(model.canPauseAll === true && hasQueueAuthority)}
+              disabled={!!pendingMessage || !(model.canPauseAll === true && hasQueueAuthority)}
               onclick={pauseAll}
             >{@render icon('pause')} Pause all</button>
             {/if}
@@ -391,7 +403,7 @@
             <button
               type="button"
               class="app-btn"
-              disabled={!canResumeAll}
+              disabled={!!pendingMessage || !canResumeAll}
               onclick={resumeAll}
             >{@render icon('play')} Resume all</button>
             {/if}
@@ -399,6 +411,9 @@
           {/if}
         </header>
 
+        {#if pendingMessage}
+          <p class="notice" role="status" aria-live="polite">{pendingMessage}</p>
+        {/if}
         {#if model.notice}
           <p class="notice" data-tone={model.noticeTone ?? 'info'} role="status" aria-live="polite">
             <span class="notice-icon" aria-hidden="true">i</span>
@@ -462,6 +477,7 @@
             <div class="ierr failure-card">
               <strong>{@render icon('warning')} {job.failure.heading}</strong>
               <span>{job.failure.message}</span>
+              {#if job.failure.recommendedAction}<span>{job.failure.recommendedAction}</span>{/if}
               {#if job.failure.evidence}
                 <details class="failure-details">
                   <summary>Failure details</summary>
@@ -484,10 +500,10 @@
           <div class="ibtns">
             {#if fail}
               {#if job.capabilities?.retry}
-                <button type="button" class="app-btn primary" disabled={!jobEnabled(job, 'retry')} onclick={() => trigger(job, 'retry')}>{@render icon('retry')} Retry</button>
+                <button type="button" class="app-btn" class:primary={recoveryAction(job) === 'retry'} disabled={!jobEnabled(job, 'retry')} onclick={() => trigger(job, 'retry')}>{@render icon('retry')} Retry</button>
               {/if}
               {#if job.capabilities?.changeFolder}
-                <button type="button" class="app-btn" disabled={!jobEnabled(job, 'change-folder')} onclick={() => trigger(job, 'change-folder')}>{@render icon('folder')} Change</button>
+                <button type="button" class="app-btn" class:primary={recoveryAction(job) === 'change-folder'} disabled={!jobEnabled(job, 'change-folder')} onclick={() => trigger(job, 'change-folder')}>{@render icon('folder')} Change folder</button>
               {/if}
               {#if job.capabilities?.startAgain}
                 <button type="button" class="app-btn primary" disabled={!jobEnabled(job, 'start-again')} onclick={() => trigger(job, 'start-again')}>{@render icon('retry')} Start again</button>
@@ -516,7 +532,7 @@
               <button type="button" class="app-btn" disabled={!jobEnabled(job, 'download-again')} onclick={() => trigger(job, 'download-again')}>{@render icon('download')} Download again</button>
             {/if}
             {#if job.capabilities?.openSource}
-              <button type="button" class="app-btn" disabled={!jobEnabled(job, 'open-source')} onclick={() => trigger(job, 'open-source')}>{@render icon('external')} Open source</button>
+              <button type="button" class="app-btn" class:primary={recoveryAction(job) === 'open-source'} disabled={!jobEnabled(job, 'open-source')} onclick={() => trigger(job, 'open-source')}>{@render icon('external')} Open source</button>
             {/if}
             {#if job.capabilities?.copyLink}
               <button type="button" class="app-btn" disabled={!jobEnabled(job, 'copy-link')} onclick={() => trigger(job, 'copy-link')}>{@render icon('copy')} Copy link</button>

@@ -14,6 +14,11 @@ does not exist yet.
 
 ### Added
 
+- Queue actions show pending feedback and prevent overlapping requests. Failure
+  recovery highlights the relevant folder, source, or retry action. Resume all
+  continues after individual failures and reports results without resubmitting
+  collection members separately.
+
 - Dark zinc workstation with Home, Queue, Downloads, and Settings. The product
   name lives in the native title bar; the sidebar starts at Home and no longer
   repeats the wordmark or an About item.

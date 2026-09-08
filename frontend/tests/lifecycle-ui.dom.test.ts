@@ -426,7 +426,7 @@ describe('backend-authored capabilities', () => {
     });
 
     expect(screen.getAllByText('Save folder is missing').length).toBeGreaterThan(0);
-    await user.click(screen.getByRole('button', { name: 'Change' }));
+    await user.click(screen.getByRole('button', { name: 'Change folder' }));
     expect(onAction.mock.calls[0][0]).toEqual({
       jobId: 'missing-folder', commandToken: 'folder-token', action: 'change-folder',
     });

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from '../lib/api.js';
-  import { modal, pendingUrl, queueView, route, showBanner, showError } from '../lib/stores.js';
+  import { errorMessage, modal, pendingUrl, queueView, route, showBanner, showError } from '../lib/stores.js';
   import ActionRequiredReviewDialog from '../lib/lifecycle-ui/ActionRequiredReviewDialog.svelte';
   import QueueOverview from '../lib/lifecycle-ui/QueueOverview.svelte';
   import type { ActionRequiredReviewViewModel, LifecycleJobEventDetail, QueueCollectionActionEvent, QueueOverviewViewModel, QueueView } from '../lib/lifecycle-ui/types.js';
@@ -31,6 +31,21 @@
   let actionRequiredReview: ActionRequiredReviewViewModel | null = null;
   let actionRequiredAuthority: LifecycleJobEventDetail | null = null;
   let startingOver = false;
+  let pendingMessage = '';
+
+  async function withPending(message: string, operation: () => Promise<void>) {
+    if (pendingMessage) return;
+    pendingMessage = message;
+    try { await operation(); }
+    finally { pendingMessage = ''; }
+  }
+
+  const actionLabels: Record<string, string> = {
+    pause: 'Pausing…', cancel: 'Canceling…', resume: 'Resuming…', retry: 'Retrying…',
+    remove: 'Removing…', 'change-folder': 'Choosing a folder…', 'start-again': 'Starting again…',
+    review: 'Loading recovery options…', 'open-source': 'Opening source…', 'copy-link': 'Copying link…',
+    open: 'Opening file…',
+  };
 
   async function refresh(): Promise<QueueView> {
     const next = await api.queue.get();
@@ -59,8 +74,9 @@
   async function action(detail: LifecycleJobEventDetail, operation: (id: string, token: string) => Promise<unknown>, fallback: string, success?: string) {
     try {
       await operation(detail.jobId, detail.commandToken);
-      await refresh();
-      if (success) showBanner('info', success);
+      const refreshed = await refresh().then(() => true, () => false);
+      if (!refreshed) showBanner('info', 'Action accepted. Queue status could not refresh; check its status before trying again.');
+      else if (success) showBanner('info', success);
     } catch (err) {
       await refresh().catch(() => undefined);
       showError(err, fallback);
@@ -88,7 +104,7 @@
       actions: [{
         label: 'Discard',
         primary: true,
-        action: async () => {
+        action: () => withPending('Discarding saved data…', async () => {
           try {
             await api.queue.discardSavedData(detail.jobId, detail.commandToken);
             await refresh();
@@ -97,7 +113,7 @@
             await refresh().catch(() => undefined);
             showError(err, 'Saved data could not be discarded safely');
           }
-        },
+        }),
       }],
     });
   }
@@ -252,13 +268,16 @@
       retry: api.queue.retryCollection,
       remove: api.queue.removeCollection,
     };
-    const execute = async () => {
+    const execute = () => withPending(actionLabels[detail.action] ?? 'Updating collection…', async () => {
       try {
         const count = await operations[detail.action](detail.collectionId, detail.commandToken);
         await refresh();
         showBanner('info', `${detail.action === 'remove' ? 'Removed' : 'Updated'} ${count} ${collectionLabel} item${count === 1 ? '' : 's'}.`);
-      } catch (err) { showError(err, `Could not ${detail.action} the ${collectionLabel}`); }
-    };
+      } catch (err) {
+        await refresh().catch(() => undefined);
+        showError(err, `Could not ${detail.action} the ${collectionLabel}`);
+      }
+    });
     if (detail.action === 'cancel' || detail.action === 'remove') {
       modal.set({
         kind: 'confirm',
@@ -280,18 +299,30 @@
   }
 
   async function resumeAll() {
-    const jobs = model.jobs.filter((job) => job.capabilities?.resume === true && job.commandToken);
-    const collections = (model.collections ?? []).filter((collection) => collection.capabilities?.resume === true && collection.commandToken);
-    try {
-      for (const job of jobs) await api.queue.resume(job.id, job.commandToken ?? '');
-      for (const collection of collections) await api.queue.resumeCollection(collection.id, collection.commandToken ?? '');
-      await refresh();
-      const count = jobs.length + collections.length;
-      showBanner('info', count ? `Resume requested for ${count} item${count === 1 ? '' : 's'}.` : 'No jobs can be resumed right now.');
-    } catch (err) {
-      await refresh().catch(() => undefined);
-      showError(err, 'Could not resume the queue');
-    }
+    await withPending('Resuming all…', async () => {
+      const collections = (model.collections ?? []).filter((item) => item.capabilities?.resume && item.commandToken);
+      const covered = new Set(collections.flatMap((item) => item.childJobIds));
+      const collectionIds = new Set(collections.map((item) => item.id));
+      const jobs = model.jobs.filter((job) => job.capabilities?.resume && job.commandToken && !covered.has(job.id) && !collectionIds.has(job.collectionId ?? ''));
+      const targets = [
+        ...jobs.map((job) => ({ title: job.title, run: () => api.queue.resume(job.id, job.commandToken!) })),
+        ...collections.map((item) => ({ title: item.title, run: () => api.queue.resumeCollection(item.id, item.commandToken!) })),
+      ];
+      let succeeded = 0;
+      const failures: string[] = [];
+      for (const target of targets) {
+        try { await target.run(); succeeded += 1; }
+        catch (err) { failures.push(`${target.title}: ${errorMessage(err, 'Could not resume. Review this item in the queue.')}`); }
+      }
+      const refreshed = await refresh().then(() => true, () => false);
+      const summary = targets.length
+        ? `Resume requested for ${succeeded} of ${targets.length} items.${failures.length ? ` ${failures.length} could not resume.` : ''}`
+        : 'No jobs can be resumed right now.';
+      if (failures.length || !refreshed) {
+        modal.set({ kind: 'error', title: 'Resume all results', message: summary,
+          detail: [...failures, ...(!refreshed ? ['Queue status could not refresh. Check the queue before trying again.'] : [])].join('\n') });
+      } else showBanner('info', summary);
+    });
   }
 
   async function clearCompleted() {
@@ -302,25 +333,26 @@
 
 <QueueOverview
   {model}
-  onPauseAll={pauseAll}
+  {pendingMessage}
+  onPauseAll={() => withPending('Pausing all…', pauseAll)}
   onResumeAll={resumeAll}
   onGoHome={() => route.set('home')}
   onClearCompleted={clearCompleted}
   onCollectionAction={collectionAction}
-  onAction={(event) => {
-    if (event.action === 'pause') action(event, api.queue.pause, 'Could not pause the download');
-    else if (event.action === 'cancel') action(event, api.queue.cancel, 'Could not cancel the download');
-    else if (event.action === 'resume') action(event, api.queue.resume, 'Could not resume the download', 'Download resumed.');
-    else if (event.action === 'retry') action(event, api.queue.retry, 'Could not retry the download', 'Retry added to the queue.');
-    else if (event.action === 'start-again') startAgain(event);
-    else if (event.action === 'open-source') action(event, api.queue.openSource, 'Could not open the source');
-    else if (event.action === 'copy-link') action(event, api.queue.copyLink, 'Could not copy the source link', 'Source link copied.');
-    else if (event.action === 'review') reviewActionRequired(event);
-    else if (event.action === 'open') action(event, api.queue.open, 'Could not open the downloaded file');
-    else if (event.action === 'remove') action(event, api.queue.remove, 'Could not remove the download');
-    else if (event.action === 'change-folder') action(event, api.queue.changeFolder, 'Could not change the folder');
+  onAction={(event) => withPending(actionLabels[event.action] ?? 'Updating download…', async () => {
+    if (event.action === 'pause') await action(event, api.queue.pause, 'Could not pause the download');
+    else if (event.action === 'cancel') await action(event, api.queue.cancel, 'Could not cancel the download');
+    else if (event.action === 'resume') await action(event, api.queue.resume, 'Could not resume the download', 'Download resumed.');
+    else if (event.action === 'retry') await action(event, api.queue.retry, 'Could not retry the download', 'Retry added to the queue.');
+    else if (event.action === 'start-again') await startAgain(event);
+    else if (event.action === 'open-source') await action(event, api.queue.openSource, 'Could not open the source');
+    else if (event.action === 'copy-link') await action(event, api.queue.copyLink, 'Could not copy the source link', 'Source link copied.');
+    else if (event.action === 'review') await reviewActionRequired(event);
+    else if (event.action === 'open') await action(event, api.queue.open, 'Could not open the downloaded file');
+    else if (event.action === 'remove') await action(event, api.queue.remove, 'Could not remove the download');
+    else if (event.action === 'change-folder') await action(event, api.queue.changeFolder, 'Could not change the folder');
     else if (event.action === 'discard') discardSaved(event);
-  }}
+  })}
 />
 
 <ActionRequiredReviewDialog
