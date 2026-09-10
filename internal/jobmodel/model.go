@@ -97,6 +97,8 @@ type OutputOptions struct {
 	SubtitleMode string `json:"subtitleMode,omitempty"`
 	// SubtitleLanguages selects track languages. Empty defers to the engine's
 	// default: manual English, then English, then the first language offered.
+	// Settings may persist one catalog code as the default. Playlist and batch
+	// starts send one code per child after preferring the card language.
 	SubtitleLanguages []string `json:"subtitleLanguages,omitempty"`
 	// SubtitleAutoCaptions allows auto-generated tracks when a selected
 	// language has no manual captions.
@@ -156,8 +158,8 @@ func (o OutputOptions) Clone() OutputOptions {
 
 // Validate enforces the shapes the UI and engine agree on. Language entries
 // are deliberately tight (the engine's language rules also accept patterns;
-// VidStow only ever sends codes it listed during analysis) so persisted
-// requests cannot smuggle rule syntax through State v2.
+// VidStow sends analysis codes or a collection catalog of simple codes) so
+// persisted requests cannot smuggle rule syntax through State v2.
 func (o OutputOptions) Validate() error {
 	switch o.SubtitleMode {
 	case "", SubtitleModeSidecar, SubtitleModeEmbed:
@@ -181,8 +183,9 @@ func (o OutputOptions) Validate() error {
 }
 
 // ValidSubtitleLanguage reports whether a language entry is a bounded,
-// pattern-free code. VidStow only ever lists codes the engine reported during
-// analysis, so anything outside this shape is out of contract.
+// pattern-free code. VidStow lists codes the engine reported during analysis,
+// or a short collection catalog, so anything outside this shape is out of
+// contract.
 func ValidSubtitleLanguage(language string) bool {
 	if language == "" || len(language) > 16 {
 		return false
@@ -198,12 +201,22 @@ func ValidSubtitleLanguage(language string) bool {
 // Note renders a short, human-readable summary of the non-default choices for
 // queue row metadata. It never includes private paths or engine details.
 func (o OutputOptions) Note() string {
+	return o.CompleteNote(false)
+}
+
+// CompleteNote is Note after the download finishes. Embed skipped means the
+// video was saved, but VidStow could not put captions in the file.
+func (o OutputOptions) CompleteNote(embedSkipped bool) string {
 	parts := make([]string, 0, 2)
 	switch o.SubtitleMode {
 	case SubtitleModeSidecar:
 		parts = append(parts, "subtitles"+o.noteLanguages())
 	case SubtitleModeEmbed:
-		parts = append(parts, "embedded subtitles"+o.noteLanguages())
+		if embedSkipped {
+			parts = append(parts, "no captions in file")
+		} else {
+			parts = append(parts, "embedded subtitles"+o.noteLanguages())
+		}
 	}
 	var embeds []string
 	if o.EmbedMetadata {

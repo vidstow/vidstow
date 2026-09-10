@@ -72,7 +72,7 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /class="eprow"/);
   assert.match(home, /'Change' : 'Choose folder'/);
   assert.doesNotMatch(home, /Save to /);
-  assert.match(home, /Paste another link/);
+  assert.doesNotMatch(home, /Paste another link/);
   assert.match(home, /<footer class="dfoot">[\s\S]*?Download\{\/if\}</);
   assert.match(home, /\{@render downloadMark\(\)\}Download\{\/if\}<\/button>/);
   assert.doesNotMatch(home, />Add to Queue</);
@@ -89,12 +89,19 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /class="type-pills"/);
   assert.match(home, /aria-label="Media format type"/);
   assert.doesNotMatch(home, /label="Type"/);
-  assert.match(home, /class="opt-sections"/);
-  assert.match(home, /class="erow"/);
-  assert.match(home, />Output</);
+  assert.match(home, /bind:value=\{batchOptions\}/);
+  assert.match(home, /allowSubtitles=\{batchTab === 'video'\}/);
+  assert.match(home, /startBatch\(request\)/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /class="opt-sections"/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /class="erow"/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />Output</);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />Subtitles\{#if !allowSubtitles\}<span class="only">Video only</);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /English or first available/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /default subtitle language in Settings/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /setCollectionLanguage/);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), />In the file</);
-  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitle file"/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Embed in video"/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /Writes captions inside the video\. The folder still shows one MP4\./);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /aria-label="Subtitles off"/);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /\.erow\.disabled \.triad button\.on\.file/);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /\.erow\.disabled \.dd:disabled \{ opacity: 1; \}/);
@@ -128,6 +135,11 @@ test('page titles and controls match the approved redesign', async () => {
   assert.doesNotMatch(home, /Best available up to/);
   assert.doesNotMatch(home, /doutcome"><b>/);
   assert.match(home, /Analyze\s*<\/button>/);
+  assert.match(home, /class="hud-strip"/);
+  assert.match(home, /stop-slot/);
+  assert.match(home, /Reading playlist…/);
+  assert.match(home, /Reviewing \$\{pasteItems/);
+  assert.doesNotMatch(home, /on:click=\{stopWaiting\}>Cancel</);
   assert.match(home, /class="query-spin"/);
   assert.doesNotMatch(home, /class="query-sizer"/);
   assert.match(home, /circle cx="11" cy="11" r="7"/);
@@ -169,6 +181,10 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(downloads, /buildHistorySections/);
   assert.doesNotMatch(downloads, /Recent/);
   assert.match(settings, />Default download folder</);
+  assert.match(settings, />Default subtitle language</);
+  assert.match(settings, /Default subtitle language/);
+  assert.match(await read('../src/lib/subtitle-languages.ts'), /code: 'es', name: 'Spanish'/);
+  assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /from '\.\.\/subtitle-languages\.js'/);
   assert.match(settings, />Interrupted jobs</);
   assert.match(settings, /In progress continues/);
   assert.doesNotMatch(settings, /Restored as paused/);
@@ -216,11 +232,14 @@ test('first launch asks for explicit diagnostic consent without a default', asyn
   assert.doesNotMatch(dialog, /checked|selected/);
 });
 
-test('analysis failures stay on Home with a paste-another-link recovery', async () => {
+test('analysis failures stay on Home and select the paste field', async () => {
   const home = await read('../src/pages/Home.svelte');
   assert.match(home, /title: validated \? 'Could not read this link' : 'Check this link'/);
-  assert.match(home, /analyzeError = \{/);
-  assert.match(home, /class="dbtn query" on:click=\{pasteAnotherLink\}>Paste another link</);
+  assert.match(home, /presentAnalyzeError\(/);
+  assert.match(home, /title: 'Batch could not be reviewed'/);
+  assert.match(home, /title: 'Could not read the playlist'/);
+  assert.doesNotMatch(home, /Paste another link/);
+  assert.doesNotMatch(home, /pasteAnotherLink/);
   assert.doesNotMatch(home, /app-btn/);
   assert.match(home, /urlField\?\.select\(\)/);
   assert.doesNotMatch(home, /catch \(err\) \{\s*unsupported = \{\s*url: result\.url/);

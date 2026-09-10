@@ -47,7 +47,7 @@ test('Analyze is the light query chip; Download stays the compact blue commit', 
   assert.match(home, /\.fieldwrap \.dbtn \{ flex-shrink: 0; align-self: center; \}/);
   assert.match(home, /class="query-spin"/);
   assert.doesNotMatch(home, /class="query-sizer"/);
-  assert.match(home, /\.fieldwrap \.dbtn\.query \{ gap: 5px; \}/);
+  assert.match(home, /\.fieldwrap \.dbtn\.query \{ gap: 5px; min-width: 84px; \}/);
   assert.match(home, /circle cx="11" cy="11" r="7"/);
   assert.match(home, /M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4/);
   assert.doesNotMatch(home, /M12 4v11m0 0-4-4m4 4 4-4M5 19h14/);

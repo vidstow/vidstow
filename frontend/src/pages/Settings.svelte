@@ -4,6 +4,7 @@
   import { settings, ffmpeg, showBanner, showError } from '../lib/stores.js';
   import { formatEngineVersion } from '../lib/format.js';
   import { MAX_CONCURRENCY, MIN_CONCURRENCY } from '../lib/lifecycle-ui/types.js';
+  import { COLLECTION_LANGUAGES } from '../lib/subtitle-languages.js';
   import type { BuildInfo, OutputOptions, Settings } from '../lib/types.js';
 
   const APP = {
@@ -192,7 +193,15 @@
       <div class="srow">
         <div class="scopy">
           <strong>Subtitles on new adds</strong>
-          <span>Pre-selects subtitles for new downloads when the video offers them.</span>
+          <span>
+            {#if $settings.outputOptions?.subtitleMode === 'embed'}
+              Writes captions inside the video. The folder still shows one MP4.
+            {:else if $settings.outputOptions?.subtitleMode === 'sidecar'}
+              Saves a caption file next to the video.
+            {:else}
+              Pre-selects subtitles for new downloads when the video offers them.
+            {/if}
+          </span>
         </div>
         <div class="sact">
           <select
@@ -207,6 +216,31 @@
           </select>
         </div>
       </div>
+
+      {#if $settings.outputOptions?.subtitleMode === 'sidecar' || $settings.outputOptions?.subtitleMode === 'embed'}
+        <div class="srow">
+          <div class="scopy">
+            <strong>Default subtitle language</strong>
+            <span>Prefills Home. If a playlist or batch video does not have the language on the card, VidStow uses this instead.</span>
+          </div>
+          <div class="sact">
+            <select
+              class="sselect"
+              aria-label="Default subtitle language"
+              value={$settings.outputOptions?.subtitleLanguages?.[0] ?? ''}
+              on:change={(e) => {
+                const code = (e.currentTarget as HTMLSelectElement).value;
+                updateOutputOptions({ subtitleLanguages: code ? [code] : [] });
+              }}
+            >
+              <option value="">English or first available</option>
+              {#each COLLECTION_LANGUAGES as language (language.code)}
+                <option value={language.code}>{language.name}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/if}
 
       {#if $settings.outputOptions?.subtitleMode === 'sidecar'}
         <div class="srow">

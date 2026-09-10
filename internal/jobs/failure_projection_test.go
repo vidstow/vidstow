@@ -13,6 +13,7 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 	tests := []struct {
 		name         string
 		code         string
+		httpStatus   int
 		category     string
 		retry        bool
 		startAgain   bool
@@ -22,6 +23,7 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 		messageKey   string
 	}{
 		{name: "network", code: "network", category: "network_interrupted", retry: true, messageKey: "queue.failure.network_interrupted"},
+		{name: "rate limited", code: "network", httpStatus: 429, category: "rate_limited", retry: true, heading: "YouTube asked VidStow to slow down", messageKey: "queue.failure.rate_limited"},
 		{name: "authentication", code: "authentication", category: "authentication_required", retry: true, openSource: true, heading: "Download was refused", messageKey: "queue.failure.authentication_required"},
 		{name: "unavailable", code: "unsupported", category: "resource_unavailable", retry: true, openSource: true, messageKey: "queue.failure.resource_unavailable"},
 		{name: "invalid input", code: "invalid_input", category: "could_not_start", retry: true, heading: "Download could not start", messageKey: "queue.failure.could_not_start"},
@@ -39,6 +41,11 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 				snap:        JobSnapshot{Status: StatusFailed, URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", ErrorReason: test.code, Bytes: 10},
 				durable:     jobmodel.DurableJob{LastErrorCode: test.code, LastFailureCommittedBytes: 10},
 				fromStateV2: true,
+			}
+			if test.httpStatus != 0 {
+				evidence := &jobmodel.FailureEvidence{Stage: "download", Code: test.code, HTTPStatus: test.httpStatus}
+				state.snap.FailureEvidence = evidence
+				state.durable.LastFailure = evidence
 			}
 			failure := queueFailureFor(state, state.snap)
 			if failure.Category != test.category || failure.MessageKey != test.messageKey || failure.Retryable != test.retry || !failure.PartialOutput {

@@ -1,9 +1,10 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
-  import { api, type StartRequest, type StartPlaylistRequest } from '../lib/api.js';
+  import { api, type StartRequest, type StartPlaylistRequest, type StartBatchRequest } from '../lib/api.js';
   import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
   import { formatBytes, formatPlanSize, formatViewCount, shortAudioChip, shortTitle } from '../lib/format.js';
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
+  import { subtitleLanguageOffered } from '../lib/subtitle-languages.js';
   import type { BatchAnalysisView, InfoSummary, OutputOptions, OutputPlan, PlaylistSummary, Quality, SubtitleLanguage, UrlCheckResult } from '../lib/types.js';
 
   const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'downloads' | 'settings' | 'about' }>();
@@ -64,6 +65,7 @@
   let playlist: PlaylistSummary | null = null;
   let videoOptions: OutputOptions = {};
   let playlistOptions: OutputOptions = {};
+  let batchOptions: OutputOptions = {};
   let selectedItems = new Set<number>();
   let tab: 'video' | 'audio' = 'video';
   let playlistTab: 'video' | 'audio' = 'video';
@@ -129,6 +131,8 @@
   $: batchCanStart = batchTokenValid && batchReadyCount >= 2 && !!folder && !batchBusy && !admitting && !folderBusy;
   $: analysisTakingLong = (busy || batchBusy) && operationNow - analysisStartedAt >= 12000;
   $: hasDock = !!(preview || playlist || batchReview || scopeChoice);
+  $: isWaiting = (busy || batchBusy) && !hasDock && !analyzeError;
+  $: waitingStageLabel = analysisStage.replace(/[.…]+$/, '');
   $: linkedSwap = !!(linkedPlaylist?.playlistUrl && linkedPlaylist.videoUrl && (preview || playlist));
   $: scopeVideoPlan = scopeVideo?.plans.find((plan) => plan.recommended) ?? scopeVideo?.plans[0] ?? null;
   $: scopeVideoMeta = [scopeVideo?.channel, scopeVideo?.duration, scopeVideoPlan?.approxBytes ? `${scopeVideoPlan.sizeIsApproximate ? '~' : ''}${formatBytes(scopeVideoPlan.approxBytes)}` : ''].filter(Boolean).join(' · ');
@@ -224,11 +228,12 @@
     rangeWarn = false;
     videoOptions = {};
     playlistOptions = {};
+    batchOptions = {};
   }
 
-  // Seeds the per-download extras from the saved defaults. Language preference
-  // is not persisted: English is pre-selected when the video offers it,
-  // otherwise the engine's first-available default applies.
+  // Seeds the per-download extras from the saved defaults. Collections keep
+  // the Settings language as the card pick. A single video uses that language
+  // when analysis offers it, otherwise English or the first track listed.
   function seedOutputOptions(languages: SubtitleLanguage[], collectionMode = false): OutputOptions {
     const seeded = { ...($settings.outputOptions ?? {}) };
     delete seeded.embedThumbnail;
@@ -240,13 +245,18 @@
       delete seeded.embedThumbnail;
       delete seeded.embedChapters;
     }
-    const preferred = preferredSubtitleLanguage(languages);
-    if (seeded.subtitleMode && preferred && !seeded.subtitleLanguages?.length) {
-      seeded.subtitleLanguages = [preferred];
-    }
     if (seeded.subtitleMode === 'sidecar' || seeded.subtitleMode === 'embed') {
       seeded.subtitleAutoCaptions = true;
     }
+    if (collectionMode || !seeded.subtitleMode) return seeded;
+    const fromSettings = seeded.subtitleLanguages?.[0];
+    if (fromSettings && subtitleLanguageOffered(languages, fromSettings, !!seeded.subtitleAutoCaptions)) {
+      seeded.subtitleLanguages = [fromSettings];
+      return seeded;
+    }
+    const preferred = preferredSubtitleLanguage(languages);
+    if (preferred) seeded.subtitleLanguages = [preferred];
+    else delete seeded.subtitleLanguages;
     return seeded;
   }
 
@@ -328,6 +338,7 @@
   function onUrlKey(event: KeyboardEvent) {
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
     event.preventDefault();
+    if (busy || batchBusy) return;
     void submitPaste();
   }
 
@@ -339,10 +350,10 @@
     batchReview = null;
     analyzeError = null;
     if (items.length > 20) {
-      analyzeError = {
+      presentAnalyzeError({
         title: 'Too many URLs',
         message: 'Paste between 2 and 20 individual public YouTube video or Short URLs.',
-      };
+      });
       return;
     }
     if (items.length === 1) {
@@ -356,21 +367,22 @@
   async function analyzeBatch() {
     if (!batchText.trim() || batchBusy) return;
     const requestGeneration = ++batchGeneration;
-    beginAnalysis(`Reviewing ${pasteItems(batchText).length} links…`);
     batchBusy = true;
+    beginAnalysis(`Reviewing ${pasteItems(batchText).length} links…`);
     try {
       const review = await api.analyse.batch(batchText);
       if (requestGeneration !== batchGeneration) return;
       batchNow = Date.now();
       batchReview = review;
+      batchOptions = seedOutputOptions([], true);
       detailsOpen = true;
     } catch (err) {
       if (requestGeneration !== batchGeneration) return;
-      analyzeError = {
+      presentAnalyzeError({
         title: 'Batch could not be reviewed',
         retry: true,
         message: errorMessage(err, 'Paste between 2 and 20 individual public YouTube video or Short URLs.'),
-      };
+      });
     } finally {
       if (requestGeneration === batchGeneration) batchBusy = false;
     }
@@ -408,11 +420,20 @@
       requireFFmpeg('MP3 conversion needs FFmpeg. Choose original audio or configure FFmpeg.');
       return;
     }
+    const options = effectiveOptions(batchOptions, batchTab === 'video');
+    if (optionsNeedFFmpeg(options) && !$ffmpeg.available) {
+      requireFFmpeg('Subtitles and embedded details need FFmpeg. Configure FFmpeg or turn those options off.');
+      return;
+    }
+    const request: StartBatchRequest = {
+      token: batchReview.token, quality, audioBitrate,
+      options: { ...options, ...(options.subtitleLanguages ? { subtitleLanguages: [...options.subtitleLanguages] } : {}) },
+    };
     admitting = 'batch';
     admissionError = null;
     const requestGeneration = batchGeneration;
     try {
-      const result = await api.jobs.startBatch({ token: batchReview.token, quality, audioBitrate });
+      const result = await api.jobs.startBatch(request);
       if (requestGeneration !== batchGeneration) return;
       showBanner('success', `Added ${result.admitted} downloads to the queue`);
       batchReview = null;
@@ -516,6 +537,7 @@
     const requestGeneration = analysisGeneration;
     scopeChoice = null;
     resetDock();
+    busy = true;
     beginAnalysis('Reading playlist…');
     await withBusy(async () => {
       const summary = await ensureLinkedPlaylist(requestGeneration);
@@ -540,6 +562,11 @@
   }
 
   function onHomeKey(event: KeyboardEvent) {
+    if (event.key === 'Escape' && (busy || batchBusy) && !scopeChoice) {
+      event.preventDefault();
+      stopWaiting();
+      return;
+    }
     if (!scopeChoice) return;
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -585,11 +612,11 @@
       }
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
-      analyzeError = {
+      presentAnalyzeError({
         title: validated ? 'Could not read this link' : 'Check this link',
         retry: validated,
         message: errorMessage(err, 'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.'),
-      };
+      });
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
     }
@@ -602,11 +629,11 @@
       await action();
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
-      analyzeError = {
+      presentAnalyzeError({
         title: 'Could not read the playlist',
         retry: true,
         message: errorMessage(err, 'Could not analyze this link.'),
-      };
+      });
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
     }
@@ -714,12 +741,16 @@
     });
   }
 
-  function pasteAnotherLink() {
-    analyzeError = null;
+  function selectPasteField() {
     queueMicrotask(() => {
       urlField?.focus();
       urlField?.select();
     });
+  }
+
+  function presentAnalyzeError(next: { title: string; message: string; retry?: boolean }) {
+    analyzeError = next;
+    selectPasteField();
   }
 
   function fillExample(kind: 'video' | 'playlist' | 'batch') {
@@ -874,37 +905,57 @@
   </div>
 {/snippet}
 
+{#snippet hangMark()}
+  <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8.66 2.2a.75.75 0 0 0-1.32 0L1.2 12.05A.75.75 0 0 0 1.86 13.2h12.28a.75.75 0 0 0 .66-1.15L8.66 2.2ZM8 6.15c.28 0 .5.23.5.5v2.9a.5.5 0 0 1-1 0v-2.9c0-.27.22-.5.5-.5Zm0 5.6a.65.65 0 1 1 0-1.3.65.65 0 0 1 0 1.3Z"/></svg>
+{/snippet}
+
 <section class="page home" class:fill={hasDock} aria-label="Home">
-  <form class="composer" on:submit|preventDefault={() => submitPaste()}>
+  <form class="composer" on:submit|preventDefault={() => { if (isWaiting) stopWaiting(); else void submitPaste(); }}>
     <div class="fieldwrap">
-      <label class="visually-hidden" for="video-url">YouTube video, Short, or playlist URL</label>
-      <textarea
-        id="video-url"
-        bind:this={urlField}
-        value={url}
-        on:input={updatePaste}
-        on:change={updatePaste}
-        on:keydown={onUrlKey}
-        placeholder="Paste a YouTube URL"
-        autocomplete="off"
-        spellcheck="false"
-        rows="1"
-        disabled={!!admitting}
-        aria-describedby="input-help"
-      ></textarea>
-      <button class="dbtn query" type="submit" disabled={busy || batchBusy || !!admitting || !url.trim() || !!scopeChoice} aria-busy={busy || batchBusy}>
-        {#if busy || batchBusy}
-          <span class="query-spin" aria-hidden="true"></span>
+      <div class="urlrow">
+        <label class="visually-hidden" for="video-url">YouTube video, Short, or playlist URL</label>
+        <textarea
+          id="video-url"
+          bind:this={urlField}
+          value={url}
+          on:input={updatePaste}
+          on:change={updatePaste}
+          on:keydown={onUrlKey}
+          placeholder="Paste a YouTube URL"
+          autocomplete="off"
+          spellcheck="false"
+          rows="1"
+          disabled={!!admitting}
+          aria-describedby="input-help"
+        ></textarea>
+        {#if isWaiting}
+          <button class="dbtn query stop-slot" type="button" on:click={stopWaiting}>
+            <span class="stop-mark" aria-hidden="true"></span>
+            Stop
+          </button>
         {:else}
-          {@render searchMark()}
+          <button class="dbtn query" type="submit" disabled={!!admitting || !url.trim() || !!scopeChoice}>
+            {@render searchMark()}
+            Analyze
+          </button>
         {/if}
-        Analyze
-      </button>
+      </div>
+      {#if isWaiting}
+        <div class="hud-strip" role="status" aria-live="polite">
+          <div class="hud-bar"><div class="hud-progress"></div></div>
+          <div class="hud-row">
+            <span class="hud-copy">
+              <strong>{waitingStageLabel}<span class="wait-dots" aria-hidden="true"></span></strong>
+              {#if analysisTakingLong}<span class="hang-warn">{@render hangMark()}This is taking longer than usual.</span>{/if}
+            </span>
+          </div>
+        </div>
+      {/if}
     </div>
   </form>
   <p class="input-help" id="input-help">One video, a playlist, or up to 20 links. Shift + Enter adds a line.</p>
 
-  {#if !hasDock && !analyzeError && !(busy || batchBusy)}
+  {#if !hasDock && !analyzeError && !isWaiting}
     <p class="hint">
       One link, a playlist, or a handful — the link decides.
       <span class="tries">
@@ -914,21 +965,16 @@
         {/each}
       </span>
     </p>
-  {:else if (busy || batchBusy) && !hasDock && !analyzeError}
-    <div class="analysis-progress" role="status" aria-live="polite">
-      <span class="query-spin" aria-hidden="true"></span>
-      <div><strong>{analysisStage}</strong><span>{analysisTakingLong ? 'This is taking longer than usual. You can stop waiting and try again.' : 'Checking available formats. Nothing is downloaded yet.'}</span></div>
-      <button type="button" class="dbtn" on:click={stopWaiting}>Stop waiting</button>
-    </div>
   {:else if analyzeError}
     <div class="errslot" role="alert">
       <b>{analyzeError.title}</b>
       <span>{analyzeError.message}</span>
-      <div class="flow-actions">
-        {#if analyzeError.retry}<button type="button" class="dbtn pri" on:click={() => submitPaste()}>Try again</button>{/if}
-        {#if linkedPlaylist && scopeVideo}<button type="button" class="dbtn" on:click={() => { analyzeError = null; chooseScopeVideo(); }}>Use the video</button>{/if}
-        <button type="button" class="dbtn query" on:click={pasteAnotherLink}>Paste another link</button>
-      </div>
+      {#if analyzeError.retry || (linkedPlaylist && scopeVideo)}
+        <div class="flow-actions">
+          {#if analyzeError.retry}<button type="button" class="dbtn pri" on:click={() => submitPaste()}>Try again</button>{/if}
+          {#if linkedPlaylist && scopeVideo}<button type="button" class="dbtn" on:click={() => { analyzeError = null; chooseScopeVideo(); }}>Use the video</button>{/if}
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -1159,14 +1205,17 @@
         </div>
       </div>
       {#if batchReadyCount < 2}<p class="review-hint">{batchReadyCount === 1 ? 'One video is ready. Review it individually, or edit this batch to include at least two ready videos.' : 'No videos are ready yet. Review the reasons below, then edit or retry these links.'}</p>{/if}
-      <div class="opt-sections">
-        <div class="erow">
-          <span class="elab">Output</span>
-          <div class="ectl">
-            {@render outputBlock(batchTab, KIND_OPTIONS, batchPlanOptions, batchFormatValue, setBatchTab, setBatchFormat, batchTab === 'audio' && !$ffmpeg.available, '', batchTab === 'audio' && !$ffmpeg.available)}
-          </div>
-        </div>
-      </div>
+      <OutputOptionsEditor
+        bind:value={batchOptions}
+        collectionMode={true}
+        allowSubtitles={batchTab === 'video'}
+        ffmpegAvailable={$ffmpeg.available}
+        on:goto-settings={() => dispatch('goto', 'settings')}
+      >
+        <svelte:fragment slot="output">
+          {@render outputBlock(batchTab, KIND_OPTIONS, batchPlanOptions, batchFormatValue, setBatchTab, setBatchFormat, batchTab === 'audio' && !$ffmpeg.available, '', batchTab === 'audio' && !$ffmpeg.available)}
+        </svelte:fragment>
+      </OutputOptionsEditor>
       {#if detailsOpen}
         <div class="batch-lines" role="list" aria-label="Reviewed batch URLs">
           {#each batchReview.items as item (item.lineNumber)}
@@ -1222,7 +1271,19 @@
   .analysis-progress { display: flex; align-items: center; gap: 12px; padding: 18px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--surface-subtle); }
   .analysis-progress > div { flex: 1; min-width: 0; }
   .analysis-progress strong, .admission-error strong { display: block; font-size: 13px; font-weight: 600; }
-  .analysis-progress span:not(.query-spin), .admission-error span { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+  .analysis-progress span:not(.query-spin):not(.hang-warn), .admission-error span { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+  .hang-warn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 4px;
+    color: #EAB308;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+  }
+  .hang-warn svg { width: 11px; height: 11px; flex-shrink: 0; }
   .analysis-progress.compact { padding: 12px 16px; flex-shrink: 0; }
   .flow-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
   .admission-error { padding: 14px 16px; border: 1px solid rgba(212, 172, 124, .3); border-radius: 9px; background: rgba(212, 172, 124, .04); flex-shrink: 0; }
@@ -1249,14 +1310,23 @@
   }
   .fieldwrap {
     display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+    padding: 0;
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    background: var(--surface-base);
+    overflow: hidden;
+    transition: border-color 120ms ease;
+  }
+  .urlrow {
+    display: flex;
     align-items: center;
     gap: 8px;
     min-height: 42px;
     padding: 0 6px 0 14px;
-    border: 1px solid var(--border-default);
-    border-radius: 10px;
-    background: var(--surface-base);
-    transition: border-color 120ms ease;
+    width: 100%;
   }
   .fieldwrap:focus-within { border-color: var(--accent-500); }
   .fieldwrap textarea {
@@ -1295,9 +1365,72 @@
     background: none;
   }
   .fieldwrap .dbtn { flex-shrink: 0; align-self: center; }
-  .fieldwrap .dbtn.query { gap: 5px; }
-  .fieldwrap .dbtn.query svg,
-  .fieldwrap .dbtn.query .query-spin { width: 12px; height: 12px; flex-shrink: 0; }
+  .fieldwrap .dbtn.query { gap: 5px; min-width: 84px; }
+  .fieldwrap .dbtn.query svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .dbtn.query.stop-slot { gap: 6px; }
+  .stop-mark {
+    width: 8px;
+    height: 8px;
+    border-radius: 1.5px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .hud-strip {
+    border-top: 1px solid var(--border-default);
+    background: var(--surface-subtle);
+  }
+  .hud-bar {
+    height: 2px;
+    width: 100%;
+    background: var(--surface-raised);
+    overflow: hidden;
+  }
+  .hud-progress {
+    height: 100%;
+    width: 45%;
+    background: linear-gradient(90deg, transparent, var(--accent-500), #60A5FA);
+    border-radius: 2px;
+    animation: hud-sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes hud-sweep {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+  }
+  .hud-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 14px 9px;
+  }
+  .hud-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+  .hud-copy strong {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .hud-copy .hang-warn { margin-top: 1px; }
+  .wait-dots {
+    display: inline-block;
+    width: 1.2em;
+    text-align: left;
+  }
+  .wait-dots::after {
+    content: '';
+    animation: wait-dots 1.25s steps(1, end) infinite;
+  }
+  @keyframes wait-dots {
+    0%, 24% { content: ''; }
+    25%, 49% { content: '.'; }
+    50%, 74% { content: '..'; }
+    75%, 100% { content: '...'; }
+  }
   .query-spin {
     width: 14px;
     height: 14px;
@@ -1311,6 +1444,8 @@
   @keyframes query-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
     .query-spin { animation: none; border-right-color: currentColor; opacity: 0.45; }
+    .hud-progress { animation: none; width: 100%; opacity: 0.45; }
+    .wait-dots::after { animation: none; content: '…'; }
   }
 
   .hint {
@@ -1524,31 +1659,6 @@
     grid-area: identity;
     min-width: 0;
     padding-bottom: 8px;
-  }
-  .opt-sections {
-    border-top: 1px solid var(--border-subtle);
-    background: var(--surface-subtle);
-    margin-top: 8px;
-  }
-  .erow {
-    display: grid;
-    grid-template-columns: 88px minmax(0, 1fr);
-    gap: 10px;
-    align-items: center;
-    padding: 10px 14px;
-    min-height: 44px;
-  }
-  .elab {
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: 550;
-  }
-  .ectl {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    min-width: 0;
   }
   .output-controls {
     display: flex;

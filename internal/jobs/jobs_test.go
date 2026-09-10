@@ -474,6 +474,13 @@ func TestSubmitPropagatesOutputOptionsToEngineRequest(t *testing.T) {
 				if req.Subtitles.ConvertFormat != wantConvert {
 					t.Fatalf("ConvertFormat = %q; want %q", req.Subtitles.ConvertFormat, wantConvert)
 				}
+				wantFormat := ""
+				if options.SubtitleMode == jobmodel.SubtitleModeEmbed {
+					wantFormat = embedSubtitleFormatPreference
+				}
+				if req.Subtitles.Format != wantFormat {
+					t.Fatalf("Format = %q; want %q", req.Subtitles.Format, wantFormat)
+				}
 				if strings.Join(req.Subtitles.Languages, ",") != strings.Join(options.SubtitleLanguages, ",") {
 					t.Fatalf("Languages = %v; want %v", req.Subtitles.Languages, options.SubtitleLanguages)
 				}
@@ -496,6 +503,53 @@ func TestSubmitPropagatesOutputOptionsToEngineRequest(t *testing.T) {
 	}
 }
 
+func TestEmbedSkipCompletesWithHonestMessage(t *testing.T) {
+	done := make(chan JobSnapshot, 1)
+	manager := New(nil, func(event Event) {
+		if event.Name == EventJobUpdate && event.Job.Status == StatusComplete {
+			select {
+			case done <- event.Job:
+			default:
+			}
+		}
+	})
+	defer manager.Close()
+	manager.cachePlans("abc123", []outputplan.Plan{{
+		ID: "video-1080-mp4", Kind: outputplan.KindVideo, Label: "MP4 1080p",
+		Container: "MP4", Selector: "137+140",
+	}})
+	manager.runDownload = func(ctx context.Context, req engine.Request, handler engine.EventHandler) (engine.Result, error) {
+		if req.Subtitles.Format != embedSubtitleFormatPreference {
+			t.Errorf("Format = %q; want %q", req.Subtitles.Format, embedSubtitleFormatPreference)
+		}
+		if err := handler(ctx, engine.Event{
+			Kind:    engine.EventMetadataWarning,
+			Message: "there are no compatible subtitles to embed",
+		}); err != nil {
+			return engine.Result{}, err
+		}
+		return engine.Result{Filename: filepath.Join(t.TempDir(), "Demo.mp4"), Bytes: 1}, nil
+	}
+	if _, err := manager.Submit(Request{
+		URL: "https://example.invalid/watch?v=abc123", VideoID: "abc123",
+		PlanID: "video-1080-mp4", OutputDir: t.TempDir(),
+		Options: jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleAutoCaptions: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case snap := <-done:
+		if snap.Message != embedSkippedCompleteMessage {
+			t.Fatalf("message = %q; want %q", snap.Message, embedSkippedCompleteMessage)
+		}
+		if snap.OptionsNote != "no captions in file" {
+			t.Fatalf("optionsNote = %q; want no captions in file", snap.OptionsNote)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("completed snapshot was not delivered")
+	}
+}
+
 func TestSubmitPropagatesDefaultOutputOptionsAsEngineDefaults(t *testing.T) {
 	manager := New(nil, nil)
 	manager.cachePlans("abc123", []outputplan.Plan{{ID: "video-1080-mp4", Kind: outputplan.KindVideo, Container: "MP4", Selector: "137+140"}})
@@ -512,7 +566,7 @@ func TestSubmitPropagatesDefaultOutputOptionsAsEngineDefaults(t *testing.T) {
 	}
 	select {
 	case req := <-started:
-		if req.Subtitles.WriteManual || req.Subtitles.WriteAutomatic || req.Subtitles.Embed || req.Subtitles.ConvertFormat != "" || len(req.Subtitles.Languages) != 0 {
+		if req.Subtitles.WriteManual || req.Subtitles.WriteAutomatic || req.Subtitles.Embed || req.Subtitles.ConvertFormat != "" || req.Subtitles.Format != "" || len(req.Subtitles.Languages) != 0 {
 			t.Fatalf("subtitles = %#v; want zero options for a plain download", req.Subtitles)
 		}
 		if req.EmbedMetadata || req.EmbedChapters != nil || req.Thumbnails.Embed {

@@ -119,17 +119,32 @@ describe('Settings page', () => {
     render(Settings);
     expect(screen.getByRole('heading', { name: 'Video files' })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: 'Embed thumbnail artwork' })).toBeDisabled();
+    expect(screen.queryByLabelText('Default subtitle language')).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('Default subtitle mode'), 'sidecar');
     await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({
       outputOptions: expect.objectContaining({ subtitleMode: 'sidecar' }),
     })));
+    expect(screen.getByText('Saves a caption file next to the video.')).toBeInTheDocument();
     expect(await screen.findByLabelText('Default subtitle file format')).toBeInTheDocument();
+    expect(screen.getByLabelText('Default subtitle language')).toHaveValue('');
+
+    await user.selectOptions(screen.getByLabelText('Default subtitle language'), 'es');
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      outputOptions: expect.objectContaining({ subtitleMode: 'sidecar', subtitleLanguages: ['es'] }),
+    })));
 
     await user.click(screen.getByRole('switch', { name: 'Embed title and channel details' }));
     await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({
       outputOptions: expect.objectContaining({ embedMetadata: true }),
     })));
+
+    await user.selectOptions(screen.getByLabelText('Default subtitle mode'), 'embed');
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      outputOptions: expect.objectContaining({ subtitleMode: 'embed' }),
+    })));
+    expect(screen.getByText('Writes captions inside the video. The folder still shows one MP4.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Default subtitle file format')).not.toBeInTheDocument();
   });
 
   test('concurrency stepper warns above 4 and talks to UpdateSettings', async () => {

@@ -24,8 +24,9 @@ does not exist yet.
   repeats the wordmark or an About item.
 - Home Try chips that fill the field with a sample video, playlist, or several
   links. Analyze is still the only submit.
-- Analysis shows its current step, a slow-request explanation, retry, and a
-  stop-waiting action. Edited links and interrupted requests ignore late results.
+- Analysis attaches its current step to the paste field. **Analyze** becomes
+  **Stop**. After 12 seconds a small warning notes the check is taking longer.
+  Interrupted requests ignore late results.
 - Download review prevents duplicate submissions, preserves choices on start
   errors, and explains missing folders, empty playlist selections, and expired
   batch reviews. A batch with one ready video can continue as a single download.
@@ -45,13 +46,16 @@ does not exist yet.
   place of a separate About page. The About route still renders Settings.
 - Cannot-save stop when the data folder is unwritable or unsafe. An unreadable
   queue is quarantined and skipped, with a dismissible workstation notice.
-- Home video and playlist docks use inspector rows for Output, Subtitles
+- Home video, playlist, and batch docks use inspector rows for Output, Subtitles
   (Off / File / Embed, language, sidecar format), and In the file (title,
   artwork, chapters). Choices seed from Settings Video files defaults, clamp
-  when FFmpeg is missing, and ride with video admissions only. Audio greys
-  Subtitles in place; captions are not written on audio downloads. Durable
-  jobs keep their output choices across retries and relaunch, and the queue
-  inspector shows a note for non-default choices.
+  when FFmpeg is missing, and ride with video admissions only. Playlists and
+  batches offer English or first available plus a named-language policy. A title
+  without the named language uses the Settings default subtitle language, then
+  English or first available. Audio greys Subtitles in place; captions are not
+  written on audio downloads. Durable jobs keep their output choices across
+  retries and relaunch, and the queue inspector shows a note for non-default
+  choices.
 - Home video chips split 30fps and 60fps when Analyze reports both at the same
   height (`1080p` and `1080p60`). The identity line shows `60 fps` on the high
   rate. Audio is unchanged.
@@ -69,8 +73,7 @@ does not exist yet.
   downloads and quit is the path that records paused intent first.
 - Interrupted jobs are a fixed In progress continues policy. Waiting stays
   waiting. Paused stays paused.
-- After Download on Home (single video or playlist), VidStow goes to Queue.
-  Batch already did.
+- After Download on Home (single video, playlist, or batch), VidStow goes to Queue.
 - The macOS window uses Dark Aqua so traffic lights and the title sit on the
   zinc canvas.
 - Start over from Action required returns the URL to Home.
@@ -84,6 +87,14 @@ does not exist yet.
 
 ### Fixed
 
+- A YouTube HTTP 429 no longer looks like a dropped connection. **Queue** says
+  **YouTube asked VidStow to slow down**. **Retry** stays the next click after
+  a short wait.
+- **Embed** writes captions inside the video, so the folder still shows one
+  MP4. It now prefers caption files that can actually go in that MP4. When a
+  title has no captions VidStow can write, Queue still completes and says the
+  file was saved without captions. A named language such as Spanish now uses
+  the regional code that video actually has, so the match is not dropped.
 - Queue rows no longer report **Video unavailable** when a download includes
   subtitles or embedded extras. Those jobs skip the resume session, which cannot
   publish sidecars, and use the classic save path instead. Embedded artwork is

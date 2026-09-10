@@ -89,7 +89,7 @@ If analysis cannot proceed, fail with a clear unsupported-URL dialog. Do not sil
 
 **Output plan.** A backend-authored choice for a single video (kind video or audio, label, container, codecs, approximate size, FFmpeg requirement, recommended flag). The user picks a plan. The UI does not invent formats.
 
-**Output options.** Per-download extras on video outputs, seeded from the Settings defaults: subtitle mode (off, sidecar file, embedded), languages reported by analysis with auto-generated tracks marked, auto-caption fallback, sidecar format (SRT/VTT), and embed flags for title and channel details, thumbnail artwork, and chapter markers. FFmpeg-dependent choices clamp when FFmpeg is missing. Audio outputs leave subtitle choices out. A backend-authored note describes non-default choices in queue metadata; durable jobs keep their options across retries and relaunch.
+**Output options.** Per-download extras on video outputs, seeded from the Settings defaults: subtitle mode (off, sidecar file, embedded), a default subtitle language (**English or first available** or one named language), languages reported by analysis with auto-generated tracks marked, auto-caption fallback, sidecar format (SRT/VTT), and embed flags for title and channel details, thumbnail artwork, and chapter markers. **File** saves a caption file next to the video. **Embed** writes captions inside the video, so the folder still shows one MP4. If that video has no captions VidStow can put in the file, the download still completes and Queue says so. FFmpeg-dependent choices clamp when FFmpeg is missing. Audio outputs leave subtitle choices out. A backend-authored note describes non-default choices in queue metadata; durable jobs keep their options across retries and relaunch.
 
 **Queue view.** The only source of truth for the Queue page. It includes rows, collections, occupancy summary, queue-level capabilities, a command token, and persistence health. The frontend presents this view. It does not reconstruct authority from job snapshots.
 
@@ -153,9 +153,9 @@ Home is intake. It is the only place work is analyzed and admitted. A live analy
 
 Paste count chooses the path. One URL goes to `ValidateURL`. Two to twenty go to `AnalyzeBatchURLs`. A playlist URL is still a playlist. Playlist URLs do not belong in a batch. The 2 to 20 and 500 caps stay. More than 20 URLs stays on Home with `Too many URLs`.
 
-The URL field stays pinned to the top of Home, empty or after Analyze. The dock, error card, or Try hint occupies the space below it.
+The URL field stays pinned to the top of Home, empty or after Analyze. The dock, error card, or Try hint occupies the space below it. While Analyze is working, the current step attaches to the field and **Analyze** becomes **Stop**. Stages stay real: **Checking link**, then **Reading video details**, **Reading playlist**, or **Reviewing N links**. After 12 seconds a small warning: **This is taking longer than usual.** Escape stops the wait.
 
-**Failed Analyze.** Stay on Home. Show the error on the page. **Paste another link** focuses the field and selects the current URL so the next paste replaces it.
+**Failed Analyze.** Stay on Home. Show the error on the page. Focus the field and select the current URL so the next paste replaces it. **Try again** only after a valid link. **Use the video** when a mixed link already has a video. The same card and field select apply to a playlist URL, a batch, and opening the playlist from a mixed link.
 
 **Single video after analysis.** Thumbnail, title and meta on the identity. Footer under the inspector rows.
 
@@ -164,7 +164,7 @@ The URL field stays pinned to the top of Home, empty or after Analyze. The dock,
 - **Video / Audio** pills and format chips (`1440p`, `M4A`) sit on an **Output** row under the identity, not beside the thumbnail. Original audio chips keep a tooltip for Original
 - Title uses a two-line clamp. Hover still shows the full name
 - Under the channel line: one muted receipt (`M4A · AAC · 302 KB`). Updates with the selected chip
-- Inspector rows: **Output**, **Subtitles** (**Off** / **File** / **Embed**, language, sidecar format), **In the file** (title & channel, artwork, chapters). Choices seed from Settings; English is pre-selected when the video offers it. FFmpeg-dependent controls stay disabled with an Open Settings link while FFmpeg is missing. Audio greys **Subtitles** in place so the card does not jump, labels the row **Video only**, and drops File’s accent while the choice is remembered. Captions are not written on audio downloads
+- Inspector rows: **Output**, **Subtitles** (**Off** / **File** / **Embed**, language, sidecar format), **In the file** (title & channel, artwork, chapters). Choices seed from Settings, including the default subtitle language when that video offers it. FFmpeg-dependent controls stay disabled with an Open Settings link while FFmpeg is missing. Audio greys **Subtitles** in place so the card does not jump, labels the row **Video only**, and drops File’s accent while the choice is remembered. Captions are not written on audio downloads
 - Footer: **Change**, the path, **Download**. Success: banner `Queued for download`, then Queue. The dock clears; the URL stays
 
 Changing the URL clears analysis.
@@ -172,7 +172,7 @@ Changing the URL clears analysis.
 **Playlist after analysis.** Same dock, adapted:
 
 - Thumbnail, title, Playlist · N videos · duration · channel, unavailable count. Duration is the sum of available entry lengths when every available video reported one. Channel comes from the playlist, or the first child that named one. **Output** is the same Video / Audio pills and format chips. No invented 1080p coverage or playlist file-size total
-- The same inspector rows appear once, above the episode disclosure. One output policy for the collection: each video uses its English or first-available track, plus the shared embed flags. A video without a usable track downloads without subtitles. Audio greys **Subtitles** in place
+- The same inspector rows appear once, above the episode disclosure. One output policy for the collection. **Language** is **English or first available**, or one named language for every selected video. A video without that track uses the Settings default subtitle language, then English or first available. Audio greys **Subtitles** in place
 - Disclosure: episode count and the chosen policy. Cap note when 500 entries were returned. The list stays collapsed until that disclosure is opened
 - Episode review: `N of M selected`, All, None, Range as two position fields plus Apply. All fills the fields with first–last index. None clears them. Rows are checkbox, title, duration. Unavailable rows are visible, dimmed, not selectable
 - Range Apply with an invalid span shows `Enter positions from N to M` on the header. Selection is by original index
@@ -183,6 +183,8 @@ More than 100 selected videos asks `Add this playlist?` before enqueue.
 **Link that is both video and playlist.** Before any dock, Home shows `This link includes a playlist` / `Choose what to download.` Two cards: the pasted **Video** and **Playlist** (primary). Esc cancels. After a choice, a swap line on the dock switches. The other side is cached so the swap does not re-paste.
 
 **Batch after analysis.** Reached by pasting 2 to 20 lines (or more than one `http` URL on a line), not by flipping a mode. Review list: line number, thumbnail, title or raw input, URL, channel · duration, status chip (Ready, Duplicate, Invalid URL, Analysis failed) plus a reason when not ready. Expired review: `This review expired. Edit the lines and review them again.`
+
+The same inspector rows as playlist appear once, under identity: **Output**, **Subtitles**, **In the file**. One caption policy for every ready item. **Language** is **English or first available**, or one named language. A video without that track uses the Settings default subtitle language, then English or first available. Audio greys **Subtitles** in place. Choices seed from Settings. **Download N videos** sends that policy with quality.
 
 Shared **Video / Audio** pills and format chips for every ready item. The title list opens from an underlined `{N} titles` hint. Footer: **Change**, the path, **Edit URLs**, **Download N videos**. N is ready count, not pasted count. Disabled unless the token is still valid, ready ≥ 2, and a folder is set. Success navigates to Queue. Edit URLs returns to the field without losing the text.
 
@@ -210,7 +212,7 @@ Pause all copy on success: `Pause requested for N jobs.` The product does not cl
 
 Occupancy is a real product fact (N of M active slots). When idle, the Queue header says `No active downloads` and reports failed/canceled counts. Bulk controls appear only when applicable. In-progress work, Needs attention, and collapsed Canceled attempts are separate sections; completed files stay in Downloads. Rows include output quality and lifecycle, with authorized Retry or Remove actions directly on the row. Settled cancellations have no progress bars or transfer statistics.
 
-New failures keep structured stage, reason code, HTTP status when available, and timestamp across restarts. Failure details exposes those values; raw engine errors, signed URLs, and credentials are never persisted. Historical rows without this evidence do not invent a failure time or reason.
+New failures keep structured stage, reason code, HTTP status when available, and timestamp across restarts. Failure details exposes those values; raw engine errors, signed URLs, and credentials are never persisted. Historical rows without this evidence do not invent a failure time or reason. HTTP 429 is **YouTube asked VidStow to slow down**, not **Download interrupted**. **Retry** stays the next click after a short wait.
 
 **Lifecycle labels** (do not collapse these into generic Downloading): Queued, Preparing, Downloading, Waiting for processing, Finalizing, Ready to publish, Publishing, Pausing, Paused, Canceling, Failed, Canceled, Completed, Action required, Cleaning up. **Cleaning up** is only while temporary data is still being removed. After that the row says **Canceled**.
 
@@ -251,7 +253,8 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 
 **Video files**
 
-- Subtitles on new adds: Off / Subtitle file / Embed in video. Embed needs FFmpeg and is disabled without it. Seeds the Home dock's subtitle mode.
+- Subtitles on new adds: Off / Subtitle file / Embed in video. **File** saves a caption file next to the video. **Embed** writes captions inside the video (one MP4). Embed needs FFmpeg and is disabled without it. Seeds the Home dock's subtitle mode.
+- Default subtitle language, shown when subtitles are on: **English or first available**, or one named language. Prefills Home. Playlist and batch titles without the language on the card use this instead, then English or first available.
 - Subtitle file format, shown when Subtitle file is on: Original / SRT / VTT.
 - Include auto-generated captions (switch, off by default). Uses auto-generated tracks when a language has no manual subtitles.
 - Embed title & channel details, Embed thumbnail artwork, Embed chapter markers (switches, need FFmpeg). The dock carries the same choices per download.

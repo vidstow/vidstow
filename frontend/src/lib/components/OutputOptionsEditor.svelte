@@ -4,11 +4,12 @@
   // strips captions via effectiveOptions. FFmpeg-dependent choices stay
   // disabled and are clamped away while FFmpeg is missing.
   import { createEventDispatcher, onMount } from 'svelte';
+  import { COLLECTION_LANGUAGES } from '../subtitle-languages.js';
   import type { OutputOptions, SubtitleLanguage } from '../types.js';
 
   export let value: OutputOptions = {};
-  // Languages reported by analysis; empty for collections (playlists), where
-  // the engine's English-first default picks per video.
+  // Languages reported by analysis; empty for collections, where Language is a
+  // policy menu instead of this video's track list.
   export let languages: SubtitleLanguage[] = [];
   export let allowSubtitles = true;
   export let ffmpegAvailable = true;
@@ -46,6 +47,9 @@
   $: formatValue = value.subtitleFormat ?? '';
   $: formatLabel = formatValue === 'srt' ? 'SRT' : formatValue === 'vtt' ? 'VTT' : 'Original';
   $: languageButtonLabel = languageSummary(manualLanguages, split.asr, split.translated, selectedLanguages);
+  $: collectionLanguageCode = value.subtitleLanguages?.[0] ?? '';
+  $: collectionLanguageLabel = COLLECTION_LANGUAGES.find((language) => language.code === collectionLanguageCode)?.name
+    ?? (collectionLanguageCode || 'English or first available');
 
   $: if (!ffmpegAvailable && requiresFFmpeg(value)) {
     value = withoutFFmpegChoices(value);
@@ -170,6 +174,12 @@
     value = { ...value, subtitleLanguages: languages, subtitleAutoCaptions: true };
   }
 
+  function setCollectionLanguage(code: string) {
+    if (langDisabled || !collectionMode) return;
+    langOpen = false;
+    value = { ...value, subtitleLanguages: code ? [code] : undefined };
+  }
+
   function setFormat(next: string) {
     if (fmtDisabled) return;
     if (next !== '' && next !== 'srt' && next !== 'vtt') return;
@@ -230,16 +240,58 @@
           aria-checked={mode === 'embed'}
           aria-label="Embed in video"
           disabled={subtitleChoiceBlocked || embedBlocked}
-          title={embedBlocked ? 'Embedding needs FFmpeg' : ''}
+          title={embedBlocked ? 'Embedding needs FFmpeg' : 'Writes captions inside the video. The folder still shows one MP4.'}
           on:click={() => setMode('embed')}
         >Embed</button>
       </div>
 
       {#if collectionMode}
-        <span class="dd static" title="Every video uses English or its first available language.">
-          <span class="cat">Language</span>
-          English or first available
-        </span>
+        <div class="ddwrap" bind:this={langRoot}>
+          <button
+            type="button"
+            class="dd"
+            class:open={langOpen}
+            disabled={langDisabled}
+            aria-haspopup="listbox"
+            aria-expanded={langOpen}
+            aria-label="Subtitle language"
+            title="Prefers this language. If a title does not have it, VidStow uses the default subtitle language in Settings."
+            on:click={() => { if (!langDisabled) { langOpen = !langOpen; fmtOpen = false; } }}
+          >
+            <span class="cat">Language</span>
+            <span class="dd-v">{collectionLanguageLabel}</span>
+            <span class="chev" aria-hidden="true">▾</span>
+          </button>
+          {#if langOpen && !langDisabled}
+            <div class="fmt-menu" role="listbox" aria-label="Subtitle language">
+              <button
+                type="button"
+                class="fmt-opt"
+                class:on={!collectionLanguageCode}
+                role="option"
+                aria-selected={!collectionLanguageCode}
+                on:click={() => setCollectionLanguage('')}
+              >
+                <span class="fmt-check" aria-hidden="true">{!collectionLanguageCode ? '✓' : ''}</span>
+                <span class="fmt-lab">English or first available</span>
+              </button>
+              {#each COLLECTION_LANGUAGES as language (language.code)}
+                <button
+                  type="button"
+                  class="fmt-opt"
+                  class:on={collectionLanguageCode === language.code}
+                  role="option"
+                  aria-selected={collectionLanguageCode === language.code}
+                  aria-label={language.name}
+                  on:click={() => setCollectionLanguage(language.code)}
+                >
+                  <span class="fmt-check" aria-hidden="true">{collectionLanguageCode === language.code ? '✓' : ''}</span>
+                  <span class="fmt-lab">{language.name}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       {:else}
         <div class="ddwrap" bind:this={langRoot}>
           <button
@@ -471,11 +523,7 @@
     font-size: 12px;
     cursor: pointer;
   }
-  .dd.static {
-    cursor: default;
-    color: var(--text-secondary);
-  }
-  .dd:hover:not(:disabled):not(.static) { border-color: var(--border-strong); }
+  .dd:hover:not(:disabled) { border-color: var(--border-strong); }
   .dd.open { border-color: var(--accent-500); }
   .dd:disabled { opacity: 0.45; cursor: default; }
   .erow.disabled .dd,

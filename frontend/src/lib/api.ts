@@ -72,6 +72,7 @@ export interface StartBatchRequest {
   token: string;
   quality: JobSnapshot['quality'];
   audioBitrate?: number;
+  options?: OutputOptions;
 }
 
 export interface StartRequest {

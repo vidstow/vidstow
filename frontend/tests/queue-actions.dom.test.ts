@@ -48,6 +48,7 @@ test('resume all continues after failure and submits collection children only on
 
 test.each([
   ['network_interrupted', 'Retry problem'],
+  ['rate_limited', 'Retry problem'],
   ['folder_unavailable', 'Change folder for problem'],
   ['resource_unavailable', 'Open source for problem'],
 ])('failure %s highlights its recovery action', async (category, label) => {

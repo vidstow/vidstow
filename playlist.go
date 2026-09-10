@@ -103,7 +103,8 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (PlaylistStartResu
 		}
 	}
 
-	outputDir := filepath.Join(a.store.Settings().DownloadFolder, playlistSubfolder(preview.Title, preview.ID))
+	settings := a.store.Settings()
+	outputDir := filepath.Join(settings.DownloadFolder, playlistSubfolder(preview.Title, preview.ID))
 	outputDir, err = canonicalOutputRequestPath(outputDir)
 	if err != nil {
 		return PlaylistStartResult{}, err
@@ -121,7 +122,7 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (PlaylistStartResu
 				URL: child.entry.URL, VideoID: child.entry.VideoID, Title: child.summary.Title,
 				Channel: child.summary.Channel, Quality: req.Quality, PlanID: child.plan.ID,
 				OutputDir: outputDir, Duration: child.summary.Duration, Thumbnail: child.summary.Thumbnail,
-				Options: req.Options,
+				Options: collectionChildOptions(req.Options, settings.OutputOptions.SubtitleLanguages, child.summary.Subtitles),
 			}, Metadata: value.NewInfo(value.NewObject(
 				value.Field{Key: "title", Value: value.String(child.summary.Title)},
 				value.Field{Key: "id", Value: value.String(child.entry.VideoID)},

@@ -544,6 +544,7 @@ type jobState struct {
 	forceStart         bool
 	startBps           time.Time
 	startByt           int64
+	embedSkipped       bool
 }
 
 // New creates a Manager. listener may be nil for headless tests.
@@ -2173,8 +2174,17 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		partial = partial || state.durable.LastFailureCommittedBytes > 0
 	}
 	category := failureCategoryForCode(code)
+	if failureHTTPStatus(state, snap) == 429 {
+		category = "rate_limited"
+	}
 	failure := QueueFailure{Category: category, PartialOutput: partial, Evidence: snap.FailureEvidence}
 	switch category {
+	case "rate_limited":
+		failure.MessageKey = "queue.failure.rate_limited"
+		failure.Heading = "YouTube asked VidStow to slow down"
+		failure.Message = "This download was refused for a moment."
+		failure.RecommendedAction = "Wait a bit, then retry this item."
+		failure.Retryable = true
 	case "network_interrupted":
 		failure.MessageKey = "queue.failure.network_interrupted"
 		failure.Heading = "Download interrupted"
@@ -2247,6 +2257,16 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		failure.Retryable = false
 	}
 	return failure
+}
+
+func failureHTTPStatus(state *jobState, snap JobSnapshot) int {
+	if snap.FailureEvidence != nil && snap.FailureEvidence.HTTPStatus > 0 {
+		return snap.FailureEvidence.HTTPStatus
+	}
+	if state != nil && state.durable.LastFailure != nil {
+		return state.durable.LastFailure.HTTPStatus
+	}
+	return 0
 }
 
 func failureCategoryForCode(code string) string {
@@ -4488,7 +4508,10 @@ func (m *Manager) startWorker(state *jobState, worker *worker) {
 // subtitleEngineOptions maps UI subtitle preferences onto the engine request.
 // Embedding always converts to VTT: WebM containers only accept VTT tracks and
 // MP4-family embedding re-encodes to mov_text internally, so one normalized
-// format covers every plan VidStow offers. An empty mode disables subtitles.
+// format covers every plan VidStow offers. Embed also prefers native VTT or
+// SRT tracks; an empty format pick would take the last listed track, often a
+// YouTube json3 file that cannot be muxed into the video. An empty mode
+// disables subtitles.
 func subtitleEngineOptions(options jobmodel.OutputOptions) engine.SubtitleOptions {
 	if options.SubtitleMode == "" {
 		return engine.SubtitleOptions{}
@@ -4501,10 +4524,32 @@ func subtitleEngineOptions(options jobmodel.OutputOptions) engine.SubtitleOption
 	if options.SubtitleMode == jobmodel.SubtitleModeEmbed {
 		subs.Embed = true
 		subs.ConvertFormat = "vtt"
+		subs.Format = embedSubtitleFormatPreference
 	} else {
 		subs.ConvertFormat = options.SubtitleFormat
 	}
 	return subs
+}
+
+const embedSubtitleFormatPreference = "vtt/srt"
+
+const embedSkippedCompleteMessage = "Saved without captions. This video had none VidStow could put in the file."
+
+func completeJobMessage(state *jobState) string {
+	if state != nil && state.options.SubtitleMode == jobmodel.SubtitleModeEmbed && state.embedSkipped {
+		return embedSkippedCompleteMessage
+	}
+	return "Completed"
+}
+
+func isSubtitleEmbedSkipWarning(message string) bool {
+	switch strings.TrimSpace(message) {
+	case "there are no compatible subtitles to embed",
+		"subtitles can only be embedded in mp4, mov, m4a, webm, mkv, or mka media":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) run(state *jobState, worker *worker) {
@@ -4512,6 +4557,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 	started := time.Now()
 
 	m.mu.Lock()
+	state.embedSkipped = false
 	req := engine.Request{
 		URL:            state.snap.URL,
 		OutputDir:      state.snap.OutputDir,
@@ -4656,7 +4702,8 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		}
 	} else {
 		terminal.Status = StatusComplete
-		terminal.Message = "Completed"
+		terminal.Message = completeJobMessage(state)
+		terminal.OptionsNote = state.options.CompleteNote(state.embedSkipped)
 		terminal.Progress = 1
 		terminal.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 		if result.Filename != "" {
@@ -4852,6 +4899,10 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 	case engine.EventDownloadCancelled:
 		state.snap.Message = "Canceled"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
+	case engine.EventMetadataWarning:
+		if isSubtitleEmbedSkipWarning(ev.Message) {
+			state.embedSkipped = true
+		}
 	case engine.EventJavaScriptChallenge:
 		// Secret-free engine diagnostics are available to dedicated event
 		// consumers, but must not replace the job's user-facing status text.

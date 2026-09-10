@@ -115,7 +115,7 @@ describe('Home analysis authority', () => {
     pendingUrl.set('');
     modal.set(null);
     banner.set(null);
-    settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads' }));
+    settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', outputOptions: {} }));
     installBindings();
   });
 
@@ -175,7 +175,7 @@ describe('Home analysis authority', () => {
     expect(AnalyzeURL).not.toHaveBeenCalledWith('https://www.youtube.com/watch?v=oldvideo01');
   });
 
-  test('Analyze keeps its idle width while the request is in flight', async () => {
+  test('Analyze becomes Stop in the same slot while the request is in flight', async () => {
     const user = userEvent.setup();
     (window as any).go.main.App.ValidateURL = vi.fn(() => new Promise(() => {}));
     render(Home);
@@ -184,17 +184,18 @@ describe('Home analysis authority', () => {
     await user.type(input, firstURL);
     const idle = screen.getByRole('button', { name: 'Analyze' });
     expect(idle).toHaveClass('dbtn', 'query');
-    expect(idle).toHaveAttribute('aria-busy', 'false');
     expect(idle.querySelector('svg')).toBeTruthy();
     expect(idle.querySelector('.query-spin')).toBeNull();
     const idleWidth = idle.getBoundingClientRect().width;
 
     await user.click(idle);
-    const busy = await screen.findByRole('button', { name: 'Analyze' });
-    expect(busy).toHaveClass('dbtn', 'query');
-    expect(busy).toHaveAttribute('aria-busy', 'true');
-    expect(busy.querySelector('.query-spin')).toBeTruthy();
-    expect(busy.getBoundingClientRect().width).toBe(idleWidth);
+    const stop = await screen.findByRole('button', { name: 'Stop' });
+    expect(stop).toHaveClass('dbtn', 'query', 'stop-slot');
+    expect(stop.querySelector('.stop-mark')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Analyze' })).not.toBeInTheDocument();
+    expect(document.querySelector('.hud-strip')).toBeTruthy();
+    expect(await screen.findByText(/Checking link/)).toBeInTheDocument();
+    expect(stop.getBoundingClientRect().width).toBe(idleWidth);
   });
 
   test('does not publish an in-flight result after the URL changes', async () => {
@@ -460,8 +461,101 @@ describe('Home analysis authority', () => {
     const start = screen.getByRole('button', { name: 'Download 3 videos' });
     expect(start).toBeEnabled();
     expect(start.querySelector('svg')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Subtitle language' })).toHaveTextContent('English or first available');
+    expect(screen.getByRole('radiogroup', { name: 'Subtitle mode' })).toBeInTheDocument();
     await user.click(start);
-    await waitFor(() => expect(StartBatchDownload).toHaveBeenCalledWith({ token: 'batch-token', quality: '1080p', audioBitrate: 0 }));
+    await waitFor(() => expect(StartBatchDownload).toHaveBeenCalledWith({ token: 'batch-token', quality: '1080p', audioBitrate: 0, options: {} }));
+  });
+
+  test('batch Download sends the playlist inspector choices', async () => {
+    const user = userEvent.setup();
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    const { AnalyzeBatchURLs, StartBatchDownload } = installBindings();
+    AnalyzeBatchURLs.mockResolvedValue({
+      token: 'batch-token', expiresAt: '2099-08-22T12:00:00Z',
+      counts: { pasted: 2, ready: 2, duplicate: 0, invalid: 0, analysisFailed: 0 },
+      items: [
+        { lineNumber: 1, input: 'one', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'First' },
+        { lineNumber: 2, input: 'two', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'Second' },
+      ],
+    });
+    StartBatchDownload.mockResolvedValue({ collectionId: 'batch-1', admitted: 2 });
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Subtitle language' })).toHaveTextContent('English or first available');
+    await user.click(screen.getByRole('radio', { name: 'Subtitle file' }));
+    await user.click(screen.getByRole('button', { name: 'Subtitle language' }));
+    await user.click(screen.getByRole('option', { name: 'Spanish' }));
+    await user.click(screen.getByLabelText('Title & channel details'));
+    await user.click(screen.getByRole('button', { name: 'Download 2 videos' }));
+
+    await waitFor(() => expect(StartBatchDownload).toHaveBeenCalledTimes(1));
+    const request = StartBatchDownload.mock.calls[0][0];
+    expect(request.options.subtitleMode).toBe('sidecar');
+    expect(request.options.subtitleFormat).toBe('srt');
+    expect(request.options.subtitleLanguages).toEqual(['es']);
+    expect(request.options.embedMetadata).toBe(true);
+  });
+
+  test('batch Language seeds from the Settings default subtitle language', async () => {
+    const user = userEvent.setup();
+    settings.update((current) => ({
+      ...current,
+      outputOptions: { subtitleMode: 'sidecar', subtitleLanguages: ['es'] },
+    }));
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    const { AnalyzeBatchURLs, StartBatchDownload } = installBindings();
+    AnalyzeBatchURLs.mockResolvedValue({
+      token: 'batch-token', expiresAt: '2099-08-22T12:00:00Z',
+      counts: { pasted: 2, ready: 2, duplicate: 0, invalid: 0, analysisFailed: 0 },
+      items: [
+        { lineNumber: 1, input: 'one', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'First' },
+        { lineNumber: 2, input: 'two', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'Second' },
+      ],
+    });
+    StartBatchDownload.mockResolvedValue({ collectionId: 'batch-1', admitted: 2 });
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Subtitle language' })).toHaveTextContent('Spanish');
+    await user.click(screen.getByRole('button', { name: 'Download 2 videos' }));
+
+    await waitFor(() => expect(StartBatchDownload).toHaveBeenCalledTimes(1));
+    expect(StartBatchDownload.mock.calls[0][0].options.subtitleLanguages).toEqual(['es']);
+  });
+
+  test('batch audio outputs do not carry subtitle choices', async () => {
+    const user = userEvent.setup();
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    const { AnalyzeBatchURLs, StartBatchDownload } = installBindings();
+    AnalyzeBatchURLs.mockResolvedValue({
+      token: 'batch-token', expiresAt: '2099-08-22T12:00:00Z',
+      counts: { pasted: 2, ready: 2, duplicate: 0, invalid: 0, analysisFailed: 0 },
+      items: [
+        { lineNumber: 1, input: 'one', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'First' },
+        { lineNumber: 2, input: 'two', status: 'ready', messageKey: 'batch.ready', message: 'Ready', title: 'Second' },
+      ],
+    });
+    StartBatchDownload.mockResolvedValue({ collectionId: 'batch-1', admitted: 2 });
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Download 2 videos' })).toBeEnabled();
+    await user.click(screen.getByRole('radio', { name: 'Subtitle file' }));
+    await user.click(screen.getByRole('button', { name: 'Audio' }));
+    expect(screen.getByRole('radio', { name: 'Subtitle file' })).toBeDisabled();
+    expect(screen.getByText('Video only')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Download 2 videos' }));
+
+    await waitFor(() => expect(StartBatchDownload).toHaveBeenCalledTimes(1));
+    const request = StartBatchDownload.mock.calls[0][0];
+    expect(request.quality).toBe('audio');
+    expect(request.options.subtitleMode).toBe('');
+    expect(request.options.subtitleLanguages).toBeUndefined();
   });
 
   test('invalidates a batch review when the user edits the lines', async () => {
@@ -527,7 +621,7 @@ describe('Home analysis authority', () => {
     expect(screen.getByRole('button', { name: 'Download' }).querySelector('svg')).toBeTruthy();
   });
 
-  test('a failed Analyze offers Paste another link instead of only a dead modal', async () => {
+  test('a failed Analyze selects the URL so the next paste replaces it', async () => {
     const user = userEvent.setup();
     const { ValidateURL } = installBindings();
     ValidateURL.mockRejectedValue(new Error('This video is private.'));
@@ -536,12 +630,11 @@ describe('Home analysis authority', () => {
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     expect(await screen.findByText('Check this link')).toBeInTheDocument();
     expect(screen.getByText('This video is private.')).toBeInTheDocument();
-    const recover = screen.getByRole('button', { name: 'Paste another link' });
-    expect(recover).toHaveClass('dbtn', 'query');
-    const field = screen.getByLabelText('YouTube video, Short, or playlist URL');
-    await user.click(recover);
-    await waitFor(() => expect(screen.queryByText('Check this link')).not.toBeInTheDocument());
-    expect(field).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'Paste another link' })).not.toBeInTheDocument();
+    const field = screen.getByLabelText('YouTube video, Short, or playlist URL') as HTMLTextAreaElement;
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe(field.value.length);
   });
 
   test('successful Download clears the analysed dock, keeps the URL, and goes to Queue', async () => {
@@ -620,6 +713,36 @@ describe('Home analysis authority', () => {
     expect(request.options.embedMetadata).toBe(true);
   });
 
+  test('single video uses the Settings language when that video offers it', async () => {
+    const user = userEvent.setup();
+    settings.update((current) => ({
+      ...current,
+      outputOptions: { subtitleMode: 'sidecar', subtitleLanguages: ['de'] },
+    }));
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Subtitle language' })).toHaveTextContent('German');
+  });
+
+  test('single video falls back to English when the Settings language is missing', async () => {
+    const user = userEvent.setup();
+    settings.update((current) => ({
+      ...current,
+      outputOptions: { subtitleMode: 'sidecar', subtitleLanguages: ['es'] },
+    }));
+    ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Subtitle language' })).toHaveTextContent('English');
+  });
+
   test('audio outputs do not carry subtitle choices', async () => {
     const user = userEvent.setup();
     ffmpeg.set({ available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7', ffprobePath: '', message: '' });
@@ -675,7 +798,14 @@ describe('Home analysis authority', () => {
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    await user.click(await screen.findByRole('button', { name: 'Stop waiting' }));
+    expect(await screen.findByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(await screen.findByText(/Reading video details/)).toBeInTheDocument();
+    expect(document.querySelector('.hud-strip')).toBeTruthy();
+    expect(screen.getByText(/One video, a playlist, or up to 20 links/)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing is downloaded yet/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Stop waiting' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Stop' }));
     await act(() => finish(videoSummary(firstURL)));
     expect(screen.queryByText('Fixture video')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Analyze' })).toBeEnabled();
@@ -726,6 +856,105 @@ describe('Home analysis authority', () => {
     await act(() => finish({ token: 'late', expiresAt: new Date(Date.now() + 60000).toISOString(), counts: { ready: 2 }, items: [] }));
     expect(screen.queryByText('Batch review')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Download 2/ })).not.toBeInTheDocument();
+  });
+
+  test('playlist waiting uses the same Stop HUD as a single video', async () => {
+    const user = userEvent.setup();
+    let finish!: (value: ReturnType<typeof playlistSummary>) => void;
+    const { ValidateURL, AnalyzePlaylist } = installBindings();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    ValidateURL.mockResolvedValue({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture', videoUrl: '', videoId: '',
+    });
+    AnalyzePlaylist.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(await screen.findByText(/Reading playlist/)).toBeInTheDocument();
+    expect(document.querySelector('.hud-strip')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Stop' }));
+    await act(() => finish(playlistSummary(playlistURL)));
+    expect(screen.queryByText('Fixture playlist')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeEnabled();
+  });
+
+  test('batch waiting uses the same Stop HUD as a single video', async () => {
+    const user = userEvent.setup();
+    let finish!: (value: unknown) => void;
+    const { AnalyzeBatchURLs } = installBindings();
+    AnalyzeBatchURLs.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    expect(await screen.findByText(/Reviewing 2 links/)).toBeInTheDocument();
+    expect(document.querySelector('.hud-strip')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Stop' }));
+    await act(() => finish({ token: 'late', expiresAt: '2099-01-01T00:00:00Z', counts: { ready: 2 }, items: [] }));
+    expect(screen.queryByText('Batch of public videos')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeEnabled();
+  });
+
+  test('a failed playlist Analyze selects the URL so the next paste replaces it', async () => {
+    const user = userEvent.setup();
+    const { ValidateURL, AnalyzePlaylist } = installBindings();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    ValidateURL.mockResolvedValue({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture', videoUrl: '', videoId: '',
+    });
+    AnalyzePlaylist.mockRejectedValue(new Error('Check your connection and try again.'));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Could not read this link')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Paste another link' })).not.toBeInTheDocument();
+    const field = screen.getByLabelText('YouTube video, Short, or playlist URL') as HTMLTextAreaElement;
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe(field.value.length);
+  });
+
+  test('a failed batch Analyze selects the URLs so the next paste replaces them', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeBatchURLs } = installBindings();
+    AnalyzeBatchURLs.mockRejectedValue(new Error('Check your connection and try again.'));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Batch could not be reviewed')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Paste another link' })).not.toBeInTheDocument();
+    const field = screen.getByLabelText('YouTube video, Short, or playlist URL') as HTMLTextAreaElement;
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe(field.value.length);
+  });
+
+  test('opening a mixed playlist after a failed preview offers Use the video', async () => {
+    const user = userEvent.setup();
+    const { ValidateURL, AnalyzePlaylist } = installBindings();
+    ValidateURL.mockResolvedValue({
+      kind: 'video_playlist', url: firstURL, videoUrl: firstURL,
+      playlistUrl: 'https://www.youtube.com/playlist?list=PLfixture', videoId: 'fixture0001', playlistId: 'PLfixture',
+    });
+    AnalyzePlaylist.mockRejectedValue(new Error('Connection lost'));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    await screen.findByText('Preview unavailable. Choose playlist to try again.');
+    await user.click(screen.getByRole('button', { name: /Full playlist/ }));
+    expect(await screen.findByText('Could not read the playlist')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use the video' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Paste another link' })).not.toBeInTheDocument();
+    const field = screen.getByLabelText('YouTube video, Short, or playlist URL') as HTMLTextAreaElement;
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe(field.value.length);
+    await user.click(screen.getByRole('button', { name: 'Use the video' }));
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeEnabled();
   });
 
   test('failed playlist prefetch still lets the user choose the video', async () => {

@@ -88,3 +88,13 @@ func TestOutputOptionsNote(t *testing.T) {
 		}
 	}
 }
+
+func TestOutputOptionsCompleteNoteWhenEmbedSkipped(t *testing.T) {
+	embed := OutputOptions{SubtitleMode: SubtitleModeEmbed, SubtitleLanguages: []string{"en"}, EmbedMetadata: true}
+	if got := embed.CompleteNote(true); got != "no captions in file · embedded metadata" {
+		t.Fatalf("CompleteNote(true) = %q", got)
+	}
+	if got := embed.CompleteNote(false); got != "embedded subtitles (en) · embedded metadata" {
+		t.Fatalf("CompleteNote(false) = %q", got)
+	}
+}
