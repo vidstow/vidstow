@@ -13,7 +13,7 @@ A local desktop application built with Go, Wails, and Svelte.
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Wails](https://img.shields.io/badge/Wails-v2-CB2D3E)](https://wails.io/)
 [![Svelte](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](frontend/package.json)
-[![Engine](https://img.shields.io/badge/youtube__dlp-pinned-20232A)](go.mod)
+[![Engine](https://img.shields.io/badge/ytdlp--go-v0.3.0-20232A)](go.mod)
 
 [Download](#download) · [Features](#features) · [Screenshots](#screenshots) · [Project status](#project-status) · [Run locally](#run-locally) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
 
@@ -58,42 +58,54 @@ verification details.
 
 ## Features
 
-- **Analyze before downloading** — inspect the title, thumbnail, duration,
-  channel, and available output choices.
-- **Flexible link input** — paste, type, or drag and drop a public YouTube video,
-  Short, or playlist URL. Links containing both a video and a playlist can be
-  reviewed as either.
-- **Focused output choices** — choose best available video, capped resolutions,
-  original audio, or MP3 when the analyzed media supports those choices.
+The window is a dark zinc workstation. **VidStow** lives in the native title
+bar. The sidebar is **Home**, **Queue**, and **Downloads**, with **Settings**
+at the bottom. About is the colophon on Settings, not a rail item.
+
+- **One paste field on Home** — paste, type, or drop a public YouTube video,
+  Short, or playlist URL. Compact **Try** chips fill a video, a playlist, or
+  several links. **Analyze** is the only submit. While it runs, **Analyze**
+  becomes **Stop**. After 12 seconds Home notes the check is taking longer.
+  A link that is both a video and a playlist asks which one to open.
+- **Output, Subtitles, and In the file** — after Analyze, the card shows format
+  chips plus **Off** / **File** / **Embed**. **File** saves a caption next to
+  the video. **Embed** writes captions inside the video, so the folder still
+  shows one MP4. **In the file** is title and channel, artwork, and chapters.
+  Audio greys **Subtitles** in place and labels the row **Video only**. Artwork
+  embed is skipped for now.
+- **Settings default language** — **Video files** can set **Subtitles on new
+  adds** and a **Default subtitle language** (**English or first available** or
+  a named language such as **Spanish**). That choice prefills Home. On a
+  playlist or batch, a title without the language on the card uses the Settings
+  language, then English or first available. VidStow does not write two caption
+  files for one video.
 - **Playlist review** — select up to 500 available entries, apply a bounded
-  index range, and admit the collection as one expandable parent with individual
-  jobs. Playlist search is not on this list yet.
-- **Reliable batch downloads** — review 2–20 individual video or Short URLs at
-  once, identify invalid and duplicate lines, then atomically admit every ready
-  item under one durable expandable queue parent.
-- **FIFO queue** — configure 1–10 concurrent downloads; the default is 2.
-  Occupancy is shown beside the Queue title and in the status bar.
+  index range, and add the collection as one expandable parent. **Download**
+  turns into **Adding** so a second click cannot queue the same list twice.
+  Playlist search is not on this list yet.
+- **Batch of 2–20 links** — review individual video or Short URLs together,
+  see invalid and duplicate lines, then add every ready item under one parent.
+  More than 20 URLs stays on Home.
+- **Queue** — 1–10 concurrent downloads; the default is 2. In progress, Needs
+  attention, and canceled attempts are separate sections. Finished files live
+  on **Downloads**. Rows show quality and only the actions the app currently
+  allows. An HTTP 429 says **YouTube asked VidStow to slow down**, not that the
+  connection dropped.
 - **Continue in-progress work** — ordinary quit leaves an in-progress download
   running. It continues the next time VidStow opens. Waiting stays waiting.
-  Paused stays paused. Pause downloads and quit records paused intent first.
-- **Explicit lifecycle controls** — each queue row presents only the Pause,
-  Resume, Cancel, Retry, Start again, source, Open, or removal actions authorized
-  by the application; Pause All is available for eligible queued work.
-- **Durable application state** — State v2 stores queue lifecycle, settings,
-  reservations, history, and pending cleanup obligations.
-- **Persistent download history** — completed downloads remain available across
-  app launches, with search, file actions, expandable details, and removal
-  controls.
+  Paused stays paused. **Pause downloads and quit** records paused intent first.
+  Home **Download** queues immediately; there is no confirm step except a
+  playlist with more than 100 selected videos.
+- **Downloads** — completed files stay across launches, with search, **Open**,
+  **Reveal**, expandable details, and removal.
 - **Conservative recovery** — an unreadable queue is skipped without freezing
   the app. An unwritable or unsafe data folder is a small cannot-save stop.
-  Corrupt, unsafe, contended, unavailable, or indeterminate evidence does not
-  authorize automatic destructive mutation.
-- **Destination reservations** — related artifacts for a job receive one
-  collision decision, and an unrelated destination is not silently replaced.
-- **External FFmpeg support** — VidStow detects FFmpeg and FFprobe on `PATH`,
-  in Homebrew's default prefixes, or via a user-selected FFmpeg/FFprobe pair.
-- **Focused engine composition** — the desktop application supports only its
-  explicitly exposed YouTube workflow, not the engine's wider extractor catalog.
+- **FFmpeg** — VidStow detects FFmpeg and FFprobe on `PATH`, in Homebrew's
+  default prefixes, or via a user-selected pair. Most video plans, MP3, captions,
+  and embedded details need it.
+- **Focused engine** — the desktop app supports only this YouTube workflow, not
+  the engine's wider extractor catalog. Live streams, channels, search, and
+  sign-in are out of scope.
 
 ### Lifecycle boundaries
 
@@ -110,33 +122,49 @@ required instead of claiming success.
 
 ## Screenshots
 
+The shots below are the zinc window: native title **VidStow**, **Home** /
+**Queue** / **Downloads** in the rail, **Settings** at the bottom.
+
 <table>
   <tr>
     <td width="50%">
       <strong>Home</strong><br>
-      Paste a public YouTube URL, try an example, analyze, and choose an output.
-      Download goes to Queue.<br><br>
+      One paste field, <strong>Analyze</strong>, and <strong>Try</strong> chips
+      for a video, a playlist, or several links.<br><br>
       <img src="docs/assets/screenshots/home.png" alt="VidStow Home with one URL field, Analyze, and Try chips for a video, a playlist, and several links">
     </td>
     <td width="50%">
-      <strong>Queue</strong><br>
-      Occupancy, lifecycle status, progress, and available actions. The empty
-      header shows how many slots are in use.<br><br>
-      <img src="docs/assets/screenshots/queue-lifecycle.png" alt="VidStow empty Queue showing 0 of 2 slots in use">
+      <strong>After Analyze</strong><br>
+      Inspector rows for <strong>Output</strong>, <strong>Subtitles</strong>
+      (<strong>Off</strong> / <strong>File</strong> / <strong>Embed</strong>),
+      and <strong>In the file</strong>. <strong>Download</strong> goes to
+      Queue.<br><br>
+      <img src="docs/assets/screenshots/home-card.png" alt="VidStow Home after Analyze, with Output, Subtitles Off File Embed, and In the file">
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <strong>Downloads</strong><br>
-      Search completed files, open them, or reveal them in the system file
-      manager.<br><br>
-      <img src="docs/assets/screenshots/downloads.png" alt="VidStow Downloads page showing relative time, Open, and an expandable row">
+      <strong>Queue</strong><br>
+      Slot occupancy sits beside the title. Empty Queue points back to Home.
+      When there is work, in-progress rows, Needs attention, and canceled
+      attempts stay in separate sections.<br><br>
+      <img src="docs/assets/screenshots/queue-lifecycle.png" alt="VidStow empty Queue showing 0 of 2 slots in use, with Go to Home">
     </td>
     <td width="50%">
+      <strong>Downloads</strong><br>
+      Finished files, grouped by day, with <strong>Open</strong> and
+      <strong>Reveal</strong>. Search stays on the page.<br><br>
+      <img src="docs/assets/screenshots/downloads.png" alt="VidStow Downloads page showing relative time, Open, and Reveal">
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
       <strong>Settings</strong><br>
-      Download folder, concurrency, in-progress continues, FFmpeg, and
-      diagnostics. The colophon sits at the bottom.<br><br>
-      <img src="docs/assets/screenshots/settings-lifecycle.png" alt="VidStow Settings showing General, Performance, and Advanced with In progress continues">
+      Download folder, <strong>In progress continues</strong>, concurrency,
+      <strong>Video files</strong> (captions and default language), FFmpeg, and
+      diagnostics. The colophon sits at the bottom. There is no confirm-before-download
+      switch; Home <strong>Download</strong> queues immediately.<br><br>
+      <img src="docs/assets/screenshots/settings-lifecycle.png" alt="VidStow Settings showing General, Performance, Video files, and In progress continues">
     </td>
   </tr>
 </table>
@@ -231,7 +259,9 @@ lifecycle authority from status text.
 VidStow stores application state in the operating system's per-user
 configuration directory. State v2 can include:
 
-- settings, including the selected download folder and an optional FFmpeg path;
+- settings, including the selected download folder, an optional FFmpeg path,
+  and default caption choices (mode, language, sidecar format, auto-captions,
+  and embed flags);
 - canonical public YouTube watch URLs and video IDs;
 - display metadata such as title, channel, duration, and selected quality;
 - job, attempt, session, queue, lifecycle, reservation, and cleanup records;
