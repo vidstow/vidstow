@@ -6,7 +6,7 @@ on:
       tag:
         description: "Draft prerelease tag"
         required: true
-        default: "v0.1.0-beta.5"
+        default: "v0.1.0-beta.6"
         type: string
 
 permissions:
@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  APP_VERSION: "0.1.0-beta.5"
-  MACOS_BUNDLE_VERSION: "5"
+  APP_VERSION: "0.1.0-beta.6"
+  MACOS_BUNDLE_VERSION: "6"
   MACOS_MARKETING_VERSION: "0.1.0"
   GO_VERSION: "1.25.12"
   WAILS_VERSION: "v2.13.0"

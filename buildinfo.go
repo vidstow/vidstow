@@ -10,7 +10,7 @@ import (
 var diagnosticsEventsEndpoint = "https://diagnostics.vidstow.workers.dev/v1/events"
 
 const (
-	appVersion          = "0.1.0-beta.5"
+	appVersion          = "0.1.0-beta.6"
 	engineModulePath    = "github.com/tejasa97/ytdlp-go"
 	pinnedEngineVersion = "v0.3.0"
 )

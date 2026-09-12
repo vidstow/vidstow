@@ -10,7 +10,7 @@ VidStow is a desktop app for downloading public YouTube videos, Shorts,
 playlists, and small batches. Choose the format, subtitles, and file details
 before anything enters the queue.
 
-[![Latest release](https://img.shields.io/badge/release-v0.1.0--beta.5-f59e0b.svg)](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5)
+[![Latest release](https://img.shields.io/badge/release-v0.1.0--beta.6-f59e0b.svg)](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.6)
 [![CI](https://github.com/vidstow/vidstow/actions/workflows/ci.yml/badge.svg)](https://github.com/vidstow/vidstow/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-4c7cf3.svg)](LICENSE)
 
@@ -47,7 +47,7 @@ feature supported by its underlying download engine.
 
 ## Install the beta
 
-[`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5)
+[`v0.1.0-beta.6`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.6)
 is the latest prerelease. The published app currently supports Apple Silicon
 Macs and is installed through VidStow's Homebrew tap:
 

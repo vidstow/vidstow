@@ -20,13 +20,13 @@ removes its quarantine attribute. This bypass is disclosed in both the cask
 output and tap README. It is temporary until releases can be Developer ID signed
 and Apple-notarized.
 
-## Artifact for v0.1.0-beta.5
+## Artifact for v0.1.0-beta.6
 
 | Platform | Artifact | Purpose |
 | --- | --- | --- |
-| macOS Apple Silicon | `VidStow-0.1.0-beta.5-darwin-arm64.zip` | Checksum-pinned payload consumed by the Homebrew cask |
+| macOS Apple Silicon | `VidStow-0.1.0-beta.6-darwin-arm64.zip` | Checksum-pinned payload consumed by the Homebrew cask |
 
-The published [`v0.1.0-beta.5`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5)
+The published [`v0.1.0-beta.6`](https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.6)
 prerelease includes the ZIP, `SHA256SUMS`, and build metadata. These are
 technical release inputs and verification evidence; the supported user
 installation path is the Homebrew cask.
@@ -48,7 +48,7 @@ then build on an Apple Silicon Mac:
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
 wails build -platform darwin/arm64 -clean
 ./scripts/package-release-archives.sh \
-  0.1.0-beta.5 darwin arm64 build/bin/VidStow.app
+  0.1.0-beta.6 darwin arm64 build/bin/VidStow.app
 ```
 
 The macOS post-build hook places `ytdlp-js-helper` inside the app bundle and

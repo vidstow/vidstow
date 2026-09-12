@@ -7,10 +7,24 @@ and versions follow semantic versioning where practical for a desktop
 application.
 
 `v0.1.0-beta.1` is the first public VidStow prerelease. The current packaged
-preview is `v0.1.0-beta.5` for macOS Apple Silicon; a later stable `0.1.0`
+preview is `v0.1.0-beta.6` for macOS Apple Silicon; a later stable `0.1.0`
 does not exist yet.
 
 ## [Unreleased]
+
+### Added
+
+- No entries yet.
+
+### Changed
+
+- No entries yet.
+
+### Fixed
+
+- No entries yet.
+
+## [0.1.0-beta.6] - 2026-09-12
 
 ### Added
 
@@ -62,6 +76,7 @@ does not exist yet.
 
 ### Changed
 
+- The packaged application version is `0.1.0-beta.6`.
 - Queue rows use labeled action icons, larger thumbnails, and a separate quality/status
   line. Keyboard-accessible row buttons select details without starting work. Failure
   recovery replaces empty transfer statistics, and narrow windows keep actions visible.
@@ -87,6 +102,10 @@ does not exist yet.
 
 ### Fixed
 
+- A clean installation creates its private state directory before taking the
+  single-instance lock instead of stopping at launch with **Cannot Save**.
+- Download refreshes an expired Analyze result once before asking the user to
+  analyze the same video again.
 - A YouTube HTTP 429 no longer looks like a dropped connection. **Queue** says
   **YouTube asked VidStow to slow down**. **Retry** stays the next click after
   a short wait.
@@ -238,7 +257,8 @@ does not exist yet.
 - Release automation creates a draft prerelease and cannot publish it.
 - The desktop engine pin is `github.com/tejasa97/youtube_dlp v0.2.1`.
 
-[Unreleased]: https://github.com/vidstow/vidstow/compare/v0.1.0-beta.5...HEAD
+[Unreleased]: https://github.com/vidstow/vidstow/compare/v0.1.0-beta.6...HEAD
+[0.1.0-beta.6]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.6
 [0.1.0-beta.5]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5
 [0.1.0-beta.4]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.4
 [0.1.0-beta.3]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.3
