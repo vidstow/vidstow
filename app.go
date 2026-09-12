@@ -44,17 +44,34 @@ var (
 	reconcileStartupState    = func(ctx context.Context, state *store.V2Store) (jobmodel.State, error) {
 		return recovery.Reconcile(ctx, state, recovery.Options{})
 	}
-	restoreStartupManager = func(manager *jobs.Manager, snapshot jobmodel.State) error { return manager.RestoreStateV2(snapshot) }
-	resolveDownloadPlan   = (*jobs.Manager).ResolvePlan
-	startStartupCleanup   = recovery.StartCleanupWorkerWithReport
-	logAppErrorf          = wailsruntime.LogErrorf
-	emitAppEvent          = wailsruntime.EventsEmit
-	openDiagnostics       = localdiagnostics.Open
-	openDiagnosticOutbox  = localdiagnostics.OpenOutbox
-	newDiagnosticUploader = localdiagnostics.NewUploader
-	newDiagnosticID       = localdiagnostics.NewUUID
-	clipboardSetText      = wailsruntime.ClipboardSetText
-	browserOpenURL        = wailsruntime.BrowserOpenURL
+	restoreStartupManager = func(manager *jobs.Manager, snapshot jobmodel.State) error {
+		return manager.RestoreStateV2(snapshot)
+	}
+	startInterruptedDownloads = (*jobs.Manager).StartInterruptedDownloads
+	continueMissingFolders    = (*jobs.Manager).ContinueWhenFoldersReturn
+	acquireInstanceLock       = store.AcquireInstanceLock
+	notifyAlreadyRunning      = func(ctx context.Context) {
+		if ctx == nil {
+			return
+		}
+		_, _ = wailsruntime.MessageDialog(ctx, wailsruntime.MessageDialogOptions{
+			Type:    wailsruntime.InfoDialog,
+			Title:   "VidStow is already running",
+			Message: "Another VidStow window is open. Close it before starting a second copy.",
+		})
+		wailsruntime.Quit(ctx)
+	}
+	resolveDownloadPlan       = (*jobs.Manager).ResolvePlan
+	refreshExpiredOutputPlans = refreshExpiredOutputPlansDefault
+	startStartupCleanup       = recovery.StartCleanupWorkerWithReport
+	logAppErrorf              = wailsruntime.LogErrorf
+	emitAppEvent              = wailsruntime.EventsEmit
+	openDiagnostics           = localdiagnostics.Open
+	openDiagnosticOutbox      = localdiagnostics.OpenOutbox
+	newDiagnosticUploader     = localdiagnostics.NewUploader
+	newDiagnosticID           = localdiagnostics.NewUUID
+	clipboardSetText          = wailsruntime.ClipboardSetText
+	browserOpenURL            = wailsruntime.BrowserOpenURL
 )
 
 // App is the Wails-bound root. Every exported method is reachable from
@@ -90,6 +107,9 @@ type App struct {
 	quitPermit             bool
 	quitRequestOpen        bool
 	quitDeadline           time.Time
+	instanceLock           *store.InstanceGuard
+	folderWatchCancel      context.CancelFunc
+	quitSkipPause          bool
 }
 
 // NewApp constructs the App. The Wails bind() call wires every public
@@ -104,7 +124,7 @@ func (a *App) startup(ctx context.Context) {
 
 	statePath, err := defaultStatePath()
 	if err != nil {
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
 		logAppErrorf(ctx, "desktop: store path: %v", err)
 		return
 	}
@@ -114,7 +134,20 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) startupAt(ctx context.Context, statePath string) {
 	a.ctx = ctx
 	a.statePath = statePath
+	guard, lockErr := acquireInstanceLock(statePath)
+	if lockErr != nil {
+		if errors.Is(lockErr, store.ErrAlreadyRunning) {
+			notifyAlreadyRunning(ctx)
+			a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryAlreadyRunning})
+			return
+		}
+		logAppErrorf(ctx, "desktop: instance lock: %v", lockErr)
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
+		return
+	}
+	a.instanceLock = guard
 	st, status, openErr := openStateV2(statePath)
+	queueReset := status.Warning == store.WarningQueueReset
 	if openErr == nil && status.Reason != store.RecoveryUnsafePermissions {
 		a.openLocalDiagnostics(filepath.Dir(statePath))
 		// An unset or disabled preference never leaves a stale automatic
@@ -123,7 +156,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 			_ = a.diagnosticOutbox.Clear()
 		}
 	}
-	if openErr != nil || !status.Healthy() || status.Warning != "" || st == nil {
+	if openErr != nil || !status.Healthy() || (status.Warning != "" && !queueReset) || st == nil {
 		if a.diagnostics != nil {
 			category := "state_unavailable"
 			switch {
@@ -147,7 +180,13 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 			_ = st.Close()
 		}
 		if status.Warning != "" {
-			status = store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate}
+			status = store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate}
+		}
+		if status.Mode == store.StartupRecoveryRequired {
+			status.Mode = store.StartupCannotSave
+		}
+		if !status.CannotSave() {
+			status = store.StartupStatus{Mode: store.StartupCannotSave, Reason: status.Reason}
 		}
 		a.setStartupStatus(status)
 		return
@@ -159,7 +198,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		logAppErrorf(ctx, "desktop: validate output roots: %v", err)
 		_ = st.Close()
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
 		return
 	}
 	committed, err := reconcileStartupState(ctx, st)
@@ -170,7 +209,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		logAppErrorf(ctx, "desktop: reconcile startup state: %v", err)
 		_ = st.Close()
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 
@@ -195,7 +234,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		_ = st.Close()
 		a.jobs = nil
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 	if err := restoreStartupManager(a.jobs, committed); err != nil {
@@ -203,7 +242,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		_ = st.Close()
 		a.jobs = nil
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 	a.coordinator, err = admission.NewCoordinator(admission.Dependencies{
@@ -214,12 +253,14 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		_ = st.Close()
 		a.jobs = nil
 		a.store = nil
-		a.setStartupStatus(store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate})
+		a.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate})
 		return
 	}
 
 	settings := a.store.Settings()
 	a.jobs.SetConcurrency(settings.DownloadConcurrency)
+	startInterruptedDownloads(a.jobs)
+	a.startFolderWatch()
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
 	a.cleanupCancel = cleanupCancel
 	a.cleanupDone = startStartupCleanup(cleanupCtx, st, recovery.DefaultCleanupInterval, func(pass recovery.CleanupPass) {
@@ -242,7 +283,27 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 // window to exit. One deadline is shared by cleanup, workers, and manager
 // close; a stuck process cannot turn quit into an unbounded join.
 func (a *App) shutdown(ctx context.Context) {
+	a.stopFolderWatch()
 	a.stopDiagnosticUploader()
+	a.quitMu.Lock()
+	skipPause := a.quitSkipPause
+	a.quitMu.Unlock()
+	if skipPause {
+		if a.cleanupCancel != nil {
+			a.cleanupCancel()
+			a.cleanupCancel = nil
+		}
+		if err := a.closeStateV2(); err != nil {
+			logAppErrorf(ctx, "desktop: close State v2: %v", err)
+		}
+		if a.instanceLock != nil {
+			if err := a.instanceLock.Close(); err != nil {
+				logAppErrorf(ctx, "desktop: release instance lock: %v", err)
+			}
+			a.instanceLock = nil
+		}
+		return
+	}
 	shutdownCtx, cancel := a.shutdownContext(ctx)
 	defer cancel()
 	a.stopCleanup(shutdownCtx)
@@ -268,6 +329,12 @@ func (a *App) shutdown(ctx context.Context) {
 			logAppErrorf(ctx, "desktop: close State v2: %v", err)
 		}
 	}
+	if a.instanceLock != nil {
+		if err := a.instanceLock.Close(); err != nil {
+			logAppErrorf(ctx, "desktop: release instance lock: %v", err)
+		}
+		a.instanceLock = nil
+	}
 }
 
 func (a *App) closeStateV2() error {
@@ -278,6 +345,33 @@ func (a *App) closeStateV2() error {
 		return nil
 	}
 	return a.store.Close()
+}
+
+func (a *App) startFolderWatch() {
+	a.stopFolderWatch()
+	ctx, cancel := context.WithCancel(context.Background())
+	a.folderWatchCancel = cancel
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if a.jobs != nil {
+					continueMissingFolders(a.jobs)
+				}
+			}
+		}
+	}()
+}
+
+func (a *App) stopFolderWatch() {
+	if a.folderWatchCancel != nil {
+		a.folderWatchCancel()
+		a.folderWatchCancel = nil
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -611,6 +705,23 @@ func (a *App) AnalyzePlaylist(raw string) (jobs.PlaylistSummary, error) {
 // Queue
 // ---------------------------------------------------------------------------
 
+// refreshExpiredOutputPlansDefault re-runs Analyze so Download can reuse the
+// private format list after the in-memory cache expires. StartDownload calls
+// this at most once per click.
+func refreshExpiredOutputPlansDefault(a *App, rawURL string) error {
+	if a == nil || a.jobs == nil {
+		return jobs.ErrOutputOptionsExpired
+	}
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 75*time.Second)
+	defer cancel()
+	_, err := a.jobs.Analyze(ctx, rawURL)
+	return err
+}
+
 // StartDownload enqueues a download and starts the FIFO worker.
 func (a *App) StartDownload(req jobs.Request) (string, error) {
 	if err := a.requireReady(); err != nil {
@@ -647,16 +758,28 @@ func (a *App) StartDownload(req jobs.Request) (string, error) {
 	if req.Quality == "" {
 		req.Quality = jobs.QualityBest
 	}
+	if err := req.Options.Validate(); err != nil {
+		return "", fmt.Errorf("invalid output options: %w", err)
+	}
 	if req.PlanID == "" {
 		return "", errors.New("an analyzed output plan is required before starting a download")
 	}
 	plan, resolveErr := resolveDownloadPlan(a.jobs, req.VideoID, req.PlanID)
+	if errors.Is(resolveErr, jobs.ErrOutputOptionsExpired) {
+		if refreshErr := refreshExpiredOutputPlans(a, req.URL); refreshErr != nil {
+			return "", errors.New(friendlyAnalyzeError(refreshErr))
+		}
+		plan, resolveErr = resolveDownloadPlan(a.jobs, req.VideoID, req.PlanID)
+	}
 	if resolveErr != nil {
 		return "", resolveErr
 	}
 	if plan.RequiresFFmpeg && !a.ffmpegStatus().Available {
 		a.recordDiagnosticProblem(operationID, localdiagnostics.Problem{Stage: "postprocessing", Category: "ffmpeg_missing", Outcome: "terminal", RetryBucket: "none"})
 		return "", errors.New("this output needs FFmpeg; install FFmpeg or choose an original audio format")
+	}
+	if req.Options.RequiresFFmpeg() && !a.ffmpegStatus().Available {
+		return "", errors.New("subtitles and embedded details need FFmpeg; install FFmpeg or turn those options off")
 	}
 	req.OutputDir, err = canonicalOutputRequestPath(req.OutputDir)
 	if err != nil {
@@ -812,6 +935,31 @@ func (a *App) DiscardActionRequiredQueueJob(id, token string) error {
 		return err
 	}
 	return a.jobs.QueueActionRequiredDiscard(id, token)
+}
+
+func (a *App) DiscardSavedQueueJob(id, token string) error {
+	if err := a.requireReady(); err != nil {
+		return err
+	}
+	return a.jobs.QueueDiscardSavedData(id, token)
+}
+
+func (a *App) ChangeQueueJobFolder(id, token string) error {
+	if err := a.requireReady(); err != nil {
+		return err
+	}
+	path, err := a.PickDownloadFolder()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	canonical, err := canonicalOutputRequestPath(path)
+	if err != nil {
+		return err
+	}
+	return a.jobs.QueueChangeFolder(id, token, canonical)
 }
 
 func (a *App) RetryQueueJobCleanup(id, token string) error {
@@ -1015,7 +1163,7 @@ func (a *App) OpenFile(path string) error {
 	}
 	if _, err := os.Stat(expanded); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return errors.New("That downloaded file is no longer on disk.")
+			return errors.New("That file is no longer at this path")
 		}
 		return err
 	}
@@ -1033,7 +1181,7 @@ func (a *App) RevealInFinder(path string) error {
 	}
 	if _, err := os.Stat(expanded); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return errors.New("That downloaded file is no longer on disk.")
+			return errors.New("That file is no longer at this path")
 		}
 		return err
 	}
@@ -1052,7 +1200,7 @@ func (a *App) CopyDiagnostics() (string, error) {
 	if a.store != nil {
 		report.WriteString("Download folder: configured\n")
 	} else {
-		report.WriteString("Startup: recovery required (" + string(a.startupStatusSnapshot().Reason) + ")\n")
+		report.WriteString("Startup: cannot save (" + string(a.startupStatusSnapshot().Reason) + ")\n")
 	}
 	// FFmpeg status messages are closed application-authored values. Never
 	// include the configured path or any of its components.
@@ -1353,7 +1501,7 @@ func (a *App) requireReady() error {
 	if a.store == nil || a.jobs == nil || a.coordinator == nil || !a.startupStatusSnapshot().Healthy() {
 		return errRecoveryRequired
 	}
-	if status := a.store.Status(); status.Warning != "" {
+	if warning := a.store.Status().Warning; warning != "" && warning != store.WarningQueueReset {
 		return errRecoveryRequired
 	}
 	return nil
@@ -1542,6 +1690,20 @@ func (a *App) PauseDownloadsAndQuit() error {
 	return err
 }
 
+// QuitAndContinue leaves in-progress jobs durable as they are, the same as a
+// crash. Waiting and paused rows are untouched. PauseDownloadsAndQuit remains
+// the path that records paused intent first.
+func (a *App) QuitAndContinue() {
+	a.quitMu.Lock()
+	a.quitSkipPause = true
+	a.quitRequestOpen = false
+	a.quitPermit = true
+	a.quitMu.Unlock()
+	if a.ctx != nil {
+		wailsruntime.Quit(a.ctx)
+	}
+}
+
 // OpenDataFolder is safe in recovery-required mode and performs no State or
 // session mutation.
 func (a *App) OpenDataFolder() error {
@@ -1675,7 +1837,7 @@ func friendlyAnalyzeError(err error) string {
 			if isYouTubeChallengeTimeout(err) {
 				return "YouTube challenge timed out — retry"
 			}
-			return "That link is not a supported single YouTube video."
+			return "We could not read this YouTube link. It may be unavailable or unsupported."
 		case engine.ErrorAuthentication:
 			return "That video requires sign-in and is not available in this version."
 		case engine.ErrorInvalidInput:
@@ -1689,6 +1851,50 @@ func friendlyAnalyzeError(err error) string {
 		}
 	}
 	return "We could not read that video. Try again in a moment."
+}
+
+func friendlyPlaylistStartError(err error) string {
+	if err == nil {
+		return "None of the selected videos could be downloaded."
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "Playlist analysis timed out — retry"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "Playlist analysis was canceled."
+	}
+	if isMembersOnlyMedia(err) {
+		return "A selected video requires a channel membership and is not available in this version."
+	}
+	var typed *engine.Error
+	if errors.As(err, &typed) {
+		switch typed.Category {
+		case engine.ErrorUnsupported:
+			if isYouTubeChallengeTimeout(err) {
+				return "YouTube challenge timed out — retry"
+			}
+			return "A selected video could not be downloaded. Uncheck unavailable videos and try again."
+		case engine.ErrorAuthentication:
+			return "A selected video requires sign-in and is not available in this version."
+		case engine.ErrorInvalidInput:
+			return "A selected playlist video is not valid."
+		case engine.ErrorNetwork:
+			return "We could not reach YouTube. Check your connection and try again."
+		case engine.ErrorCancelled:
+			return "Playlist analysis was canceled."
+		case engine.ErrorSecurity:
+			return "A selected video was blocked by a security check."
+		}
+	}
+	return "Could not add this playlist to the queue."
+}
+
+func isMembersOnlyMedia(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "members-only") || strings.Contains(message, "join this channel")
 }
 
 func isYouTubeChallengeTimeout(err error) bool {

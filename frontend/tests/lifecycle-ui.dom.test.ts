@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import ActionRequiredReviewDialog from '../src/lib/lifecycle-ui/ActionRequiredReviewDialog.svelte';
 import DestinationConflictDialog from '../src/lib/lifecycle-ui/DestinationConflictDialog.svelte';
-import LifecycleJobRow from '../src/lib/lifecycle-ui/LifecycleJobRow.svelte';
+import LifecycleJobRow, { type LifecycleJobActionEvent } from '../src/lib/lifecycle-ui/LifecycleJobRow.svelte';
 import QueueOverview from '../src/lib/lifecycle-ui/QueueOverview.svelte';
 import QuitConfirmationDialog from '../src/lib/lifecycle-ui/QuitConfirmationDialog.svelte';
 import type {
@@ -46,43 +46,54 @@ function conflictModel(overrides: Partial<DestinationConflictViewModel> = {}): D
 }
 
 describe('backend-authored capabilities', () => {
-  test('queue-wide actions fail closed when capabilities are absent at runtime', async () => {
-    const onPauseAll = vi.fn();
-    const onClearCompleted = vi.fn();
-    const user = userEvent.setup();
-    const model = queueModel() as Partial<QueueOverviewViewModel>;
-    delete model.canPauseAll;
-    delete model.canClearCompleted;
-
-    render(QueueOverview, {
-      props: { model: model as QueueOverviewViewModel },
-      events: { 'pause-all': onPauseAll, 'clear-completed': onClearCompleted },
-    });
-
-    const pauseAll = screen.getByRole('button', { name: 'Pause All' });
-    const clearCompleted = screen.getByRole('button', { name: 'Clear Completed' });
-    expect(pauseAll).toBeDisabled();
-    expect(clearCompleted).toBeDisabled();
-
-    await user.click(pauseAll);
-    await user.click(clearCompleted);
-    expect(onPauseAll).not.toHaveBeenCalled();
-    expect(onClearCompleted).not.toHaveBeenCalled();
+  test('empty Queue still shows how many slots can run', () => {
+    render(QueueOverview, { props: { model: queueModel() } });
+    expect(screen.getByRole('heading', { name: 'Queue' })).toBeInTheDocument();
+    expect(screen.getByText('No active downloads')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause all' })).not.toBeInTheDocument();
   });
 
-  test('playlist collections expand children and emit only backend-authorized parent actions', async () => {
+  test('queue-wide actions fail closed when capabilities are absent at runtime', async () => {
+    const onPauseAll = vi.fn();
+    const onResumeAll = vi.fn();
+    const user = userEvent.setup();
+
+    render(QueueOverview, {
+      props: {
+        model: {
+          ...queueModel(),
+          canPauseAll: undefined as unknown as boolean,
+          jobs: [{
+            id: 'active-1', title: 'Active', lifecycle: 'active', occupiesSlot: true,
+            capabilities: {}, commandToken: 'job-token',
+          }],
+        } as QueueOverviewViewModel,
+      },
+      events: { 'pause-all': onPauseAll, 'resume-all': onResumeAll },
+    });
+
+    expect(screen.queryByRole('button', { name: 'Pause all' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume all' })).not.toBeInTheDocument();
+    expect(onPauseAll).not.toHaveBeenCalled();
+    expect(onResumeAll).not.toHaveBeenCalled();
+  });
+
+  test('playlist collections show children in the inspector and emit only backend-authorized parent actions', async () => {
     const onCollectionAction = vi.fn();
     const user = userEvent.setup();
-    render(QueueOverview, {
+    const { container } = render(QueueOverview, {
       props: {
         model: queueModel({
           jobs: [{
             id: 'child-1', collectionId: 'collection-1', collectionIndex: 1,
             title: 'Child video', lifecycle: 'pending', desired: 'running', occupiesSlot: false,
+            thumbnailUrl: 'https://i.ytimg.com/vi/child/hqdefault.jpg',
             capabilities: { pause: true }, commandToken: 'child-token',
           }],
           collections: [{
             id: 'collection-1', kind: 'playlist', title: 'Fixture playlist', metadata: 'Creator', policy: 'video:1080p',
+            thumbnailUrl: 'https://i.ytimg.com/vi/playlist/hqdefault.jpg',
             childJobIds: ['child-1'], total: 1, completed: 0, failed: 0, canceled: 0,
             active: 0, pending: 1, paused: 0, progress: 0, progressLabel: '0 of 1 complete',
             capabilities: { pause: true }, commandToken: 'collection-token',
@@ -92,14 +103,49 @@ describe('backend-authored capabilities', () => {
       },
     });
 
-    expect(screen.getByText('Fixture playlist')).toBeInTheDocument();
+    expect(screen.getAllByText('Fixture playlist').length).toBeGreaterThan(0);
+    expect(screen.getByText('Playlist')).toBeInTheDocument();
     expect(screen.getByText('Child video')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Pause' }));
+    const thumbs = container.querySelectorAll('.qth img, .kth img, .ibig');
+    expect(thumbs.length).toBeGreaterThanOrEqual(3);
+    expect(container.querySelector('.qth img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/playlist/hqdefault.jpg');
+    expect(container.querySelector('.kth img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/child/hqdefault.jpg');
+    await user.click(screen.getByRole('button', { name: 'Pause collection' }));
     expect(onCollectionAction).toHaveBeenCalledWith({ collectionId: 'collection-1', commandToken: 'collection-token', action: 'pause' });
+    expect(screen.queryByRole('button', { name: 'Collapse Fixture playlist' })).not.toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole('button', { name: 'Collapse Fixture playlist' }));
-    expect(screen.queryByText('Child video')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Expand Fixture playlist' })).toHaveAttribute('aria-expanded', 'false');
+  test('playlist inspector shows a finished count chip instead of a muted row', () => {
+    const { container } = render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [
+            {
+              id: 'done-1', collectionId: 'collection-1', collectionIndex: 1,
+              title: 'Done one', lifecycle: 'completed', occupiesSlot: false,
+              capabilities: {}, commandToken: 'done-token',
+            },
+            {
+              id: 'live-1', collectionId: 'collection-1', collectionIndex: 2,
+              title: 'Live child', lifecycle: 'active', occupiesSlot: true, speedLabel: '2.9 MiB/s',
+              capabilities: { pause: true }, commandToken: 'live-token',
+            },
+          ],
+          collections: [{
+            id: 'collection-1', kind: 'playlist', title: 'Mixed playlist', policy: 'video:1080p',
+            childJobIds: ['done-1', 'live-1'], total: 12, completed: 4, failed: 0, canceled: 0,
+            active: 1, pending: 7, paused: 0, progress: 0.33, progressLabel: '4 of 12 complete',
+            capabilities: { pause: true }, commandToken: 'collection-token',
+          }],
+        }),
+      },
+    });
+
+    expect(screen.getByText('4 finished')).toBeInTheDocument();
+    expect(container.querySelector('.kdone')).not.toBeNull();
+    expect(container.querySelector('.kid.done')).toBeNull();
+    expect(screen.getByText('Live child')).toBeInTheDocument();
+    expect(screen.queryByText('Done one')).not.toBeInTheDocument();
   });
 
   test('interleaves collections and standalone videos using backend priority order', () => {
@@ -112,25 +158,25 @@ describe('backend-authored capabilities', () => {
               occupiesSlot: true, capabilities: {},
             },
             {
-              id: 'completed-child', collectionId: 'completed-collection', collectionIndex: 1,
-              title: 'Completed collection video', lifecycle: 'completed',
+              id: 'playlist-child', collectionId: 'live-collection', collectionIndex: 1,
+              title: 'Playlist episode', lifecycle: 'pending',
               occupiesSlot: false, capabilities: {},
             },
           ],
           collections: [{
-            id: 'completed-collection', kind: 'playlist', title: 'Completed collection', policy: 'video:1080p',
-            childJobIds: ['completed-child'], total: 1, completed: 1, failed: 0, canceled: 0,
-            active: 0, pending: 0, paused: 0, progress: 1, progressLabel: '1 of 1 complete',
+            id: 'live-collection', kind: 'playlist', title: 'Live collection', policy: 'video:1080p',
+            childJobIds: ['playlist-child'], total: 1, completed: 0, failed: 0, canceled: 0,
+            active: 0, pending: 1, paused: 0, progress: 0, progressLabel: '0 of 1 complete',
             capabilities: {},
           }],
         }),
       },
     });
 
-    const entries = Array.from(container.querySelectorAll('.job-list > :is(article, section)'));
+    const entries = Array.from(container.querySelectorAll('.qrow'));
     expect(entries).toHaveLength(2);
     expect(entries[0]).toHaveAttribute('aria-label', 'Active standalone video');
-    expect(entries[1]).toHaveTextContent('Completed collection');
+    expect(entries[1]).toHaveAttribute('aria-label', 'Live collection');
   });
 
   test('batch collection parents omit synthetic thumbnails', () => {
@@ -148,9 +194,35 @@ describe('backend-authored capabilities', () => {
       },
     });
 
-    expect(screen.getByText('Batch download · 2 videos')).toBeInTheDocument();
-    expect(screen.getByText('video:720p')).toBeInTheDocument();
-    expect(container.querySelector('.parent-row > .thumbnail')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Batch download · 2 videos').length).toBeGreaterThan(0);
+    expect(container.querySelector('.qrow[data-policy="video:720p"]')).toBeTruthy();
+    expect(container.querySelector('.qth img')).not.toBeInTheDocument();
+    expect(container.querySelector('.qth .cnt')).toHaveTextContent('2');
+    expect(screen.getByText('Batch')).toBeInTheDocument();
+  });
+
+  test('playlist rows fall back to a child still when the parent has none', () => {
+    const { container } = render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'ep-1', collectionId: 'pl-1', collectionIndex: 1,
+            title: 'Episode one', lifecycle: 'active', occupiesSlot: true,
+            thumbnailUrl: 'https://i.ytimg.com/vi/episode/hqdefault.jpg',
+            capabilities: {},
+          }],
+          collections: [{
+            id: 'pl-1', kind: 'playlist', title: 'No parent art', policy: 'video:1080p',
+            childJobIds: ['ep-1'], total: 1, completed: 0, failed: 0, canceled: 0,
+            active: 1, pending: 0, paused: 0, progress: 0.2, progressLabel: '0 of 1 complete',
+            capabilities: {},
+          }],
+        }),
+      },
+    });
+
+    expect(container.querySelector('.qth img')).toHaveAttribute('src', 'https://i.ytimg.com/vi/episode/hqdefault.jpg');
+    expect(screen.getByText('Playlist')).toBeInTheDocument();
   });
 
   test('playlist collection actions fail closed without a valid token', async () => {
@@ -177,18 +249,26 @@ describe('backend-authored capabilities', () => {
 
   test('queue-wide actions emit only when explicitly enabled', async () => {
     const onPauseAll = vi.fn();
-    const onClearCompleted = vi.fn();
+    const onResumeAll = vi.fn();
     const user = userEvent.setup();
 
     render(QueueOverview, {
-      props: { model: queueModel({ canPauseAll: true, canClearCompleted: true }) },
-      events: { 'pause-all': onPauseAll, 'clear-completed': onClearCompleted },
+      props: {
+        model: queueModel({
+          canPauseAll: true,
+          jobs: [{
+            id: 'paused-1', title: 'Paused video', lifecycle: 'paused', occupiesSlot: false,
+            capabilities: { resume: true }, commandToken: 'job-token',
+          }],
+        }),
+      },
+      events: { 'pause-all': onPauseAll, 'resume-all': onResumeAll },
     });
 
-    await user.click(screen.getByRole('button', { name: 'Pause All' }));
-    await user.click(screen.getByRole('button', { name: 'Clear Completed' }));
+    await user.click(screen.getByRole('button', { name: 'Pause all' }));
+    await user.click(screen.getByRole('button', { name: 'Resume all' }));
     expect(onPauseAll).toHaveBeenCalledOnce();
-    expect(onClearCompleted).toHaveBeenCalledOnce();
+    expect(onResumeAll).toHaveBeenCalledOnce();
   });
 
   test('disabled row capabilities do not emit actions', async () => {
@@ -317,10 +397,131 @@ describe('backend-authored capabilities', () => {
     render(QueueOverview, {
       props: { model: queueModel({ commandToken: undefined, canPauseAll: false, canClearCompleted: false, jobs: [{ id: 'active-1', title: 'Active', lifecycle: 'active', occupiesSlot: true, capabilities: {}, commandToken: undefined }] }) },
     });
-    expect(screen.getByRole('button', { name: 'Pause All' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Clear Completed' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Pause download' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Cancel download' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Pause all' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume all' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  });
+
+  test('missing-folder errors offer Change from the inspector', async () => {
+    const onAction = vi.fn<(event: LifecycleJobActionEvent) => void>();
+    const user = userEvent.setup();
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'missing-folder', title: 'Missing folder video', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'folder_unavailable', messageKey: 'queue.failure.folder_unavailable',
+              heading: 'Save folder is missing',
+              message: 'The folder for this download is gone. Plug the drive back in, or Change to a different folder.',
+              recommendedAction: 'Bring the original path back, or Change the folder.',
+              retryable: true, partialOutput: true,
+            },
+            capabilities: { retry: true, changeFolder: true, remove: true }, commandToken: 'folder-token',
+          }],
+        }),
+        onAction,
+      },
+    });
+
+    expect(screen.getAllByText('Save folder is missing').length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Change folder' }));
+    expect(onAction.mock.calls[0][0]).toEqual({
+      jobId: 'missing-folder', commandToken: 'folder-token', action: 'change-folder',
+    });
+  });
+
+  test('failed inspector keeps Retry and Remove without Cancel or Open source', () => {
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'start-failed', title: 'Could not start', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'could_not_start', messageKey: 'queue.failure.could_not_start',
+              heading: 'Download could not start',
+              message: 'Nothing was saved.',
+              recommendedAction: 'Retry this item.',
+              retryable: true, partialOutput: false,
+            },
+            capabilities: { retry: true, remove: true }, commandToken: 'start-token',
+          }],
+        }),
+      },
+    });
+    expect(screen.getAllByText('Download could not start').length).toBeGreaterThan(0);
+    expect(screen.getByText('Nothing was saved.')).toBeInTheDocument();
+    expect(screen.queryByText(/hint:/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open source' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy link' })).not.toBeInTheDocument();
+  });
+
+  test('canceled inspector drops Pause and does not stay on Cleaning up after Remove is authorized', async () => {
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'canceled', title: 'Canceled video', lifecycle: 'canceled', phase: 'cleaning-up', occupiesSlot: false,
+            capabilities: { remove: true }, commandToken: 'canceled-token',
+          }],
+        }),
+      },
+    });
+    await userEvent.click(screen.getByText('Canceled (1)'));
+    expect(screen.getAllByText('Canceled').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Cleaning up')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
+  });
+
+  test('refused download inspector offers Retry, Open source, Copy link, and Remove', () => {
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'refused', title: 'Public video', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'authentication_required', messageKey: 'queue.failure.authentication_required',
+              heading: 'Download was refused',
+              message: 'The page may still play in a browser. Try again.', recommendedAction: 'Retry this item.',
+              retryable: true, partialOutput: false,
+            },
+            capabilities: { retry: true, remove: true, openSource: true, copyLink: true }, commandToken: 'auth-token',
+          }],
+        }),
+      },
+    });
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open source' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+
+  test('unusable leftover paused rows offer Resume and Discard', async () => {
+    const onAction = vi.fn<(event: LifecycleJobActionEvent) => void>();
+    const user = userEvent.setup();
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'leftover', title: 'Unusable leftover', lifecycle: 'paused', occupiesSlot: false,
+            savedBytes: 843 * 1024 * 1024,
+            capabilities: { resume: true, discard: true, cancel: true }, commandToken: 'leftover-token',
+          }],
+        }),
+        onAction,
+      },
+    });
+    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(onAction.mock.calls[0][0]).toEqual({
+      jobId: 'leftover', commandToken: 'leftover-token', action: 'discard',
+    });
   });
 });
 
@@ -340,6 +541,7 @@ describe('action-required recovery', () => {
 
     expect(screen.getByRole('dialog', { name: review.heading })).toBeInTheDocument();
     expect(screen.getByText(review.preservationNotice)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Keep for now' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Start over from Home' }));
     expect(onStartOver).toHaveBeenCalledOnce();
     expect(onClose).not.toHaveBeenCalled();
@@ -381,6 +583,40 @@ describe('action-required recovery', () => {
     await user.click(screen.getByRole('button', { name: 'Retry cleanup' }));
     expect(onRetryCleanup).toHaveBeenCalledOnce();
     expect(screen.queryByRole('button', { name: 'Discard saved data' })).not.toBeInTheDocument();
+  });
+
+  test('empty inspect review offers Retry this download and Remove only', async () => {
+    const onRetryFreshLink = vi.fn();
+    const onRemove = vi.fn();
+    const user = userEvent.setup();
+    render(ActionRequiredReviewDialog, {
+      props: {
+        open: true,
+        review: {
+          ...review,
+          heading: 'Download could not start',
+          message: 'Nothing was saved.',
+          preservationNotice: '',
+          canStartOver: false,
+          canRetryRecovery: false,
+          canRetryFreshLink: true,
+          canDiscard: false,
+          canRemove: true,
+          canRetryCleanup: false,
+        },
+        onRetryFreshLink,
+        onRemove,
+      },
+    });
+    expect(screen.queryByText('What happens to the saved data?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start over from Home' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try recovery again' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Discard saved data' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry with fresh link' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetryFreshLink).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(onRemove).toHaveBeenCalledOnce();
   });
 });
 
@@ -488,7 +724,7 @@ describe('modal keyboard focus', () => {
 
     const keepWorking = screen.getByRole('button', { name: 'Keep working' });
     const close = screen.getByRole('button', { name: 'Close' });
-    const quit = screen.getByRole('button', { name: 'Pause downloads and quit' });
+    const quit = screen.getByRole('button', { name: 'Quit' });
     expect(keepWorking).toHaveFocus();
 
     outside.focus();
@@ -503,5 +739,51 @@ describe('modal keyboard focus', () => {
     rendered.unmount();
     expect(outside).toHaveFocus();
     outside.remove();
+  });
+});
+
+describe('restored historical attempts', () => {
+  test('separates failed and canceled resolutions, hides idle controls, and preserves action authority', async () => {
+    const onAction = vi.fn();
+    const user = userEvent.setup();
+    const { container, rerender } = render(QueueOverview, { props: {
+      model: queueModel({ jobs: [
+        { id: 'failed', title: 'Same video', qualityLabel: '480p', lifecycle: 'failed', occupiesSlot: false, capabilities: { retry: true }, commandToken: 'retry-token', failure: { category: 'authentication_required', messageKey: 'queue.failure.authentication_required', heading: 'Download was refused', message: 'Try again.', recommendedAction: 'Retry.', retryable: true, partialOutput: false, evidence: { stage: 'extraction', code: 'authentication', at: '2026-09-07T20:00:00Z' } } },
+        { id: 'canceled', title: 'Same video', qualityLabel: '1080p60', lifecycle: 'canceled', phase: 'cleaning-up', occupiesSlot: false, capabilities: { remove: true }, commandToken: 'remove-token' },
+        { id: 'done', title: 'Completed video', qualityLabel: '360p', lifecycle: 'completed', occupiesSlot: false },
+      ] }), onAction,
+    } });
+    expect(screen.getByText('No active downloads · 1 failed · 1 canceled')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Needs attention/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^In progress/ })).not.toBeInTheDocument();
+    expect(screen.getByText('480p · Failed')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Remove Same video' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Completed video')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resume all' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry Same video' }));
+    expect(onAction).toHaveBeenLastCalledWith({ action: 'retry', jobId: 'failed', commandToken: 'retry-token' });
+    await user.click(screen.getByText('Failure details'));
+    expect(screen.getByText('extraction · authentication')).toBeVisible();
+    await user.click(screen.getByText('Canceled (1)'));
+    expect(screen.getByText('1080p60 · Canceled')).toBeVisible();
+    const canceledRow = screen.getByText('1080p60 · Canceled').closest('.qrow')!;
+    expect(canceledRow.querySelector('.qbar')).toBeNull();
+    await user.click(canceledRow);
+    expect(screen.getByText('Temporary data removed.')).toBeVisible();
+    expect(container.querySelector('.qinsp .istats')).toBeNull();
+    expect(container.querySelector('.qinsp .ibar')).toBeNull();
+    const failedButton = screen.getAllByRole('button', { name: 'Same video' })[0];
+    failedButton.focus();
+    await user.keyboard(' ');
+    expect(failedButton).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('Download was refused')).toBeVisible();
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.qinsp .istats')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Remove Same video' }));
+    expect(onAction).toHaveBeenLastCalledWith({ action: 'remove', jobId: 'canceled', commandToken: 'remove-token' });
+    await rerender({ model: queueModel({ jobs: [{ id: 'failed', title: 'Same video', qualityLabel: '480p', lifecycle: 'pending', occupiesSlot: false, capabilities: { pause: true }, commandToken: 'new-token' }] }), onAction });
+    expect(screen.getByRole('heading', { name: /^In progress/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Needs attention/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry Same video' })).not.toBeInTheDocument();
   });
 });

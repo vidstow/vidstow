@@ -29,6 +29,7 @@ import (
 
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/outputplan"
+	"github.com/tejasa97/vidstow/internal/recovery"
 	"github.com/tejasa97/vidstow/internal/reservation"
 	"github.com/tejasa97/vidstow/internal/reservationfs"
 	"github.com/tejasa97/ytdlp-go/engine"
@@ -60,6 +61,11 @@ const (
 // ErrClosed is returned when an operation would start new manager activity
 // after Close has begun.
 var ErrClosed = errors.New("jobs: manager is closed")
+
+// ErrOutputOptionsExpired means the in-memory Analyze cache no longer has a
+// private plan for this video. Home still shows the card; Download should
+// Analyze once more before asking the user.
+var ErrOutputOptionsExpired = errors.New("jobs: output options expired; analyze the video again")
 
 var errCancelRequested = errors.New("jobs: cancel requested")
 
@@ -129,18 +135,20 @@ func (q Quality) ytdlpFormat() string {
 // default title-only template would otherwise let the later job overwrite the
 // earlier successful artifact.
 func (q Quality) outputTemplate() string {
-	return fmt.Sprintf("%%(title)s [%%(id)s] [%s].%%(ext)s", q.Label())
+	return fmt.Sprintf("%%(title)S [%%(id)s] [%s].%%(ext)s", q.Label())
 }
 
 // OutputTemplateForPlan is the exact basename template used by a curated
 // output plan. Admission uses the same template before choosing a durable
 // reservation, so the queue and the engine do not drift on filenames.
+// %(title)S sanitizes path separators and Windows-reserved characters so a
+// title like "VR / 4K" cannot become a nested directory.
 func OutputTemplateForPlan(plan outputplan.Plan) string {
 	label := plan.Label
 	if label == "" {
 		label = plan.ID
 	}
-	return fmt.Sprintf("%%(title)s [%%(id)s] [%s].%%(ext)s", label)
+	return fmt.Sprintf("%%(title)S [%%(id)s] [%s].%%(ext)s", label)
 }
 
 // Status is the lifecycle state of a job.
@@ -158,6 +166,10 @@ const (
 	StatusActionRequired Status = "action-required"
 )
 
+// OutputOptions re-exports the shared per-download output preferences so
+// callers can build jobs requests without importing the durable model.
+type OutputOptions = jobmodel.OutputOptions
+
 // Request is the data needed to schedule one download.
 type Request struct {
 	URL       string  `json:"url"`
@@ -169,6 +181,9 @@ type Request struct {
 	OutputDir string  `json:"outputDir"`
 	Duration  string  `json:"duration"`
 	Thumbnail string  `json:"thumbnail"`
+	// Options carries this download's subtitle and embedding choices. The
+	// zero value keeps the historical media-only output.
+	Options OutputOptions `json:"options,omitempty"`
 }
 
 // AdmittedOutput is the internal admission-to-manager contract. The basename
@@ -180,43 +195,47 @@ type AdmittedOutput struct {
 
 // JobSnapshot is the immutable view of a job exposed to the UI.
 type JobSnapshot struct {
-	ID              string                `json:"id"`
-	URL             string                `json:"url"`
-	VideoID         string                `json:"videoID"`
-	Title           string                `json:"title"`
-	Channel         string                `json:"channel"`
-	Quality         Quality               `json:"quality"`
-	QualityLabel    string                `json:"qualityLabel"`
-	PlanID          string                `json:"planId,omitempty"`
-	OutputKind      outputplan.Kind       `json:"outputKind,omitempty"`
-	Container       string                `json:"container,omitempty"`
-	VideoCodec      string                `json:"videoCodec,omitempty"`
-	AudioCodec      string                `json:"audioCodec,omitempty"`
-	ApproxBytes     int64                 `json:"approxBytes,omitempty"`
-	SizeApproximate bool                  `json:"sizeApproximate,omitempty"`
-	RequiresFFmpeg  bool                  `json:"requiresFfmpeg,omitempty"`
-	CanPause        bool                  `json:"canPause,omitempty"`
-	Processing      bool                  `json:"processing,omitempty"`
-	OutputDir       string                `json:"outputDir"`
-	DurationLabel   string                `json:"durationLabel"`
-	Thumbnail       string                `json:"thumbnail"`
-	Status          Status                `json:"status"`
-	Lifecycle       jobmodel.Lifecycle    `json:"lifecycle,omitempty"`
-	Phase           jobmodel.Phase        `json:"phase,omitempty"`
-	Desired         jobmodel.DesiredState `json:"desired,omitempty"`
-	OccupiesSlot    bool                  `json:"occupiesSlot"`
-	CreatedAt       string                `json:"createdAt"`
-	StartedAt       string                `json:"startedAt,omitempty"`
-	CompletedAt     string                `json:"completedAt,omitempty"`
-	Bytes           int64                 `json:"bytes"`
-	Total           int64                 `json:"total"`
-	Progress        float64               `json:"progress"`
-	SpeedBps        float64               `json:"speedBps"`
-	ETASeconds      float64               `json:"etaSeconds"`
-	Filename        string                `json:"filename"`
-	AbsolutePath    string                `json:"absolutePath"`
-	Message         string                `json:"message"`
-	ErrorReason     string                `json:"errorReason,omitempty"`
+	ID              string                    `json:"id"`
+	URL             string                    `json:"url"`
+	VideoID         string                    `json:"videoID"`
+	Title           string                    `json:"title"`
+	Channel         string                    `json:"channel"`
+	Quality         Quality                   `json:"quality"`
+	QualityLabel    string                    `json:"qualityLabel"`
+	PlanID          string                    `json:"planId,omitempty"`
+	OutputKind      outputplan.Kind           `json:"outputKind,omitempty"`
+	Container       string                    `json:"container,omitempty"`
+	VideoCodec      string                    `json:"videoCodec,omitempty"`
+	AudioCodec      string                    `json:"audioCodec,omitempty"`
+	ApproxBytes     int64                     `json:"approxBytes,omitempty"`
+	SizeApproximate bool                      `json:"sizeApproximate,omitempty"`
+	RequiresFFmpeg  bool                      `json:"requiresFfmpeg,omitempty"`
+	CanPause        bool                      `json:"canPause,omitempty"`
+	Processing      bool                      `json:"processing,omitempty"`
+	OutputDir       string                    `json:"outputDir"`
+	DurationLabel   string                    `json:"durationLabel"`
+	Thumbnail       string                    `json:"thumbnail"`
+	Status          Status                    `json:"status"`
+	Lifecycle       jobmodel.Lifecycle        `json:"lifecycle,omitempty"`
+	Phase           jobmodel.Phase            `json:"phase,omitempty"`
+	Desired         jobmodel.DesiredState     `json:"desired,omitempty"`
+	OccupiesSlot    bool                      `json:"occupiesSlot"`
+	CreatedAt       string                    `json:"createdAt"`
+	StartedAt       string                    `json:"startedAt,omitempty"`
+	CompletedAt     string                    `json:"completedAt,omitempty"`
+	Bytes           int64                     `json:"bytes"`
+	Total           int64                     `json:"total"`
+	Progress        float64                   `json:"progress"`
+	SpeedBps        float64                   `json:"speedBps"`
+	ETASeconds      float64                   `json:"etaSeconds"`
+	Filename        string                    `json:"filename"`
+	AbsolutePath    string                    `json:"absolutePath"`
+	Message         string                    `json:"message"`
+	ErrorReason     string                    `json:"errorReason,omitempty"`
+	FailureEvidence *jobmodel.FailureEvidence `json:"failureEvidence,omitempty"`
+	// OptionsNote is a backend-authored summary of non-default output
+	// options (subtitles, embedded metadata) shown in queue row metadata.
+	OptionsNote string `json:"optionsNote,omitempty"`
 }
 
 // QueueJobCapabilities is deliberately backend-authored. The frontend must
@@ -234,18 +253,21 @@ type QueueJobCapabilities struct {
 	Review        bool `json:"review"`
 	Open          bool `json:"open"`
 	Remove        bool `json:"remove"`
+	Discard       bool `json:"discard"`
+	ChangeFolder  bool `json:"changeFolder"`
 }
 
 // QueueFailure is stable, backend-authored failure copy. Retryable explains
 // the category but never grants authority; Capabilities remains authoritative.
 type QueueFailure struct {
-	Category          string `json:"category"`
-	MessageKey        string `json:"messageKey"`
-	Heading           string `json:"heading"`
-	Message           string `json:"message"`
-	RecommendedAction string `json:"recommendedAction"`
-	Retryable         bool   `json:"retryable"`
-	PartialOutput     bool   `json:"partialOutput"`
+	Category          string                    `json:"category"`
+	MessageKey        string                    `json:"messageKey"`
+	Heading           string                    `json:"heading"`
+	Message           string                    `json:"message"`
+	RecommendedAction string                    `json:"recommendedAction"`
+	Retryable         bool                      `json:"retryable"`
+	PartialOutput     bool                      `json:"partialOutput"`
+	Evidence          *jobmodel.FailureEvidence `json:"evidence,omitempty"`
 }
 
 // QueueRow is the safe frontend projection of a job. Lifecycle, phase,
@@ -255,6 +277,7 @@ type QueueRow struct {
 	CollectionID    string                `json:"collectionId,omitempty"`
 	CollectionIndex int                   `json:"collectionIndex,omitempty"`
 	Title           string                `json:"title"`
+	QualityLabel    string                `json:"qualityLabel,omitempty"`
 	Metadata        string                `json:"metadata,omitempty"`
 	ThumbnailURL    string                `json:"thumbnailUrl,omitempty"`
 	Lifecycle       jobmodel.Lifecycle    `json:"lifecycle"`
@@ -268,6 +291,7 @@ type QueueRow struct {
 	ETALabel        string                `json:"etaLabel,omitempty"`
 	Message         string                `json:"message,omitempty"`
 	Failure         *QueueFailure         `json:"failure,omitempty"`
+	SavedBytes      int64                 `json:"savedBytes,omitempty"`
 	Capabilities    QueueJobCapabilities  `json:"capabilities"`
 	CommandToken    string                `json:"commandToken,omitempty"`
 }
@@ -460,6 +484,7 @@ type Manager struct {
 	playlistCache        map[string]cachedPlaylist
 	collectionAuthority  map[string]collectionAuthority
 	collectionCommanding map[string]bool
+	holdRestoredWaiting  bool
 	persistence          Persistence
 	persistenceDurable   bool
 	persistMu            sync.Mutex
@@ -509,6 +534,7 @@ type jobState struct {
 	snap               JobSnapshot
 	plan               *outputplan.Plan
 	outputTemplate     string
+	options            jobmodel.OutputOptions
 	worker             *worker
 	done               chan struct{}
 	durable            jobmodel.DurableJob
@@ -520,8 +546,10 @@ type jobState struct {
 	authoritySig       string
 	authorityRevision  uint64
 	authorityAttemptID string
+	forceStart         bool
 	startBps           time.Time
 	startByt           int64
+	embedSkipped       bool
 }
 
 // New creates a Manager. listener may be nil for headless tests.
@@ -594,8 +622,9 @@ func (m *Manager) SetStateStore(stateStore StateStore) error {
 }
 
 // RestoreStateV2 reconstructs the existing FIFO manager from a committed,
-// already-reconciled State v2 snapshot. It deliberately does not enqueue or
-// start anything: startup restoration is always paused and active is empty.
+// already-reconciled State v2 snapshot. Waiting pending jobs are restored in
+// ordinal order but are not started. Rows marked StartupResume are started
+// later by StartInterruptedDownloads, up to concurrency.
 func (m *Manager) RestoreStateV2(snapshot jobmodel.State) error {
 	if snapshot.Version != jobmodel.StateVersion {
 		return errors.New("jobs: invalid State v2 restore snapshot")
@@ -611,9 +640,14 @@ func (m *Manager) RestoreStateV2(snapshot jobmodel.State) error {
 	if len(m.all) != 0 || len(m.active) != 0 || len(m.order) != 0 {
 		return errors.New("jobs: manager already contains queue state")
 	}
+	type pendingRef struct {
+		id      string
+		ordinal uint64
+	}
+	pending := make([]pendingRef, 0, len(snapshot.Jobs))
 	for _, durable := range snapshot.Jobs {
 		switch durable.Lifecycle {
-		case jobmodel.LifecyclePending, jobmodel.LifecycleActive, jobmodel.LifecyclePausing, jobmodel.LifecycleCanceling:
+		case jobmodel.LifecycleActive, jobmodel.LifecyclePausing, jobmodel.LifecycleCanceling:
 			return fmt.Errorf("jobs: unreconciled transitional job %q", durable.ID)
 		}
 		state, err := stateFromDurable(durable)
@@ -621,14 +655,39 @@ func (m *Manager) RestoreStateV2(snapshot jobmodel.State) error {
 			return err
 		}
 		m.all[durable.ID] = state
+		if durable.Lifecycle == jobmodel.LifecyclePending {
+			pending = append(pending, pendingRef{id: durable.ID, ordinal: durable.QueueOrdinal})
+		}
+	}
+	sort.SliceStable(pending, func(i, j int) bool { return pending[i].ordinal < pending[j].ordinal })
+	for _, item := range pending {
+		m.order = append(m.order, item.id)
+	}
+	m.holdRestoredWaiting = false
+	for _, durable := range snapshot.Jobs {
+		if durable.StartupResume {
+			m.holdRestoredWaiting = true
+			break
+		}
 	}
 	m.persistStatus = PersistenceStatus{Available: true, Healthy: true}
 	return nil
 }
 
+// StartInterruptedDownloads starts only the jobs that were downloading when
+// VidStow last exited, up to the current concurrency. Waiting jobs stay in
+// FIFO order and start later when a slot frees.
+func (m *Manager) StartInterruptedDownloads() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.maybeStartNextLocked()
+}
+
 func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 	status := StatusPaused
 	switch durable.Lifecycle {
+	case jobmodel.LifecyclePending:
+		status = StatusPending
 	case jobmodel.LifecyclePaused:
 		status = StatusPaused
 	case jobmodel.LifecycleFailed:
@@ -674,11 +733,17 @@ func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 		RequiresFFmpeg: durable.Plan.RequiresFFmpeg, OutputDir: durable.OutputRoot.CanonicalPath,
 		DurationLabel: durable.Request.Duration, Status: status, Lifecycle: durable.Lifecycle,
 		Phase: durable.Phase, Desired: durable.Desired, OccupiesSlot: false, CreatedAt: durable.CreatedAt.UTC().Format(time.RFC3339Nano),
-		Filename: filename, AbsolutePath: absolutePath, ErrorReason: durable.LastErrorCode,
+		Filename: filename, AbsolutePath: absolutePath, ErrorReason: durable.LastErrorCode, FailureEvidence: durable.LastFailure,
+		OptionsNote: durable.Request.OutputOptions.Note(),
 	}
 	switch status {
+	case StatusPending:
+		snapshot.Message = "Waiting"
 	case StatusPaused:
-		snapshot.Message = "Paused after app restart"
+		snapshot.Message = "Paused"
+		if leftoverUnusableCode(durable.LastErrorCode) {
+			snapshot.Message = "Saved data cannot be continued from here. Resume to try again, or Discard to delete it."
+		}
 	case StatusFailed:
 		snapshot.Message = "Failed"
 		if durable.LastErrorCode == retryCodeFreshDownloadRequired {
@@ -701,7 +766,7 @@ func stateFromDurable(durable jobmodel.DurableJob) (*jobState, error) {
 			return nil, err
 		}
 	}
-	return &jobState{snap: snapshot, plan: plan, outputTemplate: outputTemplate, done: make(chan struct{}), durable: durable, fromStateV2: true, commandToken: uuid.NewString(), authorityRevision: durable.Revision, authorityAttemptID: durable.AttemptID}, nil
+	return &jobState{snap: snapshot, plan: plan, outputTemplate: outputTemplate, options: durable.Request.OutputOptions.Clone(), done: make(chan struct{}), durable: durable, fromStateV2: true, commandToken: uuid.NewString(), authorityRevision: durable.Revision, authorityAttemptID: durable.AttemptID}, nil
 }
 
 func (m *Manager) stateStoreSnapshot() StateStore {
@@ -881,6 +946,35 @@ func durableStateAlready(state *jobState, lifecycle jobmodel.Lifecycle, desired 
 	return state.durable.Lifecycle == lifecycle && state.durable.Desired == desired && state.durable.Phase == phase
 }
 
+// resumeSessionCompatible reports whether the engine's resumable session path
+// can publish this job. Session mode rejects subtitle sidecars, embedded
+// extras, and MP3 extract postprocessors. Those jobs skip Resume so the
+// classic path can write the extras. The first attempt still uses no-replace.
+// A restart-new-session retry may replace the reserved file so leftover
+// extras can finish. Plain media-only jobs stay on the session path.
+func resumeSessionCompatible(options jobmodel.OutputOptions, plan *outputplan.Plan) bool {
+	if options.SubtitleMode != "" || options.EmbedMetadata || options.EmbedThumbnail || options.EmbedChapters {
+		return false
+	}
+	if plan != nil && strings.EqualFold(plan.Container, "MP3") {
+		return false
+	}
+	return true
+}
+
+// classicRetryMayReplace is true when a classic-path (no resume session) job
+// is retrying after a failed attempt. The reserved basename is this job's
+// leftover, so the engine may replace it after the new attempt finishes.
+func classicRetryMayReplace(state *jobState) bool {
+	if state == nil || !state.fromStateV2 {
+		return false
+	}
+	if resumeSessionCompatible(state.options, state.plan) {
+		return false
+	}
+	return state.durable.RetryMode == jobmodel.RetryModeRestartNewSession
+}
+
 func resumeCommitTargets(set jobmodel.ReservationSet) []engine.CommitTarget {
 	targets := make([]engine.CommitTarget, len(set.Artifacts))
 	for index, artifact := range set.Artifacts {
@@ -961,6 +1055,9 @@ func (m *Manager) settleDurable(state *jobState, lifecycle jobmodel.Lifecycle, d
 		job.Desired = desired
 		job.Phase = phase
 		job.LastErrorCode = errorCode
+		if lifecycle == jobmodel.LifecycleFailed {
+			job.LastFailure = snap.FailureEvidence
+		}
 		if lifecycle == jobmodel.LifecycleActionRequired {
 			job.ActionRequiredCode = errorCode
 		} else {
@@ -1537,6 +1634,9 @@ func (m *Manager) SubmitAdmitted(id string, req Request, selectedPlan *outputpla
 		if req.URL != durable.Request.SourceURL || req.VideoID != durable.Request.VideoID || req.Title != durable.Request.Title || req.PlanID != durable.Request.PlanID {
 			return "", errors.New("jobs: admitted request does not match State v2")
 		}
+		if !req.Options.Equal(durable.Request.OutputOptions) {
+			return "", errors.New("jobs: admitted output options do not match State v2")
+		}
 		if durable.Plan.ID != selectedPlan.ID || durable.Plan.PrivateSelector != selectedPlan.Selector {
 			return "", errors.New("jobs: admitted plan does not match State v2")
 		}
@@ -1586,6 +1686,9 @@ func (m *Manager) submit(id string, req Request, admittedPlan *outputplan.Plan, 
 	if req.OutputDir == "" {
 		return "", errors.New("jobs: empty output directory")
 	}
+	if err := req.Options.Validate(); err != nil {
+		return "", fmt.Errorf("jobs: %w", err)
+	}
 	if err := ensureDir(req.OutputDir); err != nil {
 		return "", fmt.Errorf("jobs: prepare output dir: %w", err)
 	}
@@ -1628,9 +1731,11 @@ func (m *Manager) submit(id string, req Request, admittedPlan *outputplan.Plan, 
 			Thumbnail:     req.Thumbnail,
 			Status:        StatusPending,
 			CreatedAt:     time.Now().UTC().Format(time.RFC3339),
+			OptionsNote:   req.Options.Note(),
 		},
 		plan:               selectedPlan,
 		outputTemplate:     "",
+		options:            req.Options.Clone(),
 		done:               make(chan struct{}),
 		durable:            durable,
 		fromStateV2:        fromStateV2,
@@ -1668,6 +1773,7 @@ func (m *Manager) submit(id string, req Request, admittedPlan *outputplan.Plan, 
 		return "", errors.New("jobs: duplicate admitted job id")
 	}
 	m.all[id] = state
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -1732,15 +1838,22 @@ func (m *Manager) queueViewLocked() QueueView {
 		}
 		row := QueueRow{
 			ID: snap.ID, CollectionID: state.durable.CollectionID, CollectionIndex: state.durable.CollectionIndex,
-			Title: snap.Title, Metadata: queueMetadata(snap), ThumbnailURL: queueThumbnailURL(snap),
+			Title: snap.Title, QualityLabel: snap.QualityLabel, Metadata: queueMetadata(snap), ThumbnailURL: queueThumbnailURL(snap),
 			Lifecycle: lifecycle, Phase: snap.Phase, Desired: snap.Desired,
 			OccupiesSlot: m.active[snap.ID] != nil, QueuePosition: positions[snap.ID],
 			Progress: snap.Progress, Message: snap.Message,
+			SavedBytes:   savedBytesFor(state, snap),
 			Capabilities: m.queueCapabilitiesLocked(state, snap),
 		}
 		if lifecycle == jobmodel.LifecycleFailed {
 			failure := queueFailureFor(state, snap)
 			row.Failure = &failure
+		} else if actionRequiredOffersDirectRetry(state) {
+			row.Failure = &QueueFailure{
+				Category: "could_not_start", MessageKey: "queue.failure.could_not_start",
+				Heading: "Download could not start", Message: "Nothing was saved.",
+				RecommendedAction: "Retry this item.", Retryable: true,
+			}
 		}
 		if present, quarantined := m.cleanupStatusLocked(snap.ID); present {
 			switch snap.Status {
@@ -1751,6 +1864,8 @@ func (m *Manager) queueViewLocked() QueueView {
 					row.Message = "Cleaning up saved temporary data automatically…"
 				}
 			}
+		} else if lifecycle == jobmodel.LifecycleCanceled && row.Phase == jobmodel.PhaseCleaningUp {
+			row.Phase = ""
 		}
 		if row.Capabilities != (QueueJobCapabilities{}) {
 			row.CommandToken = state.commandToken
@@ -1907,11 +2022,11 @@ func (m *Manager) refreshQueueAuthorityLocked() {
 		}
 		caps := m.queueCapabilitiesLocked(state, state.snap)
 		cleanupPresent, cleanupQuarantined := m.cleanupStatusLocked(id)
-		sig := fmt.Sprintf("%s|%s|%s|%s|%d|%t|%d|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t",
+		sig := fmt.Sprintf("%s|%s|%s|%s|%d|%t|%d|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t|%t",
 			state.snap.Status, state.snap.Lifecycle, state.snap.Phase, state.snap.Desired,
 			state.authorityRevision, m.active[id] != nil, positions[id], m.closing, m.closed,
 			caps.Pause, caps.Cancel, caps.Resume, caps.Retry, caps.DownloadAgain, caps.StartAgain,
-			caps.OpenSource, caps.CopyLink, caps.Review, caps.Open, caps.Remove,
+			caps.OpenSource, caps.CopyLink, caps.Review, caps.Open, caps.Remove, caps.Discard, caps.ChangeFolder,
 		)
 		// Attempt identity and cleanup disposition are authority boundaries even
 		// when the presentation lifecycle happens to be unchanged.
@@ -1971,7 +2086,7 @@ func queueThumbnailURL(snap JobSnapshot) string {
 }
 
 func queueMetadata(snap JobSnapshot) string {
-	parts := []string{snap.Channel, snap.DurationLabel, snap.QualityLabel}
+	parts := []string{snap.Channel, snap.DurationLabel, snap.QualityLabel, snap.OptionsNote}
 	result := make([]string, 0, len(parts))
 	for _, part := range parts {
 		if strings.TrimSpace(part) != "" {
@@ -2020,12 +2135,17 @@ func queueCapabilitiesFor(state *jobState, snap JobSnapshot) QueueJobCapabilitie
 	case StatusActive:
 		return QueueJobCapabilities{Pause: snap.CanPause && !snap.Processing, Cancel: true}
 	case StatusPaused:
-		return QueueJobCapabilities{Resume: true, Cancel: true}
+		caps := QueueJobCapabilities{Resume: true, Cancel: true}
+		if leftoverUnusableCode(snap.ErrorReason) || (state != nil && leftoverUnusableCode(state.durable.LastErrorCode)) {
+			caps.Discard = true
+		}
+		return caps
 	case StatusFailed:
 		failure := queueFailureFor(state, snap)
 		caps := QueueJobCapabilities{Remove: true}
 		caps.Retry = failure.Retryable && !retryExhausted(state)
 		caps.StartAgain = failure.Category == "disk_full" || failure.Category == "permission_denied"
+		caps.ChangeFolder = failure.Category == "folder_unavailable" || failure.Category == "disk_full" || failure.Category == "permission_denied"
 		caps.OpenSource = snap.URL != "" && (failure.Category == "authentication_required" || failure.Category == "resource_unavailable")
 		caps.CopyLink = caps.OpenSource
 		return caps
@@ -2037,6 +2157,9 @@ func queueCapabilitiesFor(state *jobState, snap JobSnapshot) QueueJobCapabilitie
 	case StatusComplete:
 		return QueueJobCapabilities{Open: snap.AbsolutePath != "", Remove: true}
 	case StatusActionRequired:
+		if actionRequiredOffersDirectRetry(state) {
+			return QueueJobCapabilities{Retry: true, Remove: true}
+		}
 		// Review is read-only and preserves the evidence-bearing row. Remove
 		// only forgets the queue entry; it never retries, discards, or deletes
 		// uncertain session data. Pending cleanup still revokes Remove below.
@@ -2056,8 +2179,17 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		partial = partial || state.durable.LastFailureCommittedBytes > 0
 	}
 	category := failureCategoryForCode(code)
-	failure := QueueFailure{Category: category, PartialOutput: partial}
+	if failureHTTPStatus(state, snap) == 429 {
+		category = "rate_limited"
+	}
+	failure := QueueFailure{Category: category, PartialOutput: partial, Evidence: snap.FailureEvidence}
 	switch category {
+	case "rate_limited":
+		failure.MessageKey = "queue.failure.rate_limited"
+		failure.Heading = "YouTube asked VidStow to slow down"
+		failure.Message = "This download was refused for a moment."
+		failure.RecommendedAction = "Wait a bit, then retry this item."
+		failure.Retryable = true
 	case "network_interrupted":
 		failure.MessageKey = "queue.failure.network_interrupted"
 		failure.Heading = "Download interrupted"
@@ -2066,24 +2198,44 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		failure.Retryable = true
 	case "authentication_required":
 		failure.MessageKey = "queue.failure.authentication_required"
-		failure.Heading = "Sign-in required"
-		failure.Message = "This video requires an authenticated session, which VidStow does not support in this release."
-		failure.RecommendedAction = "Open the source to confirm access, or remove this item."
+		failure.Heading = "Download was refused"
+		failure.Message = "The page may still play in a browser. Try again."
+		failure.RecommendedAction = "Retry this item."
+		failure.Retryable = true
+	case "could_not_start":
+		failure.MessageKey = "queue.failure.could_not_start"
+		failure.Heading = "Download could not start"
+		failure.Message = "Nothing was saved."
+		failure.RecommendedAction = "Retry this item."
+		failure.Retryable = true
+	case "destination_exists":
+		failure.MessageKey = "queue.failure.destination_exists"
+		failure.Heading = "File already in the folder"
+		failure.Message = "VidStow did not replace it."
+		failure.RecommendedAction = "Retry this item."
+		failure.Retryable = true
 	case "resource_unavailable":
 		failure.MessageKey = "queue.failure.resource_unavailable"
 		failure.Heading = "Video unavailable"
 		failure.Message = "This video may be private, removed, blocked, or otherwise unavailable."
-		failure.RecommendedAction = "Open the source to check it, or remove this item."
+		failure.RecommendedAction = "Open the source to check it, or retry this item."
+		failure.Retryable = true
 	case "disk_full":
 		failure.MessageKey = "queue.failure.disk_full"
 		failure.Heading = "Not enough disk space"
 		failure.Message = "VidStow could not finish writing this download."
-		failure.RecommendedAction = "Free space or change the default folder, then start this item again."
+		failure.RecommendedAction = "Free space or change the folder, then start this item again."
 	case "permission_denied":
 		failure.MessageKey = "queue.failure.permission_denied"
 		failure.Heading = "Folder is not writable"
 		failure.Message = "VidStow does not have permission to write this download."
-		failure.RecommendedAction = "Fix access or change the default folder, then start this item again."
+		failure.RecommendedAction = "Fix access or change the folder, then start this item again."
+	case "folder_unavailable":
+		failure.MessageKey = "queue.failure.folder_unavailable"
+		failure.Heading = "Save folder is missing"
+		failure.Message = "The folder for this download is gone. Plug the drive back in, or Change to a different folder."
+		failure.RecommendedAction = "Bring the original path back, or Change the folder. This download continues by itself when the path returns."
+		failure.Retryable = true
 	case "security_blocked":
 		failure.MessageKey = "queue.failure.security_blocked"
 		failure.Heading = "Download blocked"
@@ -2112,24 +2264,49 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 	return failure
 }
 
+func failureHTTPStatus(state *jobState, snap JobSnapshot) int {
+	if snap.FailureEvidence != nil && snap.FailureEvidence.HTTPStatus > 0 {
+		return snap.FailureEvidence.HTTPStatus
+	}
+	if state != nil && state.durable.LastFailure != nil {
+		return state.durable.LastFailure.HTTPStatus
+	}
+	return 0
+}
+
 func failureCategoryForCode(code string) string {
 	switch strings.TrimSpace(code) {
 	case "network", retryCodeMediaLinkExpired, retryCodeYouTubeChallengePreTransfer:
 		return "network_interrupted"
 	case "authentication":
 		return "authentication_required"
-	case "unsupported", "invalid_input":
+	case "unsupported":
 		return "resource_unavailable"
+	case "invalid_input":
+		return "could_not_start"
+	case "destination-exists":
+		return "destination_exists"
 	case "disk_full":
 		return "disk_full"
 	case "permission_denied":
 		return "permission_denied"
+	case "output-root-unavailable":
+		return "folder_unavailable"
 	case "security":
 		return "security_blocked"
 	case retryCodeFreshDownloadRequired:
 		return "retry_exhausted"
 	default:
 		return "internal"
+	}
+}
+
+func leftoverUnusableCode(code string) bool {
+	switch strings.TrimSpace(code) {
+	case "session-manifest-corrupt", "session-version-unknown", "session-reconciliation-required", "recovery-session-unavailable", "recovery-session-reference-invalid", "publication-reconciliation-required":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -2145,8 +2322,9 @@ func (m *Manager) queueCapabilitiesLocked(state *jobState, snap JobSnapshot) Que
 		// rows expose Review so a quarantined cleanup can be retried explicitly.
 		capabilities.Remove = false
 		capabilities.StartAgain = false
+		capabilities.Retry = false
 		switch snap.Status {
-		case StatusCanceled, StatusFailed, StatusComplete:
+		case StatusCanceled, StatusFailed, StatusComplete, StatusActionRequired:
 			capabilities.Review = true
 		}
 	}
@@ -2197,8 +2375,12 @@ func (m *Manager) QueueResume(id, token string) error {
 	return m.Resume(id)
 }
 func (m *Manager) QueueRetry(id, token string) error {
-	if _, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.Retry }); err != nil {
+	state, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.Retry })
+	if err != nil {
 		return err
+	}
+	if state.snap.Status == StatusActionRequired {
+		return m.QueueActionRequiredRetryFreshLink(id, token)
 	}
 	return m.Retry(id)
 }
@@ -2331,11 +2513,129 @@ func (m *Manager) QueueActionRequiredDiscard(id, token string) error {
 	return m.cancelIdle(state)
 }
 
+// QueueDiscardSavedData removes leftover session files for a paused row after
+// the inspector confirm. Size is named by the frontend from SavedBytes.
+func (m *Manager) QueueDiscardSavedData(id, token string) error {
+	state, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.Discard })
+	if err != nil || state.snap.Status != StatusPaused {
+		return errors.New("jobs: discarding saved data is no longer available")
+	}
+	m.mu.Lock()
+	if m.all[id] != state || state.commanding || state.settling || m.active[id] != nil {
+		m.mu.Unlock()
+		return errors.New("jobs: discarding saved data is no longer available")
+	}
+	state.commanding = true
+	m.mu.Unlock()
+	return m.cancelIdle(state)
+}
+
+func savedBytesFor(state *jobState, snap JobSnapshot) int64 {
+	if state != nil && state.fromStateV2 && state.durable.LastFailureCommittedBytes > 0 {
+		return state.durable.LastFailureCommittedBytes
+	}
+	if snap.Bytes > 0 {
+		return snap.Bytes
+	}
+	return 0
+}
+
+// QueueChangeFolder retargets a failed job to a new writable folder and
+// continues from leftover data when the engine can use it.
+func (m *Manager) QueueChangeFolder(id, token, canonicalPath string) error {
+	state, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.ChangeFolder })
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(canonicalPath) == "" {
+		return errors.New("jobs: a folder is required")
+	}
+	root, err := reservationfs.EnsureOpenRoot(canonicalPath)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	facts := root.Facts()
+	if facts.Volume.CanonicalPath == "" || facts.Volume.Identity == "" {
+		return errors.New("jobs: the chosen folder has no stable identity")
+	}
+	engineRoot, err := engine.ValidateOutputRoot(facts.Volume.CanonicalPath)
+	if err != nil {
+		return err
+	}
+	if engineRoot.CanonicalPath != facts.Volume.CanonicalPath {
+		return errors.New("jobs: engine and reservation folders differ")
+	}
+	nextRoot := jobmodel.OutputRootRef{
+		CanonicalPath:  facts.Volume.CanonicalPath,
+		Identity:       facts.Volume.Identity,
+		EngineIdentity: engineRoot.Identity,
+	}
+	if err := m.commitDurable(state, func(job *jobmodel.DurableJob, _ *jobmodel.State) error {
+		job.OutputRoot = nextRoot
+		job.Reservation.Directory = nextRoot
+		return nil
+	}); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	if m.all[id] == state {
+		state.snap.OutputDir = nextRoot.CanonicalPath
+	}
+	m.mu.Unlock()
+	return m.Retry(id)
+}
+
+// ContinueWhenFoldersReturn retries failed jobs whose save folder has come
+// back. Waiting jobs are not started as a side effect.
+func (m *Manager) ContinueWhenFoldersReturn() {
+	m.mu.Lock()
+	ids := make([]string, 0)
+	for id, state := range m.all {
+		if state == nil || state.snap.Status != StatusFailed {
+			continue
+		}
+		if state.durable.LastErrorCode != "output-root-unavailable" && state.snap.ErrorReason != "output-root-unavailable" {
+			continue
+		}
+		if state.commanding || state.settling {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+	for _, id := range ids {
+		m.tryContinueMissingFolder(id)
+	}
+}
+
+func (m *Manager) tryContinueMissingFolder(id string) {
+	m.mu.Lock()
+	state := m.all[id]
+	if state == nil || !state.fromStateV2 || state.snap.Status != StatusFailed {
+		m.mu.Unlock()
+		return
+	}
+	root := state.durable.OutputRoot
+	sessionID := state.durable.SessionID
+	m.mu.Unlock()
+	if root.CanonicalPath == "" || sessionID == "" {
+		return
+	}
+	summary, err := m.inspectResume(context.Background(), engineRootRef(root), sessionID)
+	if err != nil || recovery.IsRootUnavailable(summary) {
+		return
+	}
+	if err := m.Retry(id); err != nil {
+		log.Printf("vidstow: could not continue after folder returned: %v", err)
+	}
+}
+
 // QueueActionRequiredRetryFreshLink rotates away from uncertain session
 // evidence atomically, retains it for durable cleanup, and starts the same row
 // with a fresh engine session so media URLs are resolved again.
 func (m *Manager) QueueActionRequiredRetryFreshLink(id, token string) error {
-	state, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.Review })
+	state, err := m.authorizeQueueCommand(id, token, func(c QueueJobCapabilities) bool { return c.Review || c.Retry })
 	if err != nil || state.snap.Status != StatusActionRequired || !canRetryActionRequiredFresh(state) {
 		return errors.New("jobs: fresh-link retry is no longer available")
 	}
@@ -2400,6 +2700,7 @@ func (m *Manager) QueueActionRequiredRetryFreshLink(id, token string) error {
 	state.snap.StartedAt = ""
 	state.snap.CompletedAt = ""
 	state.commanding = false
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -2528,6 +2829,16 @@ func actionRequiredReview(state *jobState, cleanupPresent, cleanupQuarantined bo
 			CanRetryCleanup:    cleanupQuarantined,
 		}
 	}
+	if !cleanupPresent && actionRequiredInspectFailedWithoutLeftover(state, code) {
+		return ActionRequiredReview{
+			JobID:             state.snap.ID,
+			Title:             state.snap.Title,
+			Heading:           "Download could not start",
+			Message:           "Nothing was saved.",
+			CanRetryFreshLink: canRetryActionRequiredFresh(state),
+			CanRemove:         !cleanupPresent,
+		}
+	}
 	canManageSession := state.fromStateV2 && state.durable.SessionID != "" && state.durable.OutputRoot.CanonicalPath != ""
 	return ActionRequiredReview{
 		JobID: state.snap.ID, Title: state.snap.Title,
@@ -2539,6 +2850,43 @@ func actionRequiredReview(state *jobState, cleanupPresent, cleanupQuarantined bo
 		CanDiscard:         canManageSession,
 		CanRemove:          !cleanupPresent,
 	}
+}
+
+func actionRequiredHasLeftoverBytes(state *jobState) bool {
+	if state == nil {
+		return false
+	}
+	return savedBytesFor(state, state.snap) > 0
+}
+
+func actionRequiredInspectFailedWithoutLeftover(state *jobState, code string) bool {
+	if actionRequiredHasLeftoverBytes(state) {
+		return false
+	}
+	switch strings.TrimSpace(code) {
+	case "recovery-session-unavailable", "session-reconciliation-required":
+		return true
+	default:
+		return false
+	}
+}
+
+func actionRequiredCode(state *jobState) string {
+	if state == nil {
+		return ""
+	}
+	code := strings.TrimSpace(state.snap.ErrorReason)
+	if state.fromStateV2 && state.durable.ActionRequiredCode != "" {
+		code = state.durable.ActionRequiredCode
+	}
+	return code
+}
+
+func actionRequiredOffersDirectRetry(state *jobState) bool {
+	if state == nil || state.snap.Status != StatusActionRequired {
+		return false
+	}
+	return actionRequiredInspectFailedWithoutLeftover(state, actionRequiredCode(state)) && canRetryActionRequiredFresh(state)
 }
 
 func freshRetryDestinationAvailable(job jobmodel.DurableJob) bool {
@@ -3237,6 +3585,7 @@ func (m *Manager) Resume(id string) error {
 	state.snap.Processing = false
 	state.snap.CanPause = false
 	state.commanding = false
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -3407,6 +3756,38 @@ func canRestartPreTransferFailure(state *jobState, summary engine.ResumeSummary)
 		return false
 	}
 	return string(summary.Publication) == "" && string(summary.Cleanup) == "" && string(summary.Status) == ""
+}
+
+// canRestartAfterFolderRetarget starts a fresh session when the save folder
+// was missing, full, or unwritable and leftover data is not sitting in the
+// new folder. Reusable leftover still goes through classifyRetryResume.
+func canRestartAfterFolderRetarget(state *jobState, summary engine.ResumeSummary) bool {
+	if state == nil {
+		return false
+	}
+	switch state.durable.LastErrorCode {
+	case "output-root-unavailable", "disk_full", "permission_denied":
+	default:
+		return false
+	}
+	if summary.HasManifest || summary.LeaseContended {
+		return false
+	}
+	if string(summary.Publication) == "committed" || string(summary.Publication) == "indeterminate" {
+		return false
+	}
+	classes := append([]engine.ResumeInspectionClass{summary.Classification}, summary.Classifications...)
+	for _, class := range classes {
+		switch string(class) {
+		case "", "unavailable_root", "missing_lease":
+			continue
+		case "available", "unsafe_path", "lease_contention", "publication_indeterminate", "manifest_commit_indeterminate":
+			return false
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // committedBytesFromSummary sums the durable per-track checkpoints of a
@@ -3591,13 +3972,19 @@ func (m *Manager) Retry(id string) error {
 		sessionID := state.durable.SessionID
 		retryMode := jobmodel.RetryModeResumeValidated
 		escalatedRestart := false
-		if sessionID == "" || state.durable.OutputRoot.CanonicalPath == "" {
+		if !resumeSessionCompatible(state.options, state.plan) {
+			// Extras cannot reuse a resume workspace: session mode never
+			// opened. Rotate onto a fresh identity and run the classic path.
+			sessionID = newSessionID()
+			retryMode = jobmodel.RetryModeRestartNewSession
+			escalatedRestart = true
+		} else if sessionID == "" || state.durable.OutputRoot.CanonicalPath == "" {
 			sessionID = newSessionID()
 			retryMode = jobmodel.RetryModeRestartNewSession
 		} else {
 			summary, inspectErr := m.inspectResume(context.Background(), engineRootRef(state.durable.OutputRoot), sessionID)
 			if inspectErr != nil {
-				if canRestartPreTransferFailure(state, engine.ResumeSummary{}) {
+				if canRestartPreTransferFailure(state, engine.ResumeSummary{}) || canRestartAfterFolderRetarget(state, engine.ResumeSummary{}) {
 					sessionID = newSessionID()
 					retryMode = jobmodel.RetryModeRestartNewSession
 				} else {
@@ -3606,7 +3993,7 @@ func (m *Manager) Retry(id string) error {
 			} else {
 				decision, actionCode := classifyRetryResume(summary)
 				if decision != retryResumeReuse {
-					if canRestartPreTransferFailure(state, summary) {
+					if canRestartPreTransferFailure(state, summary) || canRestartAfterFolderRetarget(state, summary) {
 						sessionID = newSessionID()
 						retryMode = jobmodel.RetryModeRestartNewSession
 					} else {
@@ -3682,6 +4069,7 @@ func (m *Manager) Retry(id string) error {
 	state.startBps = time.Time{}
 	state.startByt = 0
 	state.commanding = false
+	state.forceStart = true
 	m.order = append(m.order, id)
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	m.maybeStartNextLocked()
@@ -3769,6 +4157,7 @@ func (m *Manager) DownloadAgain(id string) (string, error) {
 			snap:               state.snap,
 			plan:               plan,
 			outputTemplate:     state.outputTemplate,
+			options:            state.options.Clone(),
 			durable:            durable,
 			fromStateV2:        true,
 			done:               make(chan struct{}),
@@ -3799,6 +4188,7 @@ func (m *Manager) DownloadAgain(id string) (string, error) {
 			return "", ErrClosed
 		}
 		m.all[newID] = newState
+		newState.forceStart = true
 		m.order = append(m.order, newID)
 		m.emitLocked(Event{Name: EventJobUpdate, Job: newState.snap})
 		m.maybeStartNextLocked()
@@ -3988,12 +4378,36 @@ func (m *Manager) Concurrency() int {
 }
 
 // maybeStartNextLocked fills every available download slot from the FIFO.
+// After a crash restore, only StartupResume or force-started rows start
+// until a running job frees a slot.
 // Caller must hold m.mu.
 func (m *Manager) maybeStartNextLocked() {
 	if m.closing || m.closed {
 		return
 	}
-	for len(m.active) < m.concurrency && len(m.order) > 0 {
+	for len(m.active) < m.concurrency {
+		id, ok := m.nextStartableLocked()
+		if !ok {
+			return
+		}
+		m.activatePendingLocked(id)
+	}
+}
+
+func (m *Manager) nextStartableLocked() (string, bool) {
+	if m.holdRestoredWaiting {
+		for _, id := range m.order {
+			state, ok := m.all[id]
+			if !ok || state.commanding || state.settling || state.snap.Status != StatusPending {
+				continue
+			}
+			if state.durable.StartupResume || state.forceStart {
+				return id, true
+			}
+		}
+		return "", false
+	}
+	for len(m.order) > 0 {
 		id := m.order[0]
 		state, ok := m.all[id]
 		if !ok {
@@ -4001,47 +4415,53 @@ func (m *Manager) maybeStartNextLocked() {
 			continue
 		}
 		if state.commanding || state.settling {
-			// A FIFO-head row is in a durable lifecycle transition. Do not
-			// bypass it or start it before its winner is reflected in memory.
-			break
+			return "", false
 		}
 		if state.snap.Status != StatusPending {
 			m.order = m.order[1:]
 			continue
 		}
-		ctx, cancel := context.WithCancelCause(context.Background())
-		worker := &worker{
-			JobID:     id,
-			AttemptID: state.durable.AttemptID,
-			SessionID: state.durable.SessionID,
-			Cancel:    cancel,
-			Ctx:       ctx,
-			Arbiter:   engine.NewPublicationArbiter(),
-			Done:      make(chan struct{}),
-		}
-		state.worker = worker
-		state.done = worker.Done
-		if state.fromStateV2 {
-			// Prevent Pause/Cancel from racing the pending-to-active State
-			// transaction. The flag is cleared immediately before the runner
-			// starts, after durable activation succeeds.
-			state.commanding = true
-		}
-		state.snap.Status = StatusActive
-		state.snap.OccupiesSlot = true
-		if state.fromStateV2 {
-			state.snap.Lifecycle = jobmodel.LifecycleActive
-			state.snap.Desired = jobmodel.DesiredRunning
-			state.snap.Phase = jobmodel.PhasePreparing
-		}
-		state.snap.StartedAt = time.Now().UTC().Format(time.RFC3339)
-		state.snap.Message = "Preparing"
-		state.snap.CanPause = true
-		m.active[id] = worker
-		m.order = m.order[1:]
-		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
-		go m.startWorker(state, worker)
+		return id, true
 	}
+	return "", false
+}
+
+func (m *Manager) activatePendingLocked(id string) {
+	state := m.all[id]
+	if state == nil {
+		return
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	worker := &worker{
+		JobID:     id,
+		AttemptID: state.durable.AttemptID,
+		SessionID: state.durable.SessionID,
+		Cancel:    cancel,
+		Ctx:       ctx,
+		Arbiter:   engine.NewPublicationArbiter(),
+		Done:      make(chan struct{}),
+	}
+	state.worker = worker
+	state.done = worker.Done
+	if state.fromStateV2 {
+		state.commanding = true
+	}
+	state.snap.Status = StatusActive
+	state.snap.OccupiesSlot = true
+	if state.fromStateV2 {
+		state.snap.Lifecycle = jobmodel.LifecycleActive
+		state.snap.Desired = jobmodel.DesiredRunning
+		state.snap.Phase = jobmodel.PhasePreparing
+	}
+	state.snap.StartedAt = time.Now().UTC().Format(time.RFC3339)
+	state.snap.Message = "Preparing"
+	state.snap.CanPause = true
+	state.forceStart = false
+	state.durable.StartupResume = false
+	m.active[id] = worker
+	m.removeFromOrderLocked(id)
+	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
+	go m.startWorker(state, worker)
 }
 
 // startWorker commits the durable pending-to-active transition before the
@@ -4055,6 +4475,7 @@ func (m *Manager) startWorker(state *jobState, worker *worker) {
 			}
 			job.Lifecycle = jobmodel.LifecycleActive
 			job.Phase = jobmodel.PhasePreparing
+			job.StartupResume = false
 			return nil
 		}); err != nil {
 			m.mu.Lock()
@@ -4089,11 +4510,59 @@ func (m *Manager) startWorker(state *jobState, worker *worker) {
 	m.run(state, worker)
 }
 
+// subtitleEngineOptions maps UI subtitle preferences onto the engine request.
+// Embedding always converts to VTT: WebM containers only accept VTT tracks and
+// MP4-family embedding re-encodes to mov_text internally, so one normalized
+// format covers every plan VidStow offers. Embed also prefers native VTT or
+// SRT tracks; an empty format pick would take the last listed track, often a
+// YouTube json3 file that cannot be muxed into the video. An empty mode
+// disables subtitles.
+func subtitleEngineOptions(options jobmodel.OutputOptions) engine.SubtitleOptions {
+	if options.SubtitleMode == "" {
+		return engine.SubtitleOptions{}
+	}
+	subs := engine.SubtitleOptions{
+		WriteManual:    true,
+		WriteAutomatic: options.SubtitleAutoCaptions,
+		Languages:      options.SubtitleLanguages,
+	}
+	if options.SubtitleMode == jobmodel.SubtitleModeEmbed {
+		subs.Embed = true
+		subs.ConvertFormat = "vtt"
+		subs.Format = embedSubtitleFormatPreference
+	} else {
+		subs.ConvertFormat = options.SubtitleFormat
+	}
+	return subs
+}
+
+const embedSubtitleFormatPreference = "vtt/srt"
+
+const embedSkippedCompleteMessage = "Saved without captions. This video had none VidStow could put in the file."
+
+func completeJobMessage(state *jobState) string {
+	if state != nil && state.options.SubtitleMode == jobmodel.SubtitleModeEmbed && state.embedSkipped {
+		return embedSkippedCompleteMessage
+	}
+	return "Completed"
+}
+
+func isSubtitleEmbedSkipWarning(message string) bool {
+	switch strings.TrimSpace(message) {
+	case "there are no compatible subtitles to embed",
+		"subtitles can only be embedded in mp4, mov, m4a, webm, mkv, or mka media":
+		return true
+	default:
+		return false
+	}
+}
+
 func (m *Manager) run(state *jobState, worker *worker) {
 	defer close(worker.Done)
 	started := time.Now()
 
 	m.mu.Lock()
+	state.embedSkipped = false
 	req := engine.Request{
 		URL:            state.snap.URL,
 		OutputDir:      state.snap.OutputDir,
@@ -4125,13 +4594,28 @@ func (m *Manager) run(state *jobState, worker *worker) {
 			}}
 		}
 	}
+	if !state.options.IsZero() {
+		req.Subtitles = subtitleEngineOptions(state.options)
+		if state.options.EmbedMetadata {
+			req.EmbedMetadata = true
+		}
+		if state.options.EmbedMetadata || state.options.EmbedChapters {
+			embedChapters := state.options.EmbedChapters
+			req.EmbedChapters = &embedChapters
+		}
+		// Artwork is not sent to the engine. ytdlp-go v0.3.0 preflights every
+		// YouTube thumbnail onto one .jpg and aborts as a destination
+		// collision, which VidStow then shows as a network interrupt.
+	}
 	if state.fromStateV2 {
 		req.OutputDir = state.durable.OutputRoot.CanonicalPath
-		req.Overwrite = false
-		req.Filesystem.Resume = engine.ResumeOptions{
-			SessionID:          worker.SessionID,
-			PublicationArbiter: worker.Arbiter,
-			CommitTargets:      resumeCommitTargets(state.durable.Reservation),
+		req.Overwrite = classicRetryMayReplace(state)
+		if resumeSessionCompatible(state.options, state.plan) {
+			req.Filesystem.Resume = engine.ResumeOptions{
+				SessionID:          worker.SessionID,
+				PublicationArbiter: worker.Arbiter,
+				CommitTargets:      resumeCommitTargets(state.durable.Reservation),
+			}
 		}
 	}
 	ctx := worker.Ctx
@@ -4208,6 +4692,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		terminal.Status = StatusFailed
 		terminal.Message = failureMessage(err, failureCommitted, sawPostprocess)
 		terminal.ErrorReason = errorReason(err)
+		terminal.FailureEvidence = failureEvidence(err, sawDownload, sawPostprocess)
 		if shouldSettleFreshDownloadRequired(state, err, failureCommitted, sawPostprocess) {
 			terminal.Message = freshDownloadRequiredNotice
 			terminal.ErrorReason = retryCodeFreshDownloadRequired
@@ -4222,7 +4707,8 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		}
 	} else {
 		terminal.Status = StatusComplete
-		terminal.Message = "Completed"
+		terminal.Message = completeJobMessage(state)
+		terminal.OptionsNote = state.options.CompleteNote(state.embedSkipped)
 		terminal.Progress = 1
 		terminal.CompletedAt = time.Now().UTC().Format(time.RFC3339)
 		if result.Filename != "" {
@@ -4283,6 +4769,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 	state.snap.OccupiesSlot = false
 	delete(m.active, state.snap.ID)
 	state.worker = nil
+	m.holdRestoredWaiting = false
 	m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap, Diagnostic: diagnostic})
 	m.maybeStartNextLocked()
 	m.emitQueueLocked()
@@ -4357,6 +4844,7 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 
 	switch ev.Kind {
 	case engine.EventDownloadStarting:
+		state.snap.Phase = jobmodel.PhaseDownloading
 		state.snap.Message = "Starting download"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventDownloadProgress:
@@ -4388,6 +4876,7 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 			state.startBps = now
 			state.startByt = state.snap.Bytes
 		}
+		state.snap.Phase = jobmodel.PhaseDownloading
 		state.snap.Message = "Downloading"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventDownloadRetry, engine.EventExtractorRetry:
@@ -4397,21 +4886,28 @@ func (m *Manager) handleEventAttempt(state *jobState, worker *worker, ev engine.
 		if ev.Bytes > 0 {
 			state.snap.Bytes = ev.Bytes
 		}
+		state.snap.Phase = jobmodel.PhaseFinalizing
 		state.snap.Message = "Finalising"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventPostprocessStarting, engine.EventPostprocessProgress:
 		state.snap.Processing = true
 		state.snap.CanPause = false
+		state.snap.Phase = jobmodel.PhaseFinalizing
 		state.snap.Message = "Finalising"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventPostprocessCompleted:
 		state.snap.Processing = false
 		state.snap.CanPause = state.snap.Status == StatusActive
+		state.snap.Phase = jobmodel.PhaseFinalizing
 		state.snap.Message = "Finalising"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
 	case engine.EventDownloadCancelled:
 		state.snap.Message = "Canceled"
 		m.emitLocked(Event{Name: EventJobUpdate, Job: state.snap})
+	case engine.EventMetadataWarning:
+		if isSubtitleEmbedSkipWarning(ev.Message) {
+			state.embedSkipped = true
+		}
 	case engine.EventJavaScriptChallenge:
 		// Secret-free engine diagnostics are available to dedicated event
 		// consumers, but must not replace the job's user-facing status text.
@@ -4544,12 +5040,21 @@ func humanError(err error) string {
 			if isYouTubeChallengeTimeout(err) {
 				return "YouTube challenge timed out — retry"
 			}
+			if isResumeExtrasUnsupported(err) {
+				return "VidStow could not save subtitles or extra details with this download"
+			}
 			return "This link is not supported"
 		case engine.ErrorAuthentication:
 			return "Sign-in is required for this video"
 		case engine.ErrorInvalidInput:
+			if isDestinationExists(err) {
+				return "A file is already in the save folder"
+			}
 			return "The link is not valid"
 		case engine.ErrorNetwork:
+			if isOutputDestinationCollision(err) {
+				return "VidStow could not save extra files with this download"
+			}
 			return "Network error"
 		case engine.ErrorCancelled:
 			return "Canceled"
@@ -4558,6 +5063,28 @@ func humanError(err error) string {
 		}
 	}
 	return humanMessage(err.Error())
+}
+
+func isResumeExtrasUnsupported(err error) bool {
+	if err == nil || !engine.IsCategory(err, engine.ErrorUnsupported) {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "resumable sessions do not support output sidecars") ||
+		strings.Contains(message, "session output sidecars and postprocessors")
+}
+
+func isOutputDestinationCollision(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "output destination collision")
+}
+
+func isDestinationExists(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "destination already exists") ||
+		strings.Contains(message, "destination exists")
 }
 
 func isYouTubeChallengeTimeout(err error) bool {
@@ -4602,9 +5129,45 @@ func humanMessage(s string) string {
 	return s
 }
 
+// Keep diagnostics structured: raw error text can contain signed URLs or
+// local paths. Evidence records the original failure before retry escalation.
+func failureEvidence(err error, sawDownload, sawPostprocess bool) *jobmodel.FailureEvidence {
+	stage := "preparing"
+	var typed *engine.Error
+	if errors.As(err, &typed) && strings.Contains(typed.Op, "extract") {
+		stage = "extraction"
+	}
+	if sawDownload {
+		stage = "download"
+	}
+	if sawPostprocess {
+		stage = "processing"
+	}
+	code := errorReason(err)
+	switch code {
+	case "network", "authentication", "unsupported", "invalid_input", "security", "cancelled", "internal", "disk_full", "permission_denied", "destination-exists", retryCodeYouTubeChallengePreTransfer, retryCodeMediaLinkExpired:
+	default:
+		code = "internal"
+	}
+	status, _ := engine.DownloadHTTPStatusCode(err)
+	if status < 100 || status > 599 {
+		status = 0
+	}
+	return &jobmodel.FailureEvidence{Stage: stage, Code: code, HTTPStatus: status, At: time.Now().UTC()}
+}
+
 func errorReason(err error) string {
 	if isYouTubeChallengeTimeout(err) {
 		return retryCodeYouTubeChallengePreTransfer
+	}
+	if isResumeExtrasUnsupported(err) {
+		return "internal"
+	}
+	if isOutputDestinationCollision(err) {
+		return "internal"
+	}
+	if isDestinationExists(err) {
+		return "destination-exists"
 	}
 	if isExpiredMediaLinkError(err) {
 		return retryCodeMediaLinkExpired
@@ -4644,42 +5207,55 @@ func isKnownQuality(quality Quality) bool {
 // PlaylistSummary is a lightweight flat-playlist preview. Child formats are
 // deliberately not extracted until their individual queue jobs run.
 type PlaylistSummary struct {
-	ID          string                 `json:"id"`
-	URL         string                 `json:"url"`
-	Title       string                 `json:"title"`
-	Channel     string                 `json:"channel"`
-	Thumbnail   string                 `json:"thumbnail"`
-	EntryCount  int                    `json:"entryCount"`
-	Available   int                    `json:"available"`
-	Unavailable int                    `json:"unavailable"`
-	Entries     []PlaylistEntrySummary `json:"entries"`
+	ID              string                 `json:"id"`
+	URL             string                 `json:"url"`
+	Title           string                 `json:"title"`
+	Channel         string                 `json:"channel"`
+	Duration        string                 `json:"duration,omitempty"`
+	DurationSeconds int64                  `json:"durationSeconds,omitempty"`
+	Thumbnail       string                 `json:"thumbnail"`
+	EntryCount      int                    `json:"entryCount"`
+	Available       int                    `json:"available"`
+	Unavailable     int                    `json:"unavailable"`
+	Entries         []PlaylistEntrySummary `json:"entries"`
 }
 
 type PlaylistEntrySummary struct {
-	Index     int    `json:"index"`
-	VideoID   string `json:"videoId"`
-	URL       string `json:"url"`
-	Title     string `json:"title"`
-	Duration  string `json:"duration,omitempty"`
-	Thumbnail string `json:"thumbnail,omitempty"`
-	Available bool   `json:"available"`
+	Index           int    `json:"index"`
+	VideoID         string `json:"videoId"`
+	URL             string `json:"url"`
+	Title           string `json:"title"`
+	Duration        string `json:"duration,omitempty"`
+	DurationSeconds int64  `json:"durationSeconds,omitempty"`
+	Thumbnail       string `json:"thumbnail,omitempty"`
+	Available       bool   `json:"available"`
 }
 
 // InfoSummary is the metadata displayed on the Home page after analyse.
 type InfoSummary struct {
-	Title           string            `json:"title"`
-	Channel         string            `json:"channel"`
-	Duration        string            `json:"duration"`
-	DurationSeconds int64             `json:"durationSeconds"`
-	Thumbnail       string            `json:"thumbnail"`
-	VideoID         string            `json:"videoId"`
-	URL             string            `json:"url"`
-	ViewCount       int64             `json:"viewCount"`
-	UploadDate      string            `json:"uploadDate"`
-	Description     string            `json:"description"`
-	MediaType       string            `json:"mediaType,omitempty"`
-	Access          AccessSummary     `json:"access"`
-	Plans           []outputplan.Plan `json:"plans"`
+	Title           string             `json:"title"`
+	Channel         string             `json:"channel"`
+	Duration        string             `json:"duration"`
+	DurationSeconds int64              `json:"durationSeconds"`
+	Thumbnail       string             `json:"thumbnail"`
+	VideoID         string             `json:"videoId"`
+	URL             string             `json:"url"`
+	ViewCount       int64              `json:"viewCount"`
+	UploadDate      string             `json:"uploadDate"`
+	Description     string             `json:"description"`
+	MediaType       string             `json:"mediaType,omitempty"`
+	Access          AccessSummary      `json:"access"`
+	Subtitles       []SubtitleLanguage `json:"subtitles,omitempty"`
+	Plans           []outputplan.Plan  `json:"plans"`
+}
+
+// SubtitleLanguage is one caption track reported by analysis, used to render
+// the language picker. Only the code, display name, and origin cross the
+// desktop boundary; track URLs and payloads are dropped.
+type SubtitleLanguage struct {
+	Code string `json:"code"`
+	Name string `json:"name,omitempty"`
+	Auto bool   `json:"auto,omitempty"`
 }
 
 // AccessSummary is informational extraction metadata, not a product gate.
@@ -4808,14 +5384,13 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 	if len(result.InfoJSON) > 0 && json.Unmarshal(result.InfoJSON, &parent) != nil {
 		return PlaylistSummary{}, errors.New("analyze playlist: invalid metadata")
 	}
-	summary := PlaylistSummary{URL: rawURL, ID: metadataText(parent, "id"), Title: metadataText(parent, "title"), Channel: metadataText(parent, "channel"), Thumbnail: metadataText(parent, "thumbnail")}
-	if summary.Channel == "" {
-		summary.Channel = metadataText(parent, "uploader")
-	}
+	summary := PlaylistSummary{URL: rawURL, ID: metadataText(parent, "id"), Title: metadataText(parent, "title"), Channel: playlistChannel(parent), Thumbnail: metadataText(parent, "thumbnail")}
 	entries := result.Entries
 	if len(entries) > MaxPlaylistEntries {
 		entries = entries[:MaxPlaylistEntries]
 	}
+	var durationSeconds int64
+	missingDuration := false
 	for position, child := range entries {
 		var info map[string]any
 		if json.Unmarshal(child.InfoJSON, &info) != nil {
@@ -4835,8 +5410,17 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 		if summary.Thumbnail == "" && available {
 			summary.Thumbnail = thumbnail
 		}
+		if summary.Channel == "" {
+			summary.Channel = playlistChannel(info)
+		}
 		if duration := metadataInteger(info["duration"]); duration > 0 {
 			entry.Duration = formatDuration(duration)
+			entry.DurationSeconds = duration
+			if available {
+				durationSeconds += duration
+			}
+		} else if available {
+			missingDuration = true
 		}
 		if entry.Title == "" {
 			if available {
@@ -4851,6 +5435,10 @@ func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, er
 		} else {
 			summary.Unavailable++
 		}
+	}
+	if durationSeconds > 0 && !missingDuration {
+		summary.DurationSeconds = durationSeconds
+		summary.Duration = formatPlaylistDuration(durationSeconds)
 	}
 	summary.EntryCount = len(summary.Entries)
 	if summary.ID == "" {
@@ -4990,9 +5578,72 @@ func summarizeAnalysis(raw json.RawMessage, rawURL string) (InfoSummary, []outpu
 		summary.MediaType = mediaType
 	}
 	summary.Access = summarizeAccess(info)
+	summary.Subtitles = summarizeSubtitleLanguages(info)
 	plans := outputplan.Build(info, summary.DurationSeconds)
 	summary.Plans = publicPlans(plans)
 	return summary, plans, nil
+}
+
+// Analysis subtitle lists are bounded: YouTube reports well over a hundred
+// auto-generated languages, far beyond anything a picker should render.
+const (
+	maxManualSubtitleLanguages    = 40
+	maxAutomaticSubtitleLanguages = 60
+)
+
+// summarizeSubtitleLanguages extracts the language codes the engine reported
+// in the info dict's "subtitles" and "automatic_captions" collections. Manual
+// tracks come first so the picker can favour them; entries are sorted by code
+// and every collection is capped.
+func summarizeSubtitleLanguages(info map[string]any) []SubtitleLanguage {
+	manual := subtitleLanguageCollection(info["subtitles"], false, maxManualSubtitleLanguages)
+	automatic := subtitleLanguageCollection(info["automatic_captions"], true, maxAutomaticSubtitleLanguages)
+	if len(manual) == 0 && len(automatic) == 0 {
+		return nil
+	}
+	result := make([]SubtitleLanguage, 0, len(manual)+len(automatic))
+	result = append(result, manual...)
+	result = append(result, automatic...)
+	return result
+}
+
+func subtitleLanguageCollection(raw any, auto bool, limit int) []SubtitleLanguage {
+	collection, ok := raw.(map[string]any)
+	if !ok || len(collection) == 0 {
+		return nil
+	}
+	codes := make([]string, 0, len(collection))
+	for code := range collection {
+		if jobmodel.ValidSubtitleLanguage(code) {
+			codes = append(codes, code)
+		}
+	}
+	sort.Strings(codes)
+	if len(codes) > limit {
+		codes = codes[:limit]
+	}
+	result := make([]SubtitleLanguage, 0, len(codes))
+	for _, code := range codes {
+		language := SubtitleLanguage{Code: code, Auto: auto}
+		if tracks, ok := collection[code].([]any); ok && len(tracks) > 0 {
+			if track, ok := tracks[0].(map[string]any); ok {
+				if name, ok := track["name"].(string); ok {
+					language.Name = boundedText(name, 64)
+				}
+			}
+		}
+		result = append(result, language)
+	}
+	return result
+}
+
+func boundedText(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	runes := []rune(value)
+	if len(runes) > limit {
+		return string(runes[:limit])
+	}
+	return value
 }
 
 func metadataInteger(value any) int64 {
@@ -5041,6 +5692,19 @@ func metadataText(info map[string]any, key string) string {
 	return value
 }
 
+func firstMetadataText(info map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if text := strings.TrimSpace(metadataText(info, key)); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func playlistChannel(info map[string]any) string {
+	return firstMetadataText(info, "channel", "uploader", "playlist_channel", "playlist_uploader")
+}
+
 func (m *Manager) cachePlans(videoID string, plans []outputplan.Plan) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -5070,7 +5734,7 @@ func (m *Manager) ResolvePlan(videoID, planID string) (outputplan.Plan, error) {
 	cached, ok := m.planCache[videoID]
 	if !ok || time.Now().After(cached.expiresAt) {
 		delete(m.planCache, videoID)
-		return outputplan.Plan{}, errors.New("jobs: output options expired; analyze the video again")
+		return outputplan.Plan{}, ErrOutputOptionsExpired
 	}
 	for _, plan := range cached.plans {
 		if plan.ID == planID {
@@ -5092,4 +5756,24 @@ func formatDuration(seconds int64) string {
 		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
 	}
 	return fmt.Sprintf("%d:%02d", m, s)
+}
+
+// formatPlaylistDuration sums entry lengths as a short span. Seconds drop
+// once the total reaches a minute so the dock can say 6h 45m, not 6:45:00.
+func formatPlaylistDuration(seconds int64) string {
+	if seconds <= 0 {
+		return ""
+	}
+	h := seconds / 3600
+	m := (seconds % 3600) / 60
+	if h > 0 && m > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	if h > 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm", m)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }

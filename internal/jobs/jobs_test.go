@@ -6,14 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/outputplan"
 	"github.com/tejasa97/ytdlp-go/engine"
+	"github.com/tejasa97/ytdlp-go/engine/value"
 )
 
 type memoryPersistence struct {
@@ -117,9 +120,62 @@ func TestSummarizePlaylistBuildsBoundedSelectableEntries(t *testing.T) {
 	if !summary.Entries[0].Available || summary.Entries[1].Available {
 		t.Fatalf("availability=%#v", summary.Entries)
 	}
+	if summary.Channel != "Teacher" {
+		t.Fatalf("channel=%q, want Teacher from the playlist uploader", summary.Channel)
+	}
 	wantThumbnail := "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg"
 	if summary.Thumbnail != wantThumbnail || summary.Entries[0].Thumbnail != wantThumbnail {
 		t.Fatalf("thumbnail fallback: summary=%q entry=%q", summary.Thumbnail, summary.Entries[0].Thumbnail)
+	}
+}
+
+func TestSummarizePlaylistSumsDurationAndTakesChildChannel(t *testing.T) {
+	result := engine.Result{InfoJSON: json.RawMessage(`{"id":"PLfixture","title":"Course"}`), Entries: []engine.Result{
+		{InfoJSON: json.RawMessage(`{"id":"aaaaaaaaaaa","title":"One","url":"https://www.youtube.com/watch?v=aaaaaaaaaaa","playlist_index":1,"duration":3600,"channel":"Vizuara"}`)},
+		{InfoJSON: json.RawMessage(`{"id":"bbbbbbbbbbb","title":"Two","url":"https://www.youtube.com/watch?v=bbbbbbbbbbb","playlist_index":2,"duration":450}`)},
+	}}
+	summary, err := summarizePlaylist(result, "https://www.youtube.com/playlist?list=PLfixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Channel != "Vizuara" {
+		t.Fatalf("channel=%q, want Vizuara from the first child", summary.Channel)
+	}
+	if summary.DurationSeconds != 4050 || summary.Duration != "1h 7m" {
+		t.Fatalf("duration=%q seconds=%d, want 1h 7m / 4050", summary.Duration, summary.DurationSeconds)
+	}
+}
+
+func TestSummarizePlaylistOmitsDurationWhenAnAvailableEntryLacksOne(t *testing.T) {
+	result := engine.Result{InfoJSON: json.RawMessage(`{"id":"PLfixture","title":"Course"}`), Entries: []engine.Result{
+		{InfoJSON: json.RawMessage(`{"id":"aaaaaaaaaaa","title":"One","url":"https://www.youtube.com/watch?v=aaaaaaaaaaa","playlist_index":1,"duration":3600}`)},
+		{InfoJSON: json.RawMessage(`{"id":"bbbbbbbbbbb","title":"Two","url":"https://www.youtube.com/watch?v=bbbbbbbbbbb","playlist_index":2}`)},
+	}}
+	summary, err := summarizePlaylist(result, "https://www.youtube.com/playlist?list=PLfixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Duration != "" || summary.DurationSeconds != 0 {
+		t.Fatalf("duration=%q seconds=%d, want empty when an available entry has no length", summary.Duration, summary.DurationSeconds)
+	}
+}
+
+func TestFormatPlaylistDuration(t *testing.T) {
+	cases := []struct {
+		seconds int64
+		want    string
+	}{
+		{0, ""},
+		{45, "45s"},
+		{60, "1m"},
+		{4050, "1h 7m"},
+		{7200, "2h"},
+		{24300, "6h 45m"},
+	}
+	for _, test := range cases {
+		if got := formatPlaylistDuration(test.seconds); got != test.want {
+			t.Fatalf("formatPlaylistDuration(%d) = %q, want %q", test.seconds, got, test.want)
+		}
 	}
 }
 
@@ -252,6 +308,86 @@ func TestSummarizeAccessUsesNeutralFallback(t *testing.T) {
 	}
 }
 
+func TestSummarizeAnalysisCollectsSubtitleLanguages(t *testing.T) {
+	raw := json.RawMessage(`{
+		"id":"abc123","title":"Demo",
+		"subtitles":{
+			"en":[{"ext":"vtt","name":"English","url":"https://example.invalid/en.vtt"}],
+			"es":[{"ext":"vtt","name":"Spanish"}],
+			"not a code":[{"ext":"vtt"}]
+		},
+		"automatic_captions":{
+			"en":[{"ext":"vtt","name":"English (auto-generated)"}],
+			"fr":[{"ext":"srv1"}]
+		}
+	}`)
+	summary, _, err := summarizeAnalysis(raw, "https://www.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []SubtitleLanguage{
+		{Code: "en", Name: "English"},
+		{Code: "es", Name: "Spanish"},
+		{Code: "en", Name: "English (auto-generated)", Auto: true},
+		{Code: "fr", Auto: true},
+	}
+	if len(summary.Subtitles) != len(want) {
+		t.Fatalf("subtitles = %#v; want %#v", summary.Subtitles, want)
+	}
+	for index, expected := range want {
+		if summary.Subtitles[index] != expected {
+			t.Fatalf("subtitles[%d] = %#v; want %#v", index, summary.Subtitles[index], expected)
+		}
+	}
+}
+
+func TestSummarizeAnalysisOmitsSubtitlesWhenNoneReported(t *testing.T) {
+	for _, raw := range []json.RawMessage{
+		json.RawMessage(`{"id":"abc123","title":"Demo"}`),
+		json.RawMessage(`{"id":"abc123","title":"Demo","subtitles":{},"automatic_captions":{}}`),
+		json.RawMessage(`{"id":"abc123","title":"Demo","subtitles":null}`),
+	} {
+		summary, _, err := summarizeAnalysis(raw, "https://www.youtube.com/watch?v=abc123")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if summary.Subtitles != nil {
+			t.Fatalf("subtitles = %#v; want nil for %s", summary.Subtitles, raw)
+		}
+	}
+}
+
+func TestSummarizeAnalysisBoundsSubtitleCollections(t *testing.T) {
+	manual := map[string]any{}
+	automatic := map[string]any{}
+	for index := 0; index < maxAutomaticSubtitleLanguages+20; index++ {
+		code := fmt.Sprintf("l%03d", index)
+		if index%2 == 0 {
+			manual[code] = []any{map[string]any{"ext": "vtt"}}
+		}
+		automatic[code] = []any{map[string]any{"ext": "vtt"}}
+	}
+	payload, err := json.Marshal(map[string]any{"id": "abc123", "title": "Demo", "subtitles": manual, "automatic_captions": automatic})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, _, err := summarizeAnalysis(payload, "https://www.youtube.com/watch?v=abc123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manualCount, automaticCount := 0, 0
+	for _, language := range summary.Subtitles {
+		if language.Auto {
+			automaticCount++
+		} else {
+			manualCount++
+		}
+	}
+	if manualCount != maxManualSubtitleLanguages || automaticCount != maxAutomaticSubtitleLanguages {
+		t.Fatalf("manual = %d, automatic = %d; want %d and %d", manualCount, automaticCount, maxManualSubtitleLanguages, maxAutomaticSubtitleLanguages)
+	}
+}
+
 func TestPlanSubmissionUsesCachedPrivateSelectorAndMP3Postprocessor(t *testing.T) {
 	manager := New(nil, nil)
 	manager.cachePlans("abc123", []outputplan.Plan{{
@@ -287,12 +423,189 @@ func TestPlanSubmissionUsesCachedPrivateSelectorAndMP3Postprocessor(t *testing.T
 	}
 }
 
+func TestSubmitPropagatesOutputOptionsToEngineRequest(t *testing.T) {
+	subtitles := jobmodel.OutputOptions{
+		SubtitleMode:         jobmodel.SubtitleModeEmbed,
+		SubtitleLanguages:    []string{"en", "de"},
+		SubtitleAutoCaptions: true,
+		EmbedMetadata:        true,
+		EmbedThumbnail:       true,
+	}
+	sidecar := jobmodel.OutputOptions{
+		SubtitleMode:      jobmodel.SubtitleModeSidecar,
+		SubtitleFormat:    "srt",
+		SubtitleLanguages: []string{"es"},
+		EmbedChapters:     true,
+	}
+	for name, options := range map[string]jobmodel.OutputOptions{"embed": subtitles, "sidecar": sidecar} {
+		t.Run(name, func(t *testing.T) {
+			manager := New(nil, nil)
+			manager.cachePlans("abc123", []outputplan.Plan{{
+				ID: "video-1080-mp4", Kind: outputplan.KindVideo, Label: "MP4 1080p",
+				Container: "MP4", Selector: "137+140",
+			}})
+			started := make(chan engine.Request, 1)
+			manager.runDownload = func(_ context.Context, req engine.Request, _ engine.EventHandler) (engine.Result, error) {
+				started <- req
+				return engine.Result{}, nil
+			}
+			_, err := manager.Submit(Request{
+				URL: "https://example.invalid/watch?v=abc123", VideoID: "abc123",
+				PlanID: "video-1080-mp4", OutputDir: t.TempDir(), Options: options,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case req := <-started:
+				if !req.Subtitles.WriteManual {
+					t.Fatal("subtitle write mode must be manual")
+				}
+				if got := req.Subtitles.WriteAutomatic; got != options.SubtitleAutoCaptions {
+					t.Fatalf("WriteAutomatic = %v; want %v", got, options.SubtitleAutoCaptions)
+				}
+				if got := req.Subtitles.Embed; got != (options.SubtitleMode == jobmodel.SubtitleModeEmbed) {
+					t.Fatalf("Embed = %v; want %v", got, options.SubtitleMode == jobmodel.SubtitleModeEmbed)
+				}
+				wantConvert := options.SubtitleFormat
+				if options.SubtitleMode == jobmodel.SubtitleModeEmbed {
+					wantConvert = "vtt"
+				}
+				if req.Subtitles.ConvertFormat != wantConvert {
+					t.Fatalf("ConvertFormat = %q; want %q", req.Subtitles.ConvertFormat, wantConvert)
+				}
+				wantFormat := ""
+				if options.SubtitleMode == jobmodel.SubtitleModeEmbed {
+					wantFormat = embedSubtitleFormatPreference
+				}
+				if req.Subtitles.Format != wantFormat {
+					t.Fatalf("Format = %q; want %q", req.Subtitles.Format, wantFormat)
+				}
+				if strings.Join(req.Subtitles.Languages, ",") != strings.Join(options.SubtitleLanguages, ",") {
+					t.Fatalf("Languages = %v; want %v", req.Subtitles.Languages, options.SubtitleLanguages)
+				}
+				if req.EmbedMetadata != options.EmbedMetadata {
+					t.Fatalf("EmbedMetadata = %v; want %v", req.EmbedMetadata, options.EmbedMetadata)
+				}
+				if req.EmbedChapters == nil {
+					t.Fatal("explicit chapter choice must cross into the engine request")
+				}
+				if *req.EmbedChapters != options.EmbedChapters {
+					t.Fatalf("EmbedChapters = %v; want %v", *req.EmbedChapters, options.EmbedChapters)
+				}
+				if req.Thumbnails.Write || req.Thumbnails.Embed {
+					t.Fatalf("Thumbnails = %#v; artwork embed is skipped until engine preflight names one image", req.Thumbnails)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("download runner did not receive a request")
+			}
+		})
+	}
+}
+
+func TestEmbedSkipCompletesWithHonestMessage(t *testing.T) {
+	done := make(chan JobSnapshot, 1)
+	manager := New(nil, func(event Event) {
+		if event.Name == EventJobUpdate && event.Job.Status == StatusComplete {
+			select {
+			case done <- event.Job:
+			default:
+			}
+		}
+	})
+	defer manager.Close()
+	manager.cachePlans("abc123", []outputplan.Plan{{
+		ID: "video-1080-mp4", Kind: outputplan.KindVideo, Label: "MP4 1080p",
+		Container: "MP4", Selector: "137+140",
+	}})
+	manager.runDownload = func(ctx context.Context, req engine.Request, handler engine.EventHandler) (engine.Result, error) {
+		if req.Subtitles.Format != embedSubtitleFormatPreference {
+			t.Errorf("Format = %q; want %q", req.Subtitles.Format, embedSubtitleFormatPreference)
+		}
+		if err := handler(ctx, engine.Event{
+			Kind:    engine.EventMetadataWarning,
+			Message: "there are no compatible subtitles to embed",
+		}); err != nil {
+			return engine.Result{}, err
+		}
+		return engine.Result{Filename: filepath.Join(t.TempDir(), "Demo.mp4"), Bytes: 1}, nil
+	}
+	if _, err := manager.Submit(Request{
+		URL: "https://example.invalid/watch?v=abc123", VideoID: "abc123",
+		PlanID: "video-1080-mp4", OutputDir: t.TempDir(),
+		Options: jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed, SubtitleAutoCaptions: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case snap := <-done:
+		if snap.Message != embedSkippedCompleteMessage {
+			t.Fatalf("message = %q; want %q", snap.Message, embedSkippedCompleteMessage)
+		}
+		if snap.OptionsNote != "no captions in file" {
+			t.Fatalf("optionsNote = %q; want no captions in file", snap.OptionsNote)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("completed snapshot was not delivered")
+	}
+}
+
+func TestSubmitPropagatesDefaultOutputOptionsAsEngineDefaults(t *testing.T) {
+	manager := New(nil, nil)
+	manager.cachePlans("abc123", []outputplan.Plan{{ID: "video-1080-mp4", Kind: outputplan.KindVideo, Container: "MP4", Selector: "137+140"}})
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, req engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- req
+		return engine.Result{}, nil
+	}
+	if _, err := manager.Submit(Request{
+		URL: "https://example.invalid/watch?v=abc123", VideoID: "abc123",
+		PlanID: "video-1080-mp4", OutputDir: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case req := <-started:
+		if req.Subtitles.WriteManual || req.Subtitles.WriteAutomatic || req.Subtitles.Embed || req.Subtitles.ConvertFormat != "" || req.Subtitles.Format != "" || len(req.Subtitles.Languages) != 0 {
+			t.Fatalf("subtitles = %#v; want zero options for a plain download", req.Subtitles)
+		}
+		if req.EmbedMetadata || req.EmbedChapters != nil || req.Thumbnails.Embed {
+			t.Fatalf("embedding flags set for plain download: %#v", req)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("download runner did not receive a request")
+	}
+}
+
+func TestSubmitRejectsInvalidOutputOptions(t *testing.T) {
+	manager := New(nil, nil)
+	_, err := manager.Submit(Request{
+		URL: "https://example.invalid/watch?v=abc123", VideoID: "abc123",
+		OutputDir: t.TempDir(),
+		Options:   jobmodel.OutputOptions{SubtitleMode: "banana"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported subtitle mode") {
+		t.Fatalf("Submit() error = %v; want unsupported subtitle mode", err)
+	}
+}
+
+func TestQueueMetadataAppendsOptionsNote(t *testing.T) {
+	metadata := queueMetadata(JobSnapshot{Channel: "Creator", DurationLabel: "1:30", QualityLabel: "MP4 1080p"})
+	if strings.Contains(metadata, "subtitles") {
+		t.Fatalf("metadata = %q; want no options note by default", metadata)
+	}
+	metadata = queueMetadata(JobSnapshot{Channel: "Creator", DurationLabel: "1:30", QualityLabel: "MP4 1080p", OptionsNote: "subtitles (en)"})
+	if !strings.Contains(metadata, "· subtitles (en)") {
+		t.Fatalf("metadata = %q; want appended options note", metadata)
+	}
+}
+
 func TestResolvePlanRejectsExpiredAndUnknownPlans(t *testing.T) {
 	manager := New(nil, nil)
 	manager.planCache["expired"] = cachedPlans{
 		plans: []outputplan.Plan{{ID: "video-1080-mp4"}}, expiresAt: time.Now().Add(-time.Second),
 	}
-	if _, err := manager.ResolvePlan("expired", "video-1080-mp4"); err == nil || !strings.Contains(err.Error(), "expired") {
+	if _, err := manager.ResolvePlan("expired", "video-1080-mp4"); err == nil || !errors.Is(err, ErrOutputOptionsExpired) {
 		t.Fatalf("expired ResolvePlan() error = %v", err)
 	}
 	manager.cachePlans("current", []outputplan.Plan{{ID: "video-1080-mp4"}})
@@ -319,6 +632,266 @@ func TestHumanErrorYouTubeChallengeTimeout(t *testing.T) {
 	}
 }
 
+func TestResumeSessionCompatible(t *testing.T) {
+	video := &outputplan.Plan{Container: "MP4"}
+	mp3 := &outputplan.Plan{Container: "MP3"}
+	cases := []struct {
+		name    string
+		options jobmodel.OutputOptions
+		plan    *outputplan.Plan
+		want    bool
+	}{
+		{name: "plain video", plan: video, want: true},
+		{name: "nil plan", want: true},
+		{name: "embed subtitles", options: jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeEmbed}, plan: video, want: false},
+		{name: "sidecar subtitles", options: jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeSidecar}, plan: video, want: false},
+		{name: "embedded metadata", options: jobmodel.OutputOptions{EmbedMetadata: true}, plan: video, want: false},
+		{name: "embedded thumbnail", options: jobmodel.OutputOptions{EmbedThumbnail: true}, plan: video, want: false},
+		{name: "embedded chapters", options: jobmodel.OutputOptions{EmbedChapters: true}, plan: video, want: false},
+		{name: "mp3 extract", plan: mp3, want: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := resumeSessionCompatible(testCase.options, testCase.plan); got != testCase.want {
+				t.Fatalf("resumeSessionCompatible() = %v; want %v", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestV2OutputExtrasSkipResumeSession(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras")
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{
+		SubtitleMode:      jobmodel.SubtitleModeEmbed,
+		SubtitleLanguages: []string{"en"},
+		EmbedMetadata:     true,
+	}
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4"), Bytes: 1}, nil
+	}
+	if _, err := manager.SubmitAdmitted("job-extras", Request{
+		URL: "https://www.youtube.com/watch?v=abc123", VideoID: "abc123", Title: "Demo",
+		PlanID: plan.ID, OutputDir: root,
+		Options: store.state.Jobs[0].Request.OutputOptions,
+	}, &plan, AdmittedOutput{Basename: "Demo [abc123] [1080p].mp4"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if request.Filesystem.Resume.SessionID != "" {
+			t.Fatalf("extras request used a resume session: %#v", request.Filesystem.Resume)
+		}
+		if request.Overwrite {
+			t.Fatal("extras request must keep no-replace overwrite")
+		}
+		if !request.Subtitles.Embed || !request.EmbedMetadata {
+			t.Fatalf("extras flags dropped: subtitles=%#v metadata=%v", request.Subtitles, request.EmbedMetadata)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("download runner did not receive a request")
+	}
+}
+
+func TestV2OutputExtrasRetrySkipsMissingSession(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras-retry")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "unsupported"
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{
+		SubtitleMode:  jobmodel.SubtitleModeEmbed,
+		EmbedMetadata: true,
+	}
+	originalSession := store.state.Jobs[0].SessionID
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.inspectResume = func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+		t.Fatal("extras retry must not inspect a resume workspace")
+		return engine.ResumeSummary{}, errors.New("inspection unavailable")
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4"), Bytes: 1}, nil
+	}
+	if err := manager.Retry("job-extras-retry"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if request.Filesystem.Resume.SessionID != "" {
+			t.Fatalf("extras retry used a resume session: %#v", request.Filesystem.Resume)
+		}
+		if !request.Overwrite {
+			t.Fatal("extras retry must replace the reserved leftover file")
+		}
+		if !request.Subtitles.Embed || !request.EmbedMetadata {
+			t.Fatalf("extras flags dropped on retry: %#v", request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("extras retry did not start a download")
+	}
+	completed := waitForV2Job(t, store, "job-extras-retry", jobmodel.LifecycleCompleted)
+	if completed.SessionID == originalSession || completed.RetryMode != jobmodel.RetryModeRestartNewSession {
+		t.Fatalf("extras retry identity/mode = %#v; want a fresh classic restart", completed)
+	}
+	_ = plan
+}
+
+func TestV2OutputExtrasRetryReplacesReservedLeftover(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras-leftover")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "invalid_input"
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{
+		SubtitleMode:      jobmodel.SubtitleModeEmbed,
+		SubtitleLanguages: []string{"en"},
+		EmbedMetadata:     true,
+		EmbedChapters:     true,
+	}
+	leftover := filepath.Join(root, "Demo [abc123] [1080p].mp4")
+	if err := os.WriteFile(leftover, []byte("previous attempt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		if err := os.WriteFile(leftover, []byte("retry with extras"), 0o600); err != nil {
+			return engine.Result{}, err
+		}
+		return engine.Result{Filename: leftover, Bytes: int64(len("retry with extras"))}, nil
+	}
+	if err := manager.Retry("job-extras-leftover"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if !request.Overwrite || request.Filesystem.Resume.SessionID != "" {
+			t.Fatalf("leftover extras retry = %#v; want replace without a session", request)
+		}
+		if !request.Subtitles.Embed || !request.EmbedMetadata || request.EmbedChapters == nil || !*request.EmbedChapters {
+			t.Fatalf("queued extras dropped on leftover retry: %#v", request)
+		}
+		if request.Thumbnails.Write || request.Thumbnails.Embed {
+			t.Fatalf("artwork must stay unsent: %#v", request.Thumbnails)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("leftover extras retry did not start a download")
+	}
+	waitForV2Job(t, store, "job-extras-leftover", jobmodel.LifecycleCompleted)
+	body, err := os.ReadFile(leftover)
+	if err != nil || string(body) != "retry with extras" {
+		t.Fatalf("reserved file = %q, %v; want replaced contents", body, err)
+	}
+	_ = plan
+}
+
+func TestV2OutputExtrasRetryFailureLeavesOriginalFile(t *testing.T) {
+	store, root, plan := newV2TestStore(t, "job-extras-keep")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].LastErrorCode = "invalid_input"
+	store.state.Jobs[0].Request.OutputOptions = jobmodel.OutputOptions{SubtitleMode: jobmodel.SubtitleModeSidecar}
+	leftover := filepath.Join(root, "Demo [abc123] [1080p].mp4")
+	if err := os.WriteFile(leftover, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		if !request.Overwrite {
+			t.Fatal("extras retry must ask the engine to replace after a finished attempt")
+		}
+		return engine.Result{}, errors.New("embed failed after transfer")
+	}
+	if err := manager.Retry("job-extras-keep"); err != nil {
+		t.Fatal(err)
+	}
+	waitForV2Job(t, store, "job-extras-keep", jobmodel.LifecycleFailed)
+	body, err := os.ReadFile(leftover)
+	if err != nil || string(body) != "keep me" {
+		t.Fatalf("original file = %q, %v; VidStow must not delete before the runner", body, err)
+	}
+	_ = plan
+}
+
+func TestV2PlainRetryKeepsNoReplace(t *testing.T) {
+	store, root, _ := newV2TestStore(t, "job-plain-retry")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecycleFailed
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	originalSession := store.state.Jobs[0].SessionID
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.inspectResume = func(context.Context, engine.OutputRootRef, string) (engine.ResumeSummary, error) {
+		return engine.ResumeSummary{HasManifest: true, Classification: "available"}, nil
+	}
+	started := make(chan engine.Request, 1)
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4"), Bytes: 1}, nil
+	}
+	if err := manager.Retry("job-plain-retry"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case request := <-started:
+		if request.Overwrite {
+			t.Fatal("plain media retry must keep no-replace")
+		}
+		if request.Filesystem.Resume.SessionID != originalSession {
+			t.Fatalf("plain retry session = %q; want %q", request.Filesystem.Resume.SessionID, originalSession)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("plain retry did not start a download")
+	}
+}
+
+func TestHumanErrorResumeExtrasIsNotVideoUnavailable(t *testing.T) {
+	err := &engine.Error{
+		Category: engine.ErrorUnsupported,
+		Op:       "validate session output",
+		Err:      errors.New("resumable sessions do not support output sidecars or processing"),
+	}
+	if got := humanError(err); got != "VidStow could not save subtitles or extra details with this download" {
+		t.Fatalf("humanError() = %q", got)
+	}
+	if got := errorReason(err); got != "internal" {
+		t.Fatalf("errorReason() = %q; want internal so the queue does not say the video is gone", got)
+	}
+}
+
 func TestHumanErrorOtherUnsupportedIsUnchanged(t *testing.T) {
 	err := &engine.Error{
 		Category: engine.ErrorUnsupported,
@@ -328,6 +901,27 @@ func TestHumanErrorOtherUnsupportedIsUnchanged(t *testing.T) {
 
 	if got := humanError(err); got != "This link is not supported" {
 		t.Fatalf("humanError() = %q; want ordinary unsupported message", got)
+	}
+}
+
+func TestDestinationExistsIsNotCouldNotStart(t *testing.T) {
+	err := &engine.Error{
+		Category: engine.ErrorInvalidInput,
+		Op:       "inspect destination",
+		Err:      errors.New("destination already exists: Demo [abc123] [1080p].mp4"),
+	}
+	if got := errorReason(err); got != "destination-exists" {
+		t.Fatalf("errorReason() = %q; want destination-exists", got)
+	}
+	if got := humanError(err); got != "A file is already in the save folder" {
+		t.Fatalf("humanError() = %q", got)
+	}
+	collision := errors.New("output destination collision: probe.jpg")
+	if isDestinationExists(collision) {
+		t.Fatal("thumbnail collision must not count as destination exists")
+	}
+	if !isOutputDestinationCollision(collision) {
+		t.Fatal("thumbnail collision detector missed output destination collision")
 	}
 }
 
@@ -801,12 +1395,12 @@ func TestDownloadRequestsUseExactV0SelectorsAndDistinctOutputTemplates(t *testin
 		selector string
 		template string
 	}{
-		{QualityBest, "bv*+ba/b", "%(title)s [%(id)s] [Best].%(ext)s"},
-		{Quality4K, "bv*[height<=2160]+ba/b[height<=2160]", "%(title)s [%(id)s] [4K].%(ext)s"},
-		{Quality1440p, "bv*[height<=1440]+ba/b[height<=1440]", "%(title)s [%(id)s] [1440p].%(ext)s"},
-		{Quality1080p, "bv*[height<=1080]+ba/b[height<=1080]", "%(title)s [%(id)s] [1080p].%(ext)s"},
-		{Quality720p, "bv*[height<=720]+ba/b[height<=720]", "%(title)s [%(id)s] [720p].%(ext)s"},
-		{QualityAudioOnly, "ba/b", "%(title)s [%(id)s] [Audio only].%(ext)s"},
+		{QualityBest, "bv*+ba/b", "%(title)S [%(id)s] [Best].%(ext)s"},
+		{Quality4K, "bv*[height<=2160]+ba/b[height<=2160]", "%(title)S [%(id)s] [4K].%(ext)s"},
+		{Quality1440p, "bv*[height<=1440]+ba/b[height<=1440]", "%(title)S [%(id)s] [1440p].%(ext)s"},
+		{Quality1080p, "bv*[height<=1080]+ba/b[height<=1080]", "%(title)S [%(id)s] [1080p].%(ext)s"},
+		{Quality720p, "bv*[height<=720]+ba/b[height<=720]", "%(title)S [%(id)s] [720p].%(ext)s"},
+		{QualityAudioOnly, "ba/b", "%(title)S [%(id)s] [Audio only].%(ext)s"},
 	}
 
 	for _, test := range tests {
@@ -837,6 +1431,29 @@ func TestDownloadRequestsUseExactV0SelectorsAndDistinctOutputTemplates(t *testin
 
 	if QualityBest.outputTemplate() == QualityAudioOnly.outputTemplate() {
 		t.Fatal("Best and Audio only must not resolve to the same output template")
+	}
+}
+
+func TestOutputTemplateForPlanKeepsSlashTitlesAsOneBasename(t *testing.T) {
+	plan := outputplan.Plan{ID: "480p", Label: "480p", Container: "mp4"}
+	metadata := value.NewInfo(value.NewObject(
+		value.Field{Key: "title", Value: value.String("MrBeast Rizz in Supermarket ! | 360° VR / 4K | Dance")},
+		value.Field{Key: "id", Value: value.String("YnLkdT-rlFo")},
+	))
+	artifacts, err := engine.RenderOutputArtifacts(engine.OutputPreviewRequest{
+		Template:  OutputTemplateForPlan(plan),
+		Metadata:  metadata,
+		Extension: "mp4",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(artifacts) != 1 {
+		t.Fatalf("artifacts = %#v", artifacts)
+	}
+	name := artifacts[0].ProposedBasename
+	if strings.ContainsAny(name, `/\`) {
+		t.Fatalf("basename %q still contains a path separator", name)
 	}
 }
 

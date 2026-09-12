@@ -3,15 +3,15 @@
   import { get } from 'svelte/store';
   import { api } from './lib/api.js';
   import { errorMessage, ffmpeg, history, jobs, queueView, route, settings, modal, persistence, pendingUrl, showBanner } from './lib/stores.js';
-  import { progressOf, youtubeUrlFromText } from './lib/format.js';
+  import { youtubeUrlFromText } from './lib/format.js';
   import type { QueueView } from './lib/lifecycle-ui/types.js';
   import { newestQueueView } from './lib/queue-view.js';
   import type { JobSnapshot, QuitSummary, StartupStatus } from './lib/types.js';
-  import { DEFAULT_RECOVERY_REQUIRED, type RecoveryRequiredViewModel } from './lib/lifecycle-ui/types.js';
   import QuitConfirmationDialog from './lib/lifecycle-ui/QuitConfirmationDialog.svelte';
   import DiagnosticConsentDialog from './lib/lifecycle-ui/DiagnosticConsentDialog.svelte';
-  import RecoveryRequiredShell from './lib/lifecycle-ui/RecoveryRequiredShell.svelte';
+  import CannotSaveDialog from './lib/lifecycle-ui/CannotSaveDialog.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
+  import StatusBar from './lib/components/StatusBar.svelte';
   import Modal from './lib/components/Modal.svelte';
   import Banner from './lib/components/Banner.svelte';
   import Home from './pages/Home.svelte';
@@ -24,12 +24,14 @@
   let startupStatus: StartupStatus | null = null;
   let quitOpen = false;
   let quitModel: QuitSummary = { activeDownloads: 0, waitingOrPausedDownloads: 0 };
-  let recoveryModel: RecoveryRequiredViewModel = DEFAULT_RECOVERY_REQUIRED;
+  let queueResetNotice = false;
   let diagnosticChoiceOpen = false;
   let diagnosticChoiceSaving = false;
   let showFFmpegAfterDiagnosticChoice = false;
 
   onMount(async () => {
+    document.title = 'VidStow';
+    window.runtime?.WindowSetTitle?.('VidStow');
     unsubAll = [
       api.events.onJobUpdate(updateJobInList),
       api.events.onQueue((list) => jobs.set(list ?? [])),
@@ -53,11 +55,7 @@
 
     try {
       startupStatus = await waitForStartupStatus();
-      if (startupStatus.mode === 'recovery-required') {
-        recoveryModel = {
-          ...DEFAULT_RECOVERY_REQUIRED,
-          stateFileStatus: startupStatus.reason ? `State v2: ${startupStatus.reason}` : DEFAULT_RECOVERY_REQUIRED.stateFileStatus,
-        };
+      if (cannotSave(startupStatus)) {
         return;
       }
       const [savedSettings, initialJobs, initialQueueView, savedHistory, ffmpegStatus, persistenceStatus] = await Promise.all([
@@ -74,6 +72,9 @@
       history.set(savedHistory ?? []);
       ffmpeg.set(ffmpegStatus);
       persistence.set(persistenceStatus);
+      if (startupStatus.warning === 'queue-reset') {
+        queueResetNotice = true;
+      }
       if (!savedSettings.automaticDiagnostics) {
         diagnosticChoiceOpen = true;
         showFFmpegAfterDiagnosticChoice = !ffmpegStatus.available;
@@ -161,13 +162,8 @@
     }
   }
 
-  async function copyRecoveryDiagnostics() {
-    try {
-      await api.diagnostics.copy();
-      showBanner('success', 'Diagnostics copied.', 5000);
-    } catch (err) {
-      modal.set({ kind: 'error', title: 'Could not copy diagnostics', message: errorMessage(err, 'Try again or open the data folder.') });
-    }
+  function cannotSave(status: StartupStatus | null): boolean {
+    return status?.mode === 'cannot-save' || status?.mode === 'recovery-required';
   }
 
   async function openRecoveryDataFolder() {
@@ -185,15 +181,6 @@
     } catch (err) {
       modal.set({ kind: 'error', title: 'Could not dismiss quit confirmation', message: errorMessage(err, 'Try again.') });
     }
-  }
-
-  $: {
-    const running = $jobs.find((job) => job.status === 'active');
-    const title = running
-      ? `Downloading “${(running.title || 'video').slice(0, 42)}” · ${Math.round(progressOf(running) * 100)}%`
-      : 'VidStow';
-    document.title = title;
-    window.runtime?.WindowSetTitle?.(title);
   }
 
   function acceptDrop(event: DragEvent) {
@@ -220,6 +207,15 @@
       modal.set({ kind: 'error', title: 'Could not pause downloads', message: errorMessage(err, 'Keep VidStow open and try again.') });
     }
   }
+
+  async function quitAndContinue() {
+    try {
+      await api.app.quitAndContinue();
+      quitOpen = false;
+    } catch (err) {
+      modal.set({ kind: 'error', title: 'Could not quit', message: errorMessage(err, 'Keep VidStow open and try again.') });
+    }
+  }
 </script>
 
 <svelte:window on:dragover={acceptDrop} on:drop={handleDrop} on:error={reportFrontendFailure} on:unhandledrejection={reportFrontendFailure} />
@@ -231,34 +227,42 @@
       <p>Restoring saved downloads…</p>
     </div>
   </main>
-{:else if startupStatus.mode === 'recovery-required'}
-  <main class="main">
-    <div class="scroll">
-      <RecoveryRequiredShell
-        model={recoveryModel}
-        onCopyDiagnostics={copyRecoveryDiagnostics}
-        onOpenDataFolder={openRecoveryDataFolder}
-      />
-    </div>
+{:else if cannotSave(startupStatus)}
+  <main class="main startup-shell">
+    <CannotSaveDialog onOpenDataFolder={openRecoveryDataFolder} />
   </main>
 {:else}
-  <Sidebar />
+  <div class="workstation">
+    <Sidebar />
 
-  <main class="main">
-    <div class="scroll">
-      {#if $route === 'home'}
-        <Home on:goto={(e) => navigate(e.detail)} />
-      {:else if $route === 'queue'}
-        <Queue />
-      {:else if $route === 'downloads'}
-        <Downloads />
-      {:else if $route === 'settings'}
-        <Settings />
-      {:else if $route === 'about'}
-        <About />
-      {/if}
-    </div>
-  </main>
+    <main class="main">
+      <div class="scroll">
+        {#if queueResetNotice}
+          <aside class="queue-reset-notice" role="status">
+            <span class="notice-icon" aria-hidden="true">!</span>
+            <div class="notice-body">
+              <p>The saved queue could not be read. Files on disk were not touched.</p>
+              <button type="button" class="btn sm ghost quiet" onclick={() => (queueResetNotice = false)}>Dismiss</button>
+            </div>
+          </aside>
+        {/if}
+        <!-- Analysis lives in Home. Destroying the page on Queue, Downloads, or Settings would throw it away. -->
+        <div class="home-host" hidden={$route !== 'home'} inert={$route !== 'home'}>
+          <Home on:goto={(e) => navigate(e.detail)} />
+        </div>
+        {#if $route === 'queue'}
+          <Queue />
+        {:else if $route === 'downloads'}
+          <Downloads />
+        {:else if $route === 'settings'}
+          <Settings />
+        {:else if $route === 'about'}
+          <About />
+        {/if}
+      </div>
+    </main>
+  </div>
+  <StatusBar />
 {/if}
 
 <Modal />
@@ -277,21 +281,36 @@
   onClose={keepWorking}
   onKeepWorking={keepWorking}
   onPauseAndQuit={pauseAndQuit}
+  onQuit={quitAndContinue}
 />
 
 <style>
+  .workstation {
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
   .main {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    background:
-      radial-gradient(900px 420px at 0% 0%, rgba(47,111,237,0.045), transparent 60%),
-      var(--surface-bg);
+    background: var(--surface-bg);
   }
   .scroll {
+    position: relative;
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+  }
+  .home-host {
+    height: 100%;
+  }
+  .home-host[hidden] {
+    display: none;
   }
   .startup-shell {
     align-items: center;
@@ -312,6 +331,70 @@
     border-top-color: var(--accent-400);
     border-radius: 50%;
     animation: startup-spin 0.8s linear infinite;
+  }
+  .queue-reset-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--sp-3);
+    margin: var(--sp-4) var(--sp-5) 0;
+    padding: var(--sp-3) var(--sp-4);
+    border: 1px solid rgba(176, 118, 7, 0.4);
+    border-radius: var(--r-md);
+    background: var(--status-warning-soft);
+  }
+  .notice-icon {
+    display: grid;
+    place-content: center;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin-top: 1px;
+    border: 1.5px solid var(--status-warning);
+    border-radius: 50%;
+    color: var(--status-warning);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .notice-body {
+    min-width: 0;
+    flex: 1;
+  }
+  .queue-reset-notice p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    line-height: 1.45;
+  }
+  .notice-body .btn {
+    margin-top: var(--sp-3);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 7px;
+    border: 1px solid var(--border-default);
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .btn:hover:not(:disabled) { background: var(--surface-hover); }
+  .btn.ghost { background: transparent; }
+  .btn.sm { height: 24px; padding: 0 9px; font-size: 11px; border-radius: 6px; }
+  .btn.quiet {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+  }
+  .btn.quiet:hover:not(:disabled) {
+    background: transparent;
+    color: var(--text-primary);
   }
   @keyframes startup-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {

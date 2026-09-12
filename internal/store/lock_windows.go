@@ -31,6 +31,23 @@ func acquireStateLock(path string) (*stateLock, error) {
 	return l, nil
 }
 
+func acquireExclusiveNonBlocking(path string) (*stateLock, error) {
+	f, err := openPrivateLock(path)
+	if err != nil {
+		return nil, fmt.Errorf("store: open instance lock: %w", err)
+	}
+	l := &stateLock{file: f}
+	flags := uint32(windows.LOCKFILE_EXCLUSIVE_LOCK | windows.LOCKFILE_FAIL_IMMEDIATELY)
+	if err := windows.LockFileEx(windows.Handle(f.Fd()), flags, 0, 1, 0, &l.overlapped); err != nil {
+		f.Close()
+		if err == windows.ERROR_LOCK_VIOLATION {
+			return nil, ErrAlreadyRunning
+		}
+		return nil, fmt.Errorf("store: lock instance: %w", err)
+	}
+	return l, nil
+}
+
 func (l *stateLock) Close() error {
 	if l == nil {
 		return nil

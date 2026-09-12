@@ -13,6 +13,7 @@ import type {
   HistoryEntry,
   InfoSummary,
   JobSnapshot,
+  OutputOptions,
   PlaylistSummary,
   PersistenceStatus,
   QuitSummary,
@@ -58,12 +59,20 @@ export interface StartPlaylistRequest {
   quality: JobSnapshot['quality'];
   audioBitrate?: number;
   selectedItems: number[];
+  options?: OutputOptions;
+}
+
+export interface PlaylistStartResult {
+  collectionId: string;
+  admitted: number;
+  skipped?: number;
 }
 
 export interface StartBatchRequest {
   token: string;
   quality: JobSnapshot['quality'];
   audioBitrate?: number;
+  options?: OutputOptions;
 }
 
 export interface StartRequest {
@@ -76,6 +85,7 @@ export interface StartRequest {
   outputDir: string;
   duration: string;
   thumbnail: string;
+  options?: OutputOptions;
 }
 
 export const api = {
@@ -97,6 +107,7 @@ export const api = {
     startupStatus: () => call<StartupStatus>('GetStartupStatus'),
     keepWorking: () => call<void>('KeepWorking'),
     pauseAndQuit: () => call<void>('PauseDownloadsAndQuit'),
+    quitAndContinue: () => call<void>('QuitAndContinue'),
     openDataFolder: () => call<void>('OpenDataFolder'),
   },
   folder: {
@@ -112,7 +123,7 @@ export const api = {
   },
   jobs: {
     start: (req: StartRequest) => call<string>('StartDownload', req),
-    startPlaylist: (req: StartPlaylistRequest) => call<string>('StartPlaylistDownload', req),
+    startPlaylist: (req: StartPlaylistRequest) => call<PlaylistStartResult>('StartPlaylistDownload', req),
     startBatch: (req: StartBatchRequest) => call<BatchStartResult>('StartBatchDownload', req),
     list: () => call<JobSnapshot[]>('ListJobs'),
     cancel: (id: string) => call<void>('CancelJob', id),
@@ -137,6 +148,8 @@ export const api = {
     retryActionRequired: (id: string, token: string) => call<void>('RetryActionRequiredQueueJob', id, token),
     retryActionRequiredFreshLink: (id: string, token: string) => call<void>('RetryActionRequiredWithFreshLink', id, token),
     discardActionRequired: (id: string, token: string) => call<void>('DiscardActionRequiredQueueJob', id, token),
+    discardSavedData: (id: string, token: string) => call<void>('DiscardSavedQueueJob', id, token),
+    changeFolder: (id: string, token: string) => call<void>('ChangeQueueJobFolder', id, token),
     retryCleanup: (id: string, token: string) => call<void>('RetryQueueJobCleanup', id, token),
     open: (id: string, token: string) => call<void>('OpenQueueJob', id, token),
     remove: (id: string, token: string) => call<void>('RemoveQueueJob', id, token),

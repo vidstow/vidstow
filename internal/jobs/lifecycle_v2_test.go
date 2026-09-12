@@ -1637,3 +1637,268 @@ func TestV2CompletionHistoryAndStaleAttemptEventAreIdempotent(t *testing.T) {
 		t.Fatalf("idempotent completion calls/history = %d/%d; want no extra commit and one history row", callsAfter-callsBefore, len(history))
 	}
 }
+
+func TestRestoreStartsOnlyInterruptedDownloads(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "waiting", "interrupted")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecyclePending
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[0].StartupResume = false
+	store.state.Jobs[1].Lifecycle = jobmodel.LifecyclePending
+	store.state.Jobs[1].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[1].RetryMode = jobmodel.RetryModeResumeValidated
+	store.state.Jobs[1].StartupResume = true
+
+	started := make(chan string, 2)
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.runDownload = func(ctx context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request.Filesystem.Resume.SessionID
+		<-ctx.Done()
+		return engine.Result{}, ctx.Err()
+	}
+	manager.SetConcurrency(2)
+	manager.StartInterruptedDownloads()
+
+	select {
+	case session := <-started:
+		if session != store.state.Jobs[1].SessionID {
+			t.Fatalf("started session %q; want interrupted job", session)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("interrupted download did not start")
+	}
+	select {
+	case extra := <-started:
+		t.Fatalf("waiting job started at restore: %q", extra)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if got := manager.Active(); got != "interrupted" {
+		t.Fatalf("active = %q; want interrupted only", got)
+	}
+}
+
+func TestRestoreWaitingJobsStartWhenNothingWasInterrupted(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "first", "second")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecyclePending
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[1].Lifecycle = jobmodel.LifecyclePending
+	store.state.Jobs[1].Desired = jobmodel.DesiredRunning
+
+	started := make(chan string, 2)
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.runDownload = func(ctx context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request.Filesystem.Resume.SessionID
+		<-ctx.Done()
+		return engine.Result{}, ctx.Err()
+	}
+	manager.SetConcurrency(2)
+	manager.StartInterruptedDownloads()
+
+	got := map[string]bool{}
+	for range 2 {
+		select {
+		case session := <-started:
+			got[session] = true
+		case <-time.After(2 * time.Second):
+			t.Fatal("waiting jobs did not start when nothing was interrupted")
+		}
+	}
+	if !got[store.state.Jobs[0].SessionID] || !got[store.state.Jobs[1].SessionID] {
+		t.Fatalf("started = %#v", got)
+	}
+}
+
+func TestRestoreKeepsPausedJobsPaused(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "paused", "interrupted")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecyclePaused
+	store.state.Jobs[0].Desired = jobmodel.DesiredPaused
+	store.state.Jobs[0].LastErrorCode = "session-manifest-corrupt"
+	store.state.Jobs[1].Lifecycle = jobmodel.LifecyclePending
+	store.state.Jobs[1].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[1].StartupResume = true
+
+	started := make(chan string, 2)
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.runDownload = func(ctx context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request.Filesystem.Resume.SessionID
+		<-ctx.Done()
+		return engine.Result{}, ctx.Err()
+	}
+	manager.SetConcurrency(2)
+	manager.StartInterruptedDownloads()
+
+	select {
+	case session := <-started:
+		if session != store.state.Jobs[1].SessionID {
+			t.Fatalf("started session %q; want interrupted job", session)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("interrupted download did not start")
+	}
+	select {
+	case extra := <-started:
+		t.Fatalf("paused leftover started at restore: %q", extra)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if got := manager.Active(); got != "interrupted" {
+		t.Fatalf("active = %q; want interrupted only", got)
+	}
+}
+
+func TestRestoreWaitingStartsAfterInterruptedFinishes(t *testing.T) {
+	store, root, _ := newV2TestStore(t, "waiting", "interrupted")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecyclePending
+	store.state.Jobs[0].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[1].Lifecycle = jobmodel.LifecyclePending
+	store.state.Jobs[1].Desired = jobmodel.DesiredRunning
+	store.state.Jobs[1].StartupResume = true
+	waitingSessionID := store.state.Jobs[0].SessionID
+	interruptedSessionID := store.state.Jobs[1].SessionID
+
+	started := make(chan string, 2)
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.runDownload = func(_ context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request.Filesystem.Resume.SessionID
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4")}, nil
+	}
+	manager.SetConcurrency(1)
+	manager.StartInterruptedDownloads()
+
+	select {
+	case session := <-started:
+		if session != interruptedSessionID {
+			t.Fatalf("first start = %q; want interrupted job", session)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("interrupted download did not start")
+	}
+	select {
+	case session := <-started:
+		if session != waitingSessionID {
+			t.Fatalf("second start = %q; want waiting job after the slot freed", session)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiting job did not start after the interrupted download finished")
+	}
+}
+
+func TestRestoreStartsOnlyInterruptedPlaylistChild(t *testing.T) {
+	store, _, _ := newV2TestStore(t, "episode-waiting", "episode-interrupted")
+	createdAt := store.state.Jobs[0].CreatedAt
+	store.state.Collections = []jobmodel.DurableCollection{{
+		ID: "playlist", Revision: 1, Kind: jobmodel.CollectionKindPlaylist,
+		Title: "Saved playlist", Policy: "video:1080p",
+		ChildJobIDs: []string{"episode-waiting", "episode-interrupted"},
+		CreatedAt:   createdAt, UpdatedAt: createdAt,
+	}}
+	for index := range store.state.Jobs {
+		store.state.Jobs[index].CollectionID = "playlist"
+		store.state.Jobs[index].CollectionIndex = index + 1
+		store.state.Jobs[index].Lifecycle = jobmodel.LifecyclePending
+		store.state.Jobs[index].Desired = jobmodel.DesiredRunning
+	}
+	store.state.Jobs[1].StartupResume = true
+
+	started := make(chan string, 2)
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.runDownload = func(ctx context.Context, request engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		started <- request.Filesystem.Resume.SessionID
+		<-ctx.Done()
+		return engine.Result{}, ctx.Err()
+	}
+	manager.SetConcurrency(2)
+	manager.StartInterruptedDownloads()
+
+	select {
+	case session := <-started:
+		if session != store.state.Jobs[1].SessionID {
+			t.Fatalf("started session %q; want the episode that was downloading", session)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("interrupted playlist episode did not start")
+	}
+	select {
+	case extra := <-started:
+		t.Fatalf("waiting playlist episode started at restore: %q", extra)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if got := manager.Active(); got != "episode-interrupted" {
+		t.Fatalf("active = %q; want interrupted episode only", got)
+	}
+}
+
+func TestLeftoverResumeStartsWithoutDiscarding(t *testing.T) {
+	store, root, _ := newV2TestStore(t, "leftover-resume")
+	store.state.Jobs[0].Lifecycle = jobmodel.LifecyclePaused
+	store.state.Jobs[0].Desired = jobmodel.DesiredPaused
+	store.state.Jobs[0].LastErrorCode = "session-manifest-corrupt"
+	store.state.Jobs[0].LastFailureCommittedBytes = 843 * 1024 * 1024
+	discarded := 0
+	manager := New(nil, nil)
+	defer manager.Close()
+	if err := manager.SetStateStore(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreStateV2(store.Snapshot()); err != nil {
+		t.Fatal(err)
+	}
+	manager.prepareResumeDiscard = func(context.Context, engine.OutputRootRef, string) (*engine.ResumeDiscardHandle, error) {
+		discarded++
+		return nil, errors.New("workspace unavailable")
+	}
+	started := make(chan struct{}, 1)
+	manager.runDownload = func(context.Context, engine.Request, engine.EventHandler) (engine.Result, error) {
+		started <- struct{}{}
+		return engine.Result{Filename: filepath.Join(root, "Demo [abc123] [1080p].mp4")}, nil
+	}
+	view := manager.QueueView()
+	if len(view.Rows) != 1 || !view.Rows[0].Capabilities.Resume || !view.Rows[0].Capabilities.Discard {
+		t.Fatalf("leftover row = %#v", view.Rows)
+	}
+	if err := manager.QueueResume("leftover-resume", view.Rows[0].CommandToken); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("leftover resume did not start")
+	}
+	if discarded != 0 {
+		t.Fatalf("resume prepared discard %d times", discarded)
+	}
+	waitForV2Job(t, store, "leftover-resume", jobmodel.LifecycleCompleted)
+}

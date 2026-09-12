@@ -14,13 +14,108 @@ does not exist yet.
 
 ### Added
 
-- No entries yet.
+- Queue actions show pending feedback and prevent overlapping requests. Failure
+  recovery highlights the relevant folder, source, or retry action. Resume all
+  continues after individual failures and reports results without resubmitting
+  collection members separately.
+
+- Dark zinc workstation with Home, Queue, Downloads, and Settings. The product
+  name lives in the native title bar; the sidebar starts at Home and no longer
+  repeats the wordmark or an About item.
+- Home Try chips that fill the field with a sample video, playlist, or several
+  links. Analyze is still the only submit.
+- Analysis attaches its current step to the paste field. **Analyze** becomes
+  **Stop**. After 12 seconds a small warning notes the check is taking longer.
+  Interrupted requests ignore late results.
+- Download review prevents duplicate submissions, preserves choices on start
+  errors, and explains missing folders, empty playlist selections, and expired
+  batch reviews. A batch with one ready video can continue as a single download.
+- Confirmation dialogs trap keyboard focus, restore it on close, and preserve
+  follow-up error dialogs. Unavailable artwork embedding is disabled explicitly.
+- Queue separates in-progress work, attempts needing attention, and collapsible
+  canceled attempts. Rows show output quality and recovery actions; idle headers
+  explain failed/canceled counts and hide irrelevant bulk controls. Settled
+  cancellations no longer show progress or transfer statistics.
+- New download failures preserve safe stage, reason code, HTTP status when
+  available, and timestamp across restarts, available under Failure details.
+- Downloads rows with relative time, a chevron to expand, Open as the primary
+  action, and Reveal as a ghost.
+- A clickable status-bar folder path that reveals the download folder. `Not set`
+  is not clickable.
+- Settings colophon (version, license, platform, source, docs, built-with) in
+  place of a separate About page. The About route still renders Settings.
+- Cannot-save stop when the data folder is unwritable or unsafe. An unreadable
+  queue is quarantined and skipped, with a dismissible workstation notice.
+- Home video, playlist, and batch docks use inspector rows for Output, Subtitles
+  (Off / File / Embed, language, sidecar format), and In the file (title,
+  artwork, chapters). Choices seed from Settings Video files defaults, clamp
+  when FFmpeg is missing, and ride with video admissions only. Playlists and
+  batches offer English or first available plus a named-language policy. A title
+  without the named language uses the Settings default subtitle language, then
+  English or first available. Audio greys Subtitles in place; captions are not
+  written on audio downloads. Durable jobs keep their output choices across
+  retries and relaunch, and the queue inspector shows a note for non-default
+  choices.
+- Home video chips split 30fps and 60fps when Analyze reports both at the same
+  height (`1080p` and `1080p60`). The identity line shows `60 fps` on the high
+  rate. Audio is unchanged.
 
 ### Changed
 
-- No entries yet.
+- Queue rows use labeled action icons, larger thumbnails, and a separate quality/status
+  line. Keyboard-accessible row buttons select details without starting work. Failure
+  recovery replaces empty transfer statistics, and narrow windows keep actions visible.
+
+- Home identity puts codec and size on one receipt line. Audio chips use short
+  labels (`M4A`, `MP3 128`). Disabled Subtitles shows **Video only** and keeps
+  File remembered without the blue selected chrome.
+- Ordinary quit leaves in-progress downloads running, the same as a crash. Pause
+  downloads and quit is the path that records paused intent first.
+- Interrupted jobs are a fixed In progress continues policy. Waiting stays
+  waiting. Paused stays paused.
+- After Download on Home (single video, playlist, or batch), VidStow goes to Queue.
+- The macOS window uses Dark Aqua so traffic lights and the title sit on the
+  zinc canvas.
+- Start over from Action required returns the URL to Home.
+- Queue inspector actions use the shared app buttons and sit on one wrapping
+  row.
+
+### Removed
+
+- **Confirm before starting downloads.** Home **Download** queues immediately.
+  A playlist with more than 100 selected videos still asks first.
 
 ### Fixed
+
+- A YouTube HTTP 429 no longer looks like a dropped connection. **Queue** says
+  **YouTube asked VidStow to slow down**. **Retry** stays the next click after
+  a short wait.
+- **Embed** writes captions inside the video, so the folder still shows one
+  MP4. It now prefers caption files that can actually go in that MP4. When a
+  title has no captions VidStow can write, Queue still completes and says the
+  file was saved without captions. A named language such as Spanish now uses
+  the regional code that video actually has, so the match is not dropped.
+- Queue rows no longer report **Video unavailable** when a download includes
+  subtitles or embedded extras. Those jobs skip the resume session, which cannot
+  publish sidecars, and use the classic save path instead. Embedded artwork is
+  skipped for now: the engine treats every YouTube thumbnail as the same file
+  and aborts the download.
+- Failed downloads that never started say **Download could not start**, not
+  **Video unavailable**. **Retry** stays the next click. **Open source** and
+  **Copy link** are not offered for that failure.
+- **Retry** of a subtitles or extras download replaces that row’s leftover
+  file after the new attempt finishes, using the options already queued.
+  A leftover collision says **File already in the folder**, not **Nothing
+  was saved.**
+- Action required with no leftover file uses the same inspector as a failed
+  start: **Retry** and **Remove**. Review is reserved for leftover saved data.
+- A YouTube refusal no longer says **Sign-in required**. It says **Download
+  was refused**, and **Retry** is the next click. **Open source** still opens
+  the page. VidStow cannot sign in to YouTube.
+- Canceled jobs no longer sit on **Cleaning up** after leftover temp data is
+  gone. The row says **Canceled**, and the inspector no longer offers **Pause**.
+- Queue confirms use the compact dialog chrome. Action required no longer
+  uses a red **Action required** eyebrow.
 
 - Active and queued downloads stay above completed work when collections and
   standalone videos are mixed in the queue.

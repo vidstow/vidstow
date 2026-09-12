@@ -4,6 +4,7 @@
   import {
     lifecycleMessage,
     queuePositionLabel,
+    visiblePhase,
     type LifecycleJobAction,
     type LifecycleJobEventDetail,
     type LifecycleJobEventName,
@@ -23,6 +24,8 @@
     review: LifecycleJobEventDetail;
     open: LifecycleJobEventDetail;
     remove: LifecycleJobEventDetail;
+    discard: LifecycleJobEventDetail;
+    'change-folder': LifecycleJobEventDetail;
   }
 
   export interface LifecycleJobActionEvent extends LifecycleJobEventDetail {
@@ -41,7 +44,7 @@
   const progress = $derived(
     job.progress === undefined ? undefined : Math.max(0, Math.min(100, Math.round(job.progress * 100))),
   );
-  const displayPhase = $derived(job.phase === 'cleaning-up' && enabled('remove') ? undefined : job.phase);
+  const displayPhase = $derived(visiblePhase(job));
   const message = $derived(lifecycleMessage({ ...job, phase: displayPhase }));
   const queueLabel = $derived(job.queueLabel ?? queuePositionLabel(job.queuePosition));
   const hasProgress = $derived(
@@ -67,6 +70,10 @@
         return capabilities.openSource === true;
       case 'copy-link':
         return capabilities.copyLink === true;
+      case 'change-folder':
+        return capabilities.changeFolder === true;
+      case 'discard':
+        return capabilities.discard === true;
       default:
         return capabilities[action] === true;
     }

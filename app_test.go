@@ -58,8 +58,36 @@ func TestFriendlyAnalyzeErrorOtherUnsupportedIsUnchanged(t *testing.T) {
 		Err:      errors.New("video unavailable"),
 	}
 
-	if got := friendlyAnalyzeError(err); got != "That link is not a supported single YouTube video." {
+	if got := friendlyAnalyzeError(err); got != "We could not read this YouTube link. It may be unavailable or unsupported." {
 		t.Fatalf("friendlyAnalyzeError() = %q; want ordinary unsupported message", got)
+	}
+}
+
+func TestStartDownloadRejectsPlaylistURL(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	app := NewApp()
+	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
+	if app.jobs == nil {
+		t.Fatal("startup did not initialize jobs")
+	}
+	defer func() {
+		app.stopCleanup(context.Background())
+		_ = app.jobs.Close(context.Background())
+		_ = app.store.Close()
+	}()
+	_, err := app.StartDownload(jobs.Request{
+		URL:     "https://www.youtube.com/playlist?list=PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu",
+		VideoID: "fixture0001", Title: "Demo", PlanID: "video-1080-mp4",
+	})
+	if err == nil {
+		t.Fatal("StartDownload accepted a playlist URL")
+	}
+	if err.Error() == "We could not read this YouTube link. It may be unavailable or unsupported." {
+		t.Fatal("StartDownload used analyze-error copy instead of video-only admission")
+	}
+	if !strings.Contains(err.Error(), "video-only") {
+		t.Fatalf("StartDownload() = %v, want video-only rejection", err)
 	}
 }
 
@@ -73,13 +101,13 @@ func TestVideoSubfolderIsPortableAndBounded(t *testing.T) {
 	}
 }
 
-func TestStartupRecoveryRequiredFailsClosedWithoutRuntimeFallback(t *testing.T) {
+func TestStartupCannotSaveDoesNotCreateRuntime(t *testing.T) {
 	for _, status := range []store.StartupStatus{
-		{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryCorruptState},
-		{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsupportedVersion},
+		{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions},
+		{Mode: store.StartupCannotSave, Reason: store.RecoveryIndeterminate},
 		{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryIndeterminate},
 	} {
-		t.Run(string(status.Reason), func(t *testing.T) {
+		t.Run(string(status.Mode)+"/"+string(status.Reason), func(t *testing.T) {
 			restore := installAppTestSeams(t)
 			defer restore()
 			openStateV2 = func(string) (*store.V2Store, store.StartupStatus, error) { return nil, status, nil }
@@ -93,11 +121,12 @@ func TestStartupRecoveryRequiredFailsClosedWithoutRuntimeFallback(t *testing.T) 
 
 			app := NewApp()
 			app.startupAt(context.Background(), filepath.Join(t.TempDir(), "state.json"))
-			if got := app.GetStartupStatus(); got != status {
-				t.Fatalf("startup status = %#v, want %#v", got, status)
+			got := app.GetStartupStatus()
+			if !got.CannotSave() {
+				t.Fatalf("startup status = %#v, want cannot-save", got)
 			}
 			if app.store != nil || app.jobs != nil || app.coordinator != nil || app.cleanupDone != nil {
-				t.Fatalf("recovery-required startup created authoritative runtime state: %#v", app)
+				t.Fatalf("cannot-save startup created authoritative runtime state: %#v", app)
 			}
 			if cleanupStarts != 0 {
 				t.Fatalf("cleanup worker starts = %d, want 0", cleanupStarts)
@@ -112,7 +141,7 @@ func TestGetStartupStatusReturnsStartingUntilStartupCompletes(t *testing.T) {
 
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	want := store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsupportedVersion}
+	want := store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions}
 	openStateV2 = func(string) (*store.V2Store, store.StartupStatus, error) {
 		close(entered)
 		<-release
@@ -204,7 +233,7 @@ func TestStartupPathFailureSignalsTerminalStatus(t *testing.T) {
 
 	app := NewApp()
 	app.startup(context.Background())
-	want := store.StartupStatus{Mode: store.StartupRecoveryRequired, Reason: store.RecoveryUnsafePermissions}
+	want := store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions}
 	if got := app.GetStartupStatus(); got != want {
 		t.Fatalf("startup status = %#v, want %#v", got, want)
 	}
@@ -245,8 +274,8 @@ func TestStartupDurabilityWarningRecordsIndeterminateState(t *testing.T) {
 
 	app := NewApp()
 	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
-	if got := app.GetStartupStatus(); got.Reason != store.RecoveryIndeterminate {
-		t.Fatalf("startup status = %#v, want indeterminate recovery", got)
+	if got := app.GetStartupStatus(); !got.CannotSave() || got.Reason != store.RecoveryIndeterminate {
+		t.Fatalf("startup status = %#v, want cannot-save indeterminate", got)
 	}
 	events, err := app.diagnostics.Recent()
 	if err != nil {
@@ -297,12 +326,220 @@ func TestHealthyStartupReconcilesBeforeRestoringManager(t *testing.T) {
 	if len(sequence) != 4 || sequence[0] != "roots" || sequence[1] != "reconcile" || sequence[2] != "restore" || sequence[3] != "cleanup" {
 		t.Fatalf("startup order = %#v, want roots/reconcile/restore/cleanup", sequence)
 	}
+	app.stopFolderWatch()
 	app.stopCleanup(context.Background())
 	if err := app.jobs.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.store.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestQueueResetWarningStartsHealthy(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	openStateV2 = func(path string) (*store.V2Store, store.StartupStatus, error) {
+		st, status, err := store.OpenV2(path)
+		if err != nil || st == nil {
+			return st, status, err
+		}
+		status.Warning = store.WarningQueueReset
+		return st, status, err
+	}
+
+	app := NewApp()
+	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
+	status := app.GetStartupStatus()
+	if !status.Healthy() || status.Warning != store.WarningQueueReset {
+		t.Fatalf("startup = %#v; want healthy queue-reset", status)
+	}
+	if app.store == nil || app.jobs == nil {
+		t.Fatal("unreadable queue froze behind recovery")
+	}
+	app.stopFolderWatch()
+	app.stopCleanup(context.Background())
+	if err := app.jobs.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestQueueResetStartupStillAcceptsDiagnosticsConsent(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	path := filepath.Join(secureAppTempDir(t), "state.json")
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp()
+	app.startupAt(context.Background(), path)
+	defer func() {
+		app.stopFolderWatch()
+		app.stopCleanup(context.Background())
+		if app.jobs != nil {
+			_ = app.jobs.Close(context.Background())
+		}
+		if app.store != nil {
+			_ = app.store.Close()
+		}
+	}()
+	status := app.GetStartupStatus()
+	if !status.Healthy() || status.Warning != store.WarningQueueReset {
+		t.Fatalf("startup = %#v; want healthy queue-reset", status)
+	}
+	if err := app.requireReady(); err != nil {
+		t.Fatalf("queue-reset requireReady: %v", err)
+	}
+	if _, err := app.SetAutomaticDiagnostics("enabled"); err != nil {
+		t.Fatalf("Send diagnostics after queue-reset: %v", err)
+	}
+	if _, err := app.SetAutomaticDiagnostics("disabled"); err != nil {
+		t.Fatalf("Don’t send after queue-reset: %v", err)
+	}
+}
+
+func TestSecondStartupReportsAlreadyRunning(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	notified := false
+	notifyAlreadyRunning = func(context.Context) { notified = true }
+	acquireInstanceLock = store.AcquireInstanceLock
+
+	path := filepath.Join(secureAppTempDir(t), "state.json")
+	first := NewApp()
+	first.startupAt(context.Background(), path)
+	if status := first.GetStartupStatus(); !status.Healthy() {
+		t.Fatalf("first startup = %#v, want healthy", status)
+	}
+
+	second := NewApp()
+	second.startupAt(context.Background(), path)
+	if status := second.GetStartupStatus(); status.Reason != store.RecoveryAlreadyRunning {
+		t.Fatalf("second startup = %#v, want already-running", status)
+	}
+	if !notified {
+		t.Fatal("second launch did not tell the user VidStow is already running")
+	}
+	if second.store != nil || second.jobs != nil {
+		t.Fatal("second launch opened another queue")
+	}
+	first.shutdown(context.Background())
+}
+
+type recordingShutdown struct {
+	shutdowns int
+	closes    int
+}
+
+func (r *recordingShutdown) Shutdown(context.Context) error {
+	r.shutdowns++
+	return nil
+}
+
+func (r *recordingShutdown) Close(...context.Context) error {
+	r.closes++
+	return nil
+}
+
+func TestQuitAndContinueSkipsQueuePause(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	recorder := &recordingShutdown{}
+	state := &deadlineStateStore{}
+	app := NewApp()
+	app.shutdownManager = recorder
+	app.closeState = state.Close
+	app.quitSkipPause = true
+	app.shutdown(context.Background())
+	if recorder.shutdowns != 0 || recorder.closes != 0 {
+		t.Fatalf("continue-quit invoked manager shutdown/close = %d/%d", recorder.shutdowns, recorder.closes)
+	}
+	if closes, _, _ := state.snapshot(); closes != 1 {
+		t.Fatalf("State close calls = %d, want 1", closes)
+	}
+}
+
+func TestStartupSkipsUnreadableQueueAndKeepsSettings(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	root := secureAppTempDir(t)
+	downloads := filepath.Join(root, "downloads")
+	if err := os.Mkdir(downloads, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "state.json")
+	body := fmt.Sprintf(`{
+  "version": 2,
+  "storeRevision": 2,
+  "nextQueueOrdinal": 4,
+  "settings": {
+    "downloadFolder": %q,
+    "ffmpegPath": "",
+    "windowWidth": 1180,
+    "windowHeight": 760,
+    "downloadConcurrency": 3,
+    "perVideoSubfolder": true,
+    "confirmBeforeDownload": true,
+    "automaticDiagnostics": "enabled"
+  },
+  "jobs": [{"id": "not-a-valid-job"}],
+  "history": [],
+  "cleanup": []
+}`, downloads)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	app := NewApp()
+	app.startupAt(context.Background(), path)
+	defer func() {
+		app.stopFolderWatch()
+		app.stopCleanup(context.Background())
+		if app.jobs != nil {
+			_ = app.jobs.Close(context.Background())
+		}
+		if app.store != nil {
+			_ = app.store.Close()
+		}
+	}()
+	status := app.GetStartupStatus()
+	if !status.Healthy() || status.Warning != store.WarningQueueReset {
+		t.Fatalf("startup = %#v; want healthy queue-reset", status)
+	}
+	if got := app.GetSettings(); got.DownloadFolder != downloads || got.DownloadConcurrency != 3 || got.AutomaticDiagnostics != "enabled" {
+		t.Fatalf("startup dropped salvaged settings: %#v", got)
+	}
+	if jobs := app.ListJobs(); len(jobs) != 0 {
+		t.Fatalf("startup kept untrusted jobs: %#v", jobs)
+	}
+	if _, err := os.Stat(path + ".unreadable"); err != nil {
+		t.Fatalf("untrusted state was not quarantined: %v", err)
+	}
+}
+
+func TestCopyDiagnosticsCannotSaveDoesNotSayRecovery(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	var clipboard string
+	clipboardSetText = func(_ context.Context, text string) error {
+		clipboard = text
+		return nil
+	}
+	app := NewApp()
+	app.ctx = context.Background()
+	app.setStartupStatus(store.StartupStatus{Mode: store.StartupCannotSave, Reason: store.RecoveryUnsafePermissions})
+	if _, err := app.CopyDiagnostics(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(clipboard, "recovery required") {
+		t.Fatalf("clipboard still names recovery: %q", clipboard)
+	}
+	if !strings.Contains(clipboard, "cannot save") || !strings.Contains(clipboard, "unsafe-permissions") {
+		t.Fatalf("clipboard = %q", clipboard)
 	}
 }
 
@@ -914,7 +1151,12 @@ func installAppTestSeams(t *testing.T) func() {
 	oldPrepare := prepareStartupStateRoots
 	oldReconcile := reconcileStartupState
 	oldRestore := restoreStartupManager
+	oldStartInterrupted := startInterruptedDownloads
+	oldContinueFolders := continueMissingFolders
+	oldAcquireLock := acquireInstanceLock
+	oldNotifyRunning := notifyAlreadyRunning
 	oldResolveDownloadPlan := resolveDownloadPlan
+	oldRefreshExpiredOutputPlans := refreshExpiredOutputPlans
 	oldCleanup := startStartupCleanup
 	oldLog := logAppErrorf
 	oldEmit := emitAppEvent
@@ -927,13 +1169,24 @@ func installAppTestSeams(t *testing.T) func() {
 	oldBrowserOpen := browserOpenURL
 	logAppErrorf = func(context.Context, string, ...interface{}) {}
 	emitAppEvent = func(context.Context, string, ...interface{}) {}
+	notifyAlreadyRunning = func(context.Context) {}
+	acquireInstanceLock = func(string) (*store.InstanceGuard, error) {
+		return &store.InstanceGuard{}, nil
+	}
+	startInterruptedDownloads = func(*jobs.Manager) {}
+	continueMissingFolders = func(*jobs.Manager) {}
 	return func() {
 		openStateV2 = oldOpen
 		setAppSettings = oldSetAppSettings
 		prepareStartupStateRoots = oldPrepare
 		reconcileStartupState = oldReconcile
 		restoreStartupManager = oldRestore
+		startInterruptedDownloads = oldStartInterrupted
+		continueMissingFolders = oldContinueFolders
+		acquireInstanceLock = oldAcquireLock
+		notifyAlreadyRunning = oldNotifyRunning
 		resolveDownloadPlan = oldResolveDownloadPlan
+		refreshExpiredOutputPlans = oldRefreshExpiredOutputPlans
 		startStartupCleanup = oldCleanup
 		logAppErrorf = oldLog
 		emitAppEvent = oldEmit

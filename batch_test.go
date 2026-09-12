@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -174,5 +175,28 @@ func TestPruneBatchAnalysesKeepsClaimedAndFuturePlans(t *testing.T) {
 	app.pruneBatchAnalysesLocked(now)
 	if app.batchPlans["expired"] != nil || app.batchPlans["claimed-expired"] == nil || app.batchPlans["future"] == nil {
 		t.Fatalf("pruned plans = %#v", app.batchPlans)
+	}
+}
+
+func TestStartBatchDownloadRejectsInvalidOptionsBeforeClaiming(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	app := NewApp()
+	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
+	if app.store == nil || app.jobs == nil {
+		t.Fatal("startup did not initialize app")
+	}
+	defer func() {
+		app.stopCleanup(context.Background())
+		_ = app.jobs.Close(context.Background())
+		_ = app.store.Close()
+	}()
+	_, err := app.StartBatchDownload(BatchStartRequest{
+		Token:   "unused",
+		Quality: jobs.Quality1080p,
+		Options: jobs.OutputOptions{SubtitleMode: "banana"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid output options") {
+		t.Fatalf("StartBatchDownload() = %v, want invalid output options", err)
 	}
 }

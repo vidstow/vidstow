@@ -21,6 +21,17 @@ type replacerFunc func(string, string) replaceResult
 
 func (f replacerFunc) Replace(temp, target string) replaceResult { return f(temp, target) }
 
+func assertQueueReset(t *testing.T, path string) {
+	t.Helper()
+	s, status, err := OpenV2(path)
+	if err != nil || s == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+		t.Fatalf("OpenV2 = %v %#v %v; want healthy queue-reset", s, status, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenV2CreatesPrivateStateAndLock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	s, status, err := OpenV2(path)
@@ -38,6 +49,33 @@ func TestOpenV2CreatesPrivateStateAndLock(t *testing.T) {
 		if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 			t.Fatalf("%s mode = %o, want 0600", name, info.Mode().Perm())
 		}
+	}
+}
+
+func TestV2HistoryKeepsReceiptWhenFileIsGone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	s, status, err := OpenV2(path)
+	if err != nil || s == nil || !status.Healthy() {
+		t.Fatalf("OpenV2 = %v, %#v, %v", s, status, err)
+	}
+	defer s.Close()
+
+	media := filepath.Join(t.TempDir(), "gone.mp4")
+	if err := os.WriteFile(media, []byte("media"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendHistory(HistoryEntry{
+		ID: "gone", Title: "Finished video", Filename: "gone.mp4", AbsolutePath: media,
+		CompletedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(media); err != nil {
+		t.Fatal(err)
+	}
+	history := s.History()
+	if len(history) != 1 || history[0].ID != "gone" || history[0].Title != "Finished video" || history[0].FileMissing {
+		t.Fatalf("history = %#v; want a receipt that is not File missing", history)
 	}
 }
 
@@ -94,7 +132,7 @@ func TestOpenV2HealsMarkerForProvablyCommittedTarget(t *testing.T) {
 	}
 }
 
-func TestOpenV2RecoveryMarkerMismatchStaysFailClosed(t *testing.T) {
+func TestOpenV2RecoveryMarkerMismatchSkipsUntrustedQueue(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		marker func(string, jobmodel.State) recoveryMarker
@@ -127,17 +165,24 @@ func TestOpenV2RecoveryMarkerMismatchStaysFailClosed(t *testing.T) {
 			}
 
 			recovered, status, err := OpenV2(path)
-			if err != nil || recovered != nil || status.Reason != RecoveryIndeterminate {
-				t.Fatalf("mismatched marker OpenV2 = %v, %#v, %v", recovered, status, err)
+			if err != nil || recovered == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+				t.Fatalf("mismatched marker OpenV2 = %v, %#v, %v; want healthy queue-reset", recovered, status, err)
 			}
-			if _, statErr := os.Stat(path + ".recovery"); statErr != nil {
-				t.Fatalf("mismatched marker was removed: %v", statErr)
+			got := recovered.Snapshot()
+			if len(got.Jobs) != 0 {
+				t.Fatalf("mismatched marker left jobs: %#v", got.Jobs)
+			}
+			if got.Settings.DownloadFolder != state.Settings.DownloadFolder {
+				t.Fatalf("mismatched marker dropped settings: %#v", got.Settings)
+			}
+			if err := recovered.Close(); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
 }
 
-func TestOpenV2RecoveryMarkerCleanupFailureStaysFailClosed(t *testing.T) {
+func TestOpenV2RecoveryMarkerCleanupFailureKeepsProvenState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	initial, status, err := OpenV2(path)
 	if err != nil || initial == nil || !status.Healthy() {
@@ -157,21 +202,23 @@ func TestOpenV2RecoveryMarkerCleanupFailureStaysFailClosed(t *testing.T) {
 	defer func() { syncPrivateParent = oldSync }()
 	recovered, status, err := OpenV2(path)
 	syncPrivateParent = oldSync
-	if err != nil || recovered != nil || status.Reason != RecoveryIndeterminate {
-		t.Fatalf("cleanup failure OpenV2 = %v, %#v, %v", recovered, status, err)
+	if err != nil || recovered == nil || !status.Healthy() {
+		t.Fatalf("cleanup failure OpenV2 = %v, %#v, %v; want proven healthy state", recovered, status, err)
 	}
-	if _, statErr := os.Stat(path + ".recovery"); statErr != nil {
-		t.Fatalf("cleanup failure dropped marker evidence: %v", statErr)
+	if got := recovered.Snapshot(); got.StoreRevision != state.StoreRevision {
+		t.Fatalf("cleanup failure dropped proven revision: %#v", got)
+	}
+	if err := recovered.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestOpenV2FailsClosedForCorruptUnknownAndUnsafeState(t *testing.T) {
 	for _, tc := range []struct {
 		name, body string
-		reason     RecoveryReason
 	}{
-		{"corrupt", "{", RecoveryCorruptState},
-		{"unknown-version", `{"version":99}`, RecoveryUnsupportedVersion},
+		{"corrupt", "{"},
+		{"unknown-version", `{"version":99}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "state.json")
@@ -179,13 +226,16 @@ func TestOpenV2FailsClosedForCorruptUnknownAndUnsafeState(t *testing.T) {
 				t.Fatal(err)
 			}
 			s, status, err := OpenV2(path)
-			if err != nil || s != nil || status.Mode != StartupRecoveryRequired || status.Reason != tc.reason {
-				t.Fatalf("OpenV2 = %v, %#v, %v", s, status, err)
+			if err != nil || s == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+				t.Fatalf("OpenV2 = %v, %#v, %v; want healthy queue-reset", s, status, err)
 			}
-			got, err := os.ReadFile(path)
-			if err != nil || string(got) != tc.body {
-				t.Fatalf("state was altered: %q, %v", got, err)
+			if _, statErr := os.Stat(path + ".unreadable"); statErr != nil {
+				t.Fatalf("untrusted state was not quarantined: %v", statErr)
 			}
+			if len(s.Snapshot().Jobs) != 0 {
+				t.Fatalf("queue-reset left jobs: %#v", s.Snapshot().Jobs)
+			}
+			_ = s.Close()
 		})
 	}
 	if runtime.GOOS != "windows" {
@@ -228,9 +278,82 @@ func TestOpenV2StrictlyRejectsUnknownSchemaFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, status, err := OpenV2(path)
-	if err != nil || s != nil || status.Reason != RecoveryCorruptState {
-		t.Fatalf("unknown-field load = %v, %#v, %v", s, status, err)
+	if err != nil || s == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+		t.Fatalf("unknown-field load = %v, %#v, %v; want healthy queue-reset", s, status, err)
 	}
+	if got := s.Snapshot().Settings.DownloadFolder; got != state.Settings.DownloadFolder {
+		t.Fatalf("unknown-field load dropped settings folder: %q", got)
+	}
+	_ = s.Close()
+}
+
+func TestOpenV2SalvagesSettingsWhenQueueJSONIsUnreadable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	body := `{
+  "version": 2,
+  "storeRevision": 4,
+  "nextQueueOrdinal": 3,
+  "settings": {
+    "downloadFolder": "/tmp/salvaged-downloads",
+    "ffmpegPath": "",
+    "windowWidth": 1180,
+    "windowHeight": 760,
+    "downloadConcurrency": 3,
+    "perVideoSubfolder": true,
+    "confirmBeforeDownload": true,
+    "automaticDiagnostics": "disabled"
+  },
+  "jobs": [{"id": "not-a-valid-job"}],
+  "history": [],
+  "cleanup": []
+}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, status, err := OpenV2(path)
+	if err != nil || s == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+		t.Fatalf("invalid-jobs OpenV2 = %v, %#v, %v; want healthy queue-reset", s, status, err)
+	}
+	got := s.Snapshot()
+	if len(got.Jobs) != 0 {
+		t.Fatalf("invalid-jobs left queue rows: %#v", got.Jobs)
+	}
+	if got.Settings.DownloadFolder != "/tmp/salvaged-downloads" || got.Settings.DownloadConcurrency != 3 || got.Settings.AutomaticDiagnostics != "disabled" {
+		t.Fatalf("invalid-jobs did not salvage settings: %#v", got.Settings)
+	}
+	_ = s.Close()
+}
+
+func TestOpenV2SalvagesSettingsFromUnsupportedVersion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	body := `{
+  "version": 99,
+  "settings": {
+    "downloadFolder": "/tmp/salvaged-from-v99",
+    "ffmpegPath": "",
+    "windowWidth": 1180,
+    "windowHeight": 760,
+    "downloadConcurrency": 4,
+    "perVideoSubfolder": false,
+    "confirmBeforeDownload": true,
+    "automaticDiagnostics": "enabled"
+  }
+}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, status, err := OpenV2(path)
+	if err != nil || s == nil || !status.Healthy() || status.Warning != WarningQueueReset {
+		t.Fatalf("unsupported-version OpenV2 = %v, %#v, %v; want healthy queue-reset", s, status, err)
+	}
+	got := s.Snapshot()
+	if got.Version != jobmodel.StateVersion || len(got.Jobs) != 0 {
+		t.Fatalf("unsupported-version did not write a fresh v2 queue: %#v", got)
+	}
+	if got.Settings.DownloadFolder != "/tmp/salvaged-from-v99" || got.Settings.DownloadConcurrency != 4 || got.Settings.PerVideoSubfolder || got.Settings.AutomaticDiagnostics != "enabled" {
+		t.Fatalf("unsupported-version did not salvage settings: %#v", got.Settings)
+	}
+	_ = s.Close()
 }
 
 func TestOpenV2UsesNoFollowStateRead(t *testing.T) {
@@ -320,19 +443,14 @@ func TestOpenV2RejectsOversizedAndInvalidInvariantImages(t *testing.T) {
 			if err := os.WriteFile(path, mustJSON(t, state), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			s, status, err := OpenV2(path)
-			if err != nil || s != nil || status.Reason != RecoveryCorruptState {
-				t.Fatalf("invalid image = %v %#v %v", s, status, err)
-			}
+			assertQueueReset(t, path)
 		})
 	}
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), maxStateBytes+1), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryCorruptState {
-		t.Fatalf("oversized image = %v %#v %v", s, status, err)
-	}
+	assertQueueReset(t, path)
 	tooManyJobs := make([]any, maxJobs+1)
 	data, err := json.Marshal(map[string]any{"version": jobmodel.StateVersion, "jobs": tooManyJobs})
 	if err != nil {
@@ -342,9 +460,7 @@ func TestOpenV2RejectsOversizedAndInvalidInvariantImages(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryCorruptState {
-		t.Fatalf("oversized jobs collection = %v %#v %v", s, status, err)
-	}
+	assertQueueReset(t, path)
 	state := defaultStateV2()
 	job := testJob()
 	job.Reservation.Artifacts = make([]jobmodel.ReservedArtifact, maxArtifacts+1)
@@ -358,9 +474,7 @@ func TestOpenV2RejectsOversizedAndInvalidInvariantImages(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryCorruptState {
-		t.Fatalf("oversized artifact collection = %v %#v %v", s, status, err)
-	}
+	assertQueueReset(t, path)
 }
 
 func TestV2PersistedUnicodeControlsAreRejected(t *testing.T) {
@@ -386,9 +500,7 @@ func TestV2PersistedUnicodeControlsAreRejected(t *testing.T) {
 			if err := os.WriteFile(path, mustJSON(t, state), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryCorruptState {
-				t.Fatalf("control image = %v %#v %v", s, status, err)
-			}
+			assertQueueReset(t, path)
 		})
 	}
 }
@@ -409,9 +521,7 @@ func TestV2PersistedBasenamesMatchPortableReservationContract(t *testing.T) {
 			if err := os.WriteFile(path, mustJSON(t, state), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryCorruptState {
-				t.Fatalf("basename %q accepted: %v %#v %v", basename, s, status, err)
-			}
+			assertQueueReset(t, path)
 		})
 	}
 }
@@ -464,9 +574,7 @@ func TestV2TemporalInvariantsRequireUTCAndMonotonicTimestamps(t *testing.T) {
 			if err := os.WriteFile(path, mustJSON(t, state), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryCorruptState {
-				t.Fatalf("temporal image = %v %#v %v", s, status, err)
-			}
+			assertQueueReset(t, path)
 		})
 	}
 }
@@ -690,9 +798,7 @@ func TestOpenV2MigratesVersionZeroAndRejectsUnknownLegacyFields(t *testing.T) {
 	if err := os.WriteFile(path, legacy, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryMigrationFailed {
-		t.Fatalf("unknown legacy field = %v %#v %v", s, status, err)
-	}
+	assertQueueReset(t, path)
 }
 
 func TestMigrationSourceIdentityMatchesVideoID(t *testing.T) {
@@ -732,9 +838,7 @@ func TestV2MigrationBackupIsIdempotentAndConflictsFailClosed(t *testing.T) {
 	if err := os.WriteFile(path+".pre-v2.bak", []byte("different"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryMigrationFailed {
-		t.Fatalf("conflicting backup = %v %#v %v", s, status, err)
-	}
+	assertQueueReset(t, path)
 }
 
 func TestOpenV2MigratesUnverifiableDestinationToActionRequired(t *testing.T) {
@@ -870,9 +974,7 @@ func TestV2KnownCommittedWarningExposesSnapshotAndBlocksMutation(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, status, err := OpenV2(s.path); err != nil || status.Reason != RecoveryIndeterminate {
-		t.Fatalf("known-commit evidence restart = %#v %v", status, err)
-	}
+	assertQueueReset(t, s.path)
 }
 
 func TestV2StartupReleaseFailureWarnsAndBlocksMutation(t *testing.T) {
@@ -1032,14 +1134,16 @@ func TestV2IndeterminateMarkerBlocksRestartWithOrWithoutTemp(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, status, err := OpenV2(s.path); err != nil || status.Reason != RecoveryIndeterminate {
-		t.Fatalf("restart with temp = %#v, %v", status, err)
-	}
-	if err := os.Remove(temp); err != nil {
+	assertQueueReset(t, s.path)
+	if err := os.Remove(temp); err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}
-	if _, status, err := OpenV2(s.path); err != nil || status.Reason != RecoveryIndeterminate {
-		t.Fatalf("restart without temp = %#v, %v", status, err)
+	second, status, err := OpenV2(s.path)
+	if err != nil || second == nil || !status.Healthy() {
+		t.Fatalf("restart after skip = %#v, %v", status, err)
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1075,9 +1179,7 @@ func TestV2ExistingMarkerIsUnsafeAndBlocksRestart(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, status, err := OpenV2(s.path); err != nil || status.Reason != RecoveryIndeterminate {
-		t.Fatalf("corrupt marker restart = %#v %v", status, err)
-	}
+	assertQueueReset(t, s.path)
 }
 
 func TestV2RecoveryMarkerReadUsesDedicatedBound(t *testing.T) {
@@ -1085,9 +1187,7 @@ func TestV2RecoveryMarkerReadUsesDedicatedBound(t *testing.T) {
 	if err := os.WriteFile(path+".recovery", bytes.Repeat([]byte("x"), maxRecoveryMarkerBytes+1), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s, status, err := OpenV2(path); err != nil || s != nil || status.Reason != RecoveryIndeterminate {
-		t.Fatalf("oversized marker = %v %#v %v", s, status, err)
-	}
+	assertQueueReset(t, path)
 }
 
 func TestV2MarkerRemovalUncertaintyQuarantinesDeterministicAndCommittedOutcomes(t *testing.T) {
@@ -1290,11 +1390,11 @@ func TestV2StoreRereadsLatestImageUnderLock(t *testing.T) {
 	if err := first.Transaction(nil, func(state *jobmodel.State) error { state.Settings.FFmpegPath = "first"; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if err := second.Transaction(nil, func(state *jobmodel.State) error { state.Settings.ConfirmBeforeDownload = true; return nil }); err != nil {
+	if err := second.Transaction(nil, func(state *jobmodel.State) error { state.Settings.DownloadConcurrency = 7; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	got := second.Snapshot()
-	if got.Settings.FFmpegPath != "first" || !got.Settings.ConfirmBeforeDownload {
+	if got.Settings.FFmpegPath != "first" || got.Settings.DownloadConcurrency != 7 {
 		t.Fatalf("lost cross-store update: %#v", got.Settings)
 	}
 }
@@ -1321,4 +1421,73 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+func TestV2SettingsOutputOptionsRoundTrip(t *testing.T) {
+	s, status, err := OpenV2(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil || !status.Healthy() || s == nil {
+		t.Fatalf("OpenV2 = %v, %#v, %v", s, status, err)
+	}
+	want := Settings{
+		DownloadFolder:      "/tmp/downloads",
+		DownloadConcurrency: 2,
+		OutputOptions: jobmodel.OutputOptions{
+			SubtitleMode:      jobmodel.SubtitleModeSidecar,
+			SubtitleFormat:    "srt",
+			SubtitleLanguages: []string{"en", "de"},
+			EmbedMetadata:     true,
+		},
+	}
+	if err := s.SetSettings(want); err != nil {
+		t.Fatalf("SetSettings: %v", err)
+	}
+	got := s.Settings()
+	if !got.OutputOptions.Equal(want.OutputOptions) {
+		t.Fatalf("round trip output options = %#v; want %#v", got.OutputOptions, want.OutputOptions)
+	}
+	invalid := want
+	invalid.OutputOptions.SubtitleMode = "banana"
+	if err := s.SetSettings(invalid); err == nil || !strings.Contains(err.Error(), "unsupported subtitle mode") {
+		t.Fatalf("SetSettings(invalid) error = %v; want unsupported subtitle mode", err)
+	}
+	if got := s.Settings(); !got.OutputOptions.Equal(want.OutputOptions) {
+		t.Fatalf("invalid write changed settings: %#v", got.OutputOptions)
+	}
+}
+
+func TestV2FailureEvidenceSurvivesReopenAndSnapshotIsolation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	s, _, err := OpenV2(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := testJob()
+	job.Lifecycle = jobmodel.LifecycleFailed
+	job.LastErrorCode = "authentication"
+	want := jobmodel.FailureEvidence{Stage: "extraction", Code: "authentication", At: time.Now().UTC()}
+	job.LastFailure = &want
+	if err := s.Transaction(nil, func(state *jobmodel.State) error {
+		state.Jobs = []jobmodel.DurableJob{job}
+		state.NextQueueOrdinal = 2
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := s.Snapshot()
+	snapshot.Jobs[0].LastFailure.Code = "mutated"
+	if s.Snapshot().Jobs[0].LastFailure.Code != "authentication" {
+		t.Fatal("snapshot shares failure evidence")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, status, err := OpenV2(path)
+	if err != nil || !status.Healthy() {
+		t.Fatalf("reopen: %+v %v", status, err)
+	}
+	defer reopened.Close()
+	got := reopened.Snapshot().Jobs[0].LastFailure
+	if got == nil || *got != want {
+		t.Fatalf("failure evidence = %+v; want %+v", got, want)
+	}
 }

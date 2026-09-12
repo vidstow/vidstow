@@ -6,6 +6,11 @@ backend-authored `QueueView` contract; ordered `job:update` and `queue:update`
 events both carry a monotonically revised view so progress cannot freeze or
 regress when bridge delivery is delayed.
 
+`CannotSaveDialog` is the live stop when startup cannot write the data folder
+or the folder is unsafe. `RecoveryRequiredShell` remains in this package for
+the contract and tests; `App.svelte` does not mount it. Unreadable queue state
+is skipped instead, with a dismissible workstation notice.
+
 Row and queue actions require an explicit positive backend capability plus an
 opaque command token. Persistence failure revokes every action in both the
 backend projection and the route adapter. Lifecycle, phase, desired state, and

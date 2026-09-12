@@ -64,9 +64,10 @@ type BatchAnalysisView struct {
 }
 
 type BatchStartRequest struct {
-	Token        string       `json:"token"`
-	Quality      jobs.Quality `json:"quality"`
-	AudioBitrate int          `json:"audioBitrate,omitempty"`
+	Token        string             `json:"token"`
+	Quality      jobs.Quality       `json:"quality"`
+	AudioBitrate int                `json:"audioBitrate,omitempty"`
+	Options      jobs.OutputOptions `json:"options,omitempty"`
 }
 
 type BatchStartResult struct {
@@ -250,6 +251,12 @@ func (a *App) StartBatchDownload(req BatchStartRequest) (BatchStartResult, error
 	if err != nil {
 		return BatchStartResult{}, err
 	}
+	if err := req.Options.Validate(); err != nil {
+		return BatchStartResult{}, fmt.Errorf("invalid output options: %w", err)
+	}
+	if req.Options.RequiresFFmpeg() && !a.ffmpegStatus().Available {
+		return BatchStartResult{}, errors.New("subtitles and embedded details need FFmpeg; install FFmpeg or turn those options off")
+	}
 	if req.Quality == jobs.QualityAudioOnly && req.AudioBitrate != 0 && !a.ffmpegStatus().Available {
 		return BatchStartResult{}, errors.New("MP3 conversion needs FFmpeg; choose original audio or configure FFmpeg")
 	}
@@ -311,6 +318,7 @@ func (a *App) StartBatchDownload(req BatchStartRequest) (BatchStartResult, error
 				URL: item.canonicalURL, VideoID: item.videoID, Title: item.summary.Title,
 				Channel: item.summary.Channel, Quality: req.Quality, PlanID: plan.ID,
 				OutputDir: outputDir, Duration: item.summary.Duration, Thumbnail: item.summary.Thumbnail,
+				Options: collectionChildOptions(req.Options, settings.OutputOptions.SubtitleLanguages, item.summary.Subtitles),
 			}, Metadata: value.NewInfo(value.NewObject(
 				value.Field{Key: "title", Value: value.String(item.summary.Title)},
 				value.Field{Key: "id", Value: value.String(item.videoID)},

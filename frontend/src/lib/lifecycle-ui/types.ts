@@ -40,7 +40,9 @@ export type LifecycleJobAction =
   | 'copy-link'
   | 'review'
   | 'open'
-  | 'remove';
+  | 'remove'
+  | 'discard'
+  | 'change-folder';
 
 export interface LifecycleJobCapabilities {
   pause?: boolean;
@@ -54,6 +56,8 @@ export interface LifecycleJobCapabilities {
   review?: boolean;
   open?: boolean;
   remove?: boolean;
+  discard?: boolean;
+  changeFolder?: boolean;
 }
 
 export interface QueueFailureViewModel {
@@ -64,6 +68,7 @@ export interface QueueFailureViewModel {
   recommendedAction: string;
   retryable: boolean;
   partialOutput: boolean;
+  evidence?: { stage: string; code: string; httpStatus?: number; at: string };
 }
 
 /**
@@ -76,6 +81,7 @@ export interface LifecycleJobViewModel {
   collectionId?: string;
   collectionIndex?: number;
   title: string;
+  qualityLabel?: string;
   metadata?: string;
   thumbnailUrl?: string;
   lifecycle: DurableLifecycle;
@@ -88,6 +94,7 @@ export interface LifecycleJobViewModel {
   etaLabel?: string;
   message?: string;
   failure?: QueueFailureViewModel;
+  savedBytes?: number;
   queuePosition?: number;
   queueLabel?: string;
   capabilities?: LifecycleJobCapabilities;
@@ -232,7 +239,9 @@ export type LifecycleJobEventName =
   | 'copy-link'
   | 'review'
   | 'open'
-  | 'remove';
+  | 'remove'
+  | 'discard'
+  | 'change-folder';
 
 export const MIN_CONCURRENCY = 1;
 export const MAX_CONCURRENCY = 10;
@@ -270,6 +279,12 @@ export function isValidConflictToken(value: unknown): value is string {
 }
 
 export const isValidCommandToken = isValidConflictToken;
+
+/** Cleaning up is only while leftover temp data still exists. Remove means it settled. */
+export function visiblePhase(job: Pick<LifecycleJobViewModel, 'phase' | 'capabilities'>): PresentationPhase | undefined {
+  if (job.phase === 'cleaning-up' && job.capabilities?.remove === true) return undefined;
+  return job.phase;
+}
 
 export function lifecycleLabel(
   lifecycle: DurableLifecycle,

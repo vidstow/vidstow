@@ -11,19 +11,26 @@ import (
 
 func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 	tests := []struct {
-		name       string
-		code       string
-		category   string
-		retry      bool
-		startAgain bool
-		openSource bool
-		messageKey string
+		name         string
+		code         string
+		httpStatus   int
+		category     string
+		retry        bool
+		startAgain   bool
+		openSource   bool
+		changeFolder bool
+		heading      string
+		messageKey   string
 	}{
 		{name: "network", code: "network", category: "network_interrupted", retry: true, messageKey: "queue.failure.network_interrupted"},
-		{name: "authentication", code: "authentication", category: "authentication_required", openSource: true, messageKey: "queue.failure.authentication_required"},
-		{name: "unavailable", code: "unsupported", category: "resource_unavailable", openSource: true, messageKey: "queue.failure.resource_unavailable"},
-		{name: "disk full", code: "disk_full", category: "disk_full", startAgain: true, messageKey: "queue.failure.disk_full"},
-		{name: "permission", code: "permission_denied", category: "permission_denied", startAgain: true, messageKey: "queue.failure.permission_denied"},
+		{name: "rate limited", code: "network", httpStatus: 429, category: "rate_limited", retry: true, heading: "YouTube asked VidStow to slow down", messageKey: "queue.failure.rate_limited"},
+		{name: "authentication", code: "authentication", category: "authentication_required", retry: true, openSource: true, heading: "Download was refused", messageKey: "queue.failure.authentication_required"},
+		{name: "unavailable", code: "unsupported", category: "resource_unavailable", retry: true, openSource: true, messageKey: "queue.failure.resource_unavailable"},
+		{name: "invalid input", code: "invalid_input", category: "could_not_start", retry: true, heading: "Download could not start", messageKey: "queue.failure.could_not_start"},
+		{name: "destination exists", code: "destination-exists", category: "destination_exists", retry: true, heading: "File already in the folder", messageKey: "queue.failure.destination_exists"},
+		{name: "disk full", code: "disk_full", category: "disk_full", startAgain: true, changeFolder: true, heading: "Not enough disk space", messageKey: "queue.failure.disk_full"},
+		{name: "permission", code: "permission_denied", category: "permission_denied", startAgain: true, changeFolder: true, heading: "Folder is not writable", messageKey: "queue.failure.permission_denied"},
+		{name: "missing folder", code: "output-root-unavailable", category: "folder_unavailable", retry: true, changeFolder: true, heading: "Save folder is missing", messageKey: "queue.failure.folder_unavailable"},
 		{name: "security", code: "security", category: "security_blocked", messageKey: "queue.failure.security_blocked"},
 		{name: "exhausted", code: retryCodeFreshDownloadRequired, category: "retry_exhausted", messageKey: "queue.failure.retry_exhausted"},
 		{name: "internal", code: "internal", category: "internal", retry: true, messageKey: "queue.failure.internal"},
@@ -35,6 +42,11 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 				durable:     jobmodel.DurableJob{LastErrorCode: test.code, LastFailureCommittedBytes: 10},
 				fromStateV2: true,
 			}
+			if test.httpStatus != 0 {
+				evidence := &jobmodel.FailureEvidence{Stage: "download", Code: test.code, HTTPStatus: test.httpStatus}
+				state.snap.FailureEvidence = evidence
+				state.durable.LastFailure = evidence
+			}
 			failure := queueFailureFor(state, state.snap)
 			if failure.Category != test.category || failure.MessageKey != test.messageKey || failure.Retryable != test.retry || !failure.PartialOutput {
 				t.Fatalf("failure = %#v", failure)
@@ -42,8 +54,11 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 			if failure.Heading == "" || failure.Message == "" || failure.RecommendedAction == "" {
 				t.Fatalf("failure copy is incomplete: %#v", failure)
 			}
+			if test.heading != "" && failure.Heading != test.heading {
+				t.Fatalf("heading = %q; want %q", failure.Heading, test.heading)
+			}
 			caps := queueCapabilitiesFor(state, state.snap)
-			if caps.Retry != test.retry || caps.StartAgain != test.startAgain || caps.OpenSource != test.openSource || caps.CopyLink != test.openSource || !caps.Remove {
+			if caps.Retry != test.retry || caps.StartAgain != test.startAgain || caps.OpenSource != test.openSource || caps.CopyLink != test.openSource || caps.ChangeFolder != test.changeFolder || !caps.Remove {
 				t.Fatalf("capabilities = %#v", caps)
 			}
 		})

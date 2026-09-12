@@ -27,6 +27,28 @@ export function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
+export function formatPlanSize(bytes: number, approximate = false): string {
+  if (!bytes || bytes < 0) return '';
+  return `${approximate ? '~' : ''}${formatBytes(bytes)}`;
+}
+
+// Chip copy for original audio plans. Engine labels stay "M4A (Original)";
+// the Output row needs the short form so five chips stay on one line.
+export function shortAudioChip(label: string): { label: string; title?: string } {
+  const original = /^(M4A|Opus) \(Original\)$/.exec(label);
+  if (original) return { label: original[1], title: 'Original' };
+  const kbps = /^MP3 (\d+) kbps$/.exec(label);
+  if (kbps) return { label: `MP3 ${kbps[1]}` };
+  return { label };
+}
+
+export function formatDiscardConfirm(bytes: number): string {
+  if (!bytes || bytes < 0) return 'Delete the saved data for this download?';
+  const mb = 1024 * 1024;
+  if (bytes >= mb) return `Delete ${Math.round(bytes / mb)} MB of saved data?`;
+  return `Delete ${formatBytes(bytes)} of saved data?`;
+}
+
 export function formatSpeed(bps: number): string {
   if (!bps || bps <= 0) return '';
   return `${formatBytes(bps)}/s`;
@@ -64,11 +86,12 @@ export function formatDate(iso: string): string {
   }
 }
 
-export function formatRelative(iso: string): string {
+export function formatRelative(iso: string, now = Date.now()): string {
   if (!iso) return '';
   try {
     const d = new Date(iso).getTime();
-    const diff = Date.now() - d;
+    if (!Number.isFinite(d)) return iso;
+    const diff = now - d;
     if (diff < 60_000) return 'just now';
     if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;

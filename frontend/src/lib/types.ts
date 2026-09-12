@@ -36,7 +36,8 @@ export interface OutputPlan {
   approxBytes?: number;
   sizeIsApproximate?: boolean;
   requiresFfmpeg?: boolean;
-  audioBitrateKbps?: number;
+	audioBitrateKbps?: number;
+  fps?: number;
   recommended?: boolean;
   available: boolean;
 }
@@ -75,6 +76,7 @@ export interface JobSnapshot {
   absolutePath: string;
   message: string;
   errorReason?: string;
+  optionsNote?: string;
 }
 
 export interface HistoryEntry {
@@ -93,6 +95,11 @@ export interface HistoryEntry {
   durationLabel: string;
   thumbnail: string;
   fileMissing?: boolean;
+  playlistId?: string;
+  collectionId?: string;
+  playlistTitle?: string;
+  collectionTitle?: string;
+  collectionIndex?: number;
 }
 
 export interface FFmpegStatus {
@@ -110,8 +117,27 @@ export interface Settings {
   windowHeight: number;
   downloadConcurrency: number;
   perVideoSubfolder: boolean;
-  confirmBeforeDownload: boolean;
+  outputOptions: OutputOptions;
   automaticDiagnostics: '' | 'enabled' | 'disabled';
+}
+
+// One caption track reported by analysis; auto marks auto-generated tracks.
+export interface SubtitleLanguage {
+  code: string;
+  name?: string;
+  auto?: boolean;
+}
+
+// Per-download subtitle and embedding choices. Mirrors jobmodel.OutputOptions;
+// the zero value means VidStow's plain media-only output.
+export interface OutputOptions {
+  subtitleMode?: '' | 'sidecar' | 'embed';
+  subtitleLanguages?: string[];
+  subtitleAutoCaptions?: boolean;
+  subtitleFormat?: '' | 'srt' | 'vtt';
+  embedMetadata?: boolean;
+  embedThumbnail?: boolean;
+  embedChapters?: boolean;
 }
 
 export interface UrlCheckResult {
@@ -129,6 +155,7 @@ export interface PlaylistEntrySummary {
   url: string;
   title: string;
   duration?: string;
+  durationSeconds?: number;
   thumbnail?: string;
   available: boolean;
 }
@@ -138,6 +165,8 @@ export interface PlaylistSummary {
   url: string;
   title: string;
   channel: string;
+  duration?: string;
+  durationSeconds?: number;
   thumbnail: string;
   entryCount: number;
   available: number;
@@ -158,6 +187,7 @@ export interface InfoSummary {
   description: string;
   mediaType?: string;
   access: AccessSummary;
+  subtitles?: SubtitleLanguage[];
   plans: OutputPlan[];
 }
 
@@ -208,7 +238,7 @@ export interface PersistenceStatus {
 }
 
 export interface StartupStatus {
-  mode: 'starting' | 'healthy' | 'recovery-required';
+  mode: 'starting' | 'healthy' | 'cannot-save' | 'recovery-required';
   reason?: string;
   warning?: string;
 }
