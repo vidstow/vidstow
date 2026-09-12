@@ -1,6 +1,9 @@
 package store
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 // ErrAlreadyRunning means another VidStow process holds the instance lock.
 var ErrAlreadyRunning = fmt.Errorf("store: vidstow is already running")
@@ -16,7 +19,25 @@ func AcquireInstanceLock(statePath string) (*InstanceGuard, error) {
 	if statePath == "" {
 		return nil, fmt.Errorf("store: empty instance lock path")
 	}
-	lock, err := acquireExclusiveNonBlocking(statePath + ".instance")
+	absPath, err := filepath.Abs(statePath)
+	if err != nil {
+		return nil, err
+	}
+	if !validPath(absPath) {
+		return nil, fmt.Errorf("store: invalid instance lock path")
+	}
+	if err := ensureStateDirectory(filepath.Dir(absPath)); err != nil {
+		return nil, err
+	}
+	canonicalPath, err := canonicalizeStatePath(absPath)
+	if err != nil {
+		return nil, err
+	}
+	lockPath := canonicalPath + ".instance"
+	if !validPath(lockPath) {
+		return nil, fmt.Errorf("store: instance lock path exceeds limit")
+	}
+	lock, err := acquireExclusiveNonBlocking(lockPath)
 	if err != nil {
 		return nil, err
 	}

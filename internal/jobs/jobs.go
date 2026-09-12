@@ -62,6 +62,11 @@ const (
 // after Close has begun.
 var ErrClosed = errors.New("jobs: manager is closed")
 
+// ErrOutputOptionsExpired means the in-memory Analyze cache no longer has a
+// private plan for this video. Home still shows the card; Download should
+// Analyze once more before asking the user.
+var ErrOutputOptionsExpired = errors.New("jobs: output options expired; analyze the video again")
+
 var errCancelRequested = errors.New("jobs: cancel requested")
 
 var errActivationSuperseded = errors.New("jobs: durable activation was superseded")
@@ -5729,7 +5734,7 @@ func (m *Manager) ResolvePlan(videoID, planID string) (outputplan.Plan, error) {
 	cached, ok := m.planCache[videoID]
 	if !ok || time.Now().After(cached.expiresAt) {
 		delete(m.planCache, videoID)
-		return outputplan.Plan{}, errors.New("jobs: output options expired; analyze the video again")
+		return outputplan.Plan{}, ErrOutputOptionsExpired
 	}
 	for _, plan := range cached.plans {
 		if plan.ID == planID {

@@ -35,3 +35,29 @@ func TestAcquireInstanceLockRejectsASecondProcess(t *testing.T) {
 		t.Fatalf("release third lock: %v", err)
 	}
 }
+
+func TestAcquireInstanceLockCreatesMissingStateDirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "vidstow")
+	path := filepath.Join(dir, "state.json")
+
+	guard, err := AcquireInstanceLock(path)
+	if err != nil {
+		t.Fatalf("AcquireInstanceLock with missing state directory: %v", err)
+	}
+	defer guard.Close()
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat created state directory: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("created state path is not a directory: %s", dir)
+	}
+	if _, err := os.Stat(path + ".instance"); err != nil {
+		t.Fatalf("stat instance lock: %v", err)
+	}
+}

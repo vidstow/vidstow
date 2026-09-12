@@ -675,6 +675,25 @@ describe('Home analysis authority', () => {
     expect(get(modal)).toBeNull();
   });
 
+  test('stale format errors keep Analyze again copy, not the jobs prefix', async () => {
+    const user = userEvent.setup();
+    const { StartDownload } = installBindings();
+    StartDownload.mockRejectedValue(new Error('jobs: output options expired; analyze the video again'));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => expect(StartDownload).toHaveBeenCalledOnce());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Download could not start');
+    expect(alert).toHaveTextContent('The formats from Analyze went stale. Click Analyze again, then Download.');
+    expect(alert).not.toHaveTextContent('jobs:');
+    expect(screen.getByRole('button', { name: 'Analyze again' })).toBeEnabled();
+  });
+
   test('Analyze submits the live field when the DOM and Svelte state diverge', async () => {
     const { ValidateURL, AnalyzeURL } = installBindings();
     render(Home);

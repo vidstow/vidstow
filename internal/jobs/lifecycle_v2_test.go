@@ -1772,6 +1772,8 @@ func TestRestoreWaitingStartsAfterInterruptedFinishes(t *testing.T) {
 	store.state.Jobs[1].Lifecycle = jobmodel.LifecyclePending
 	store.state.Jobs[1].Desired = jobmodel.DesiredRunning
 	store.state.Jobs[1].StartupResume = true
+	waitingSessionID := store.state.Jobs[0].SessionID
+	interruptedSessionID := store.state.Jobs[1].SessionID
 
 	started := make(chan string, 2)
 	manager := New(nil, nil)
@@ -1791,7 +1793,7 @@ func TestRestoreWaitingStartsAfterInterruptedFinishes(t *testing.T) {
 
 	select {
 	case session := <-started:
-		if session != store.state.Jobs[1].SessionID {
+		if session != interruptedSessionID {
 			t.Fatalf("first start = %q; want interrupted job", session)
 		}
 	case <-time.After(2 * time.Second):
@@ -1799,7 +1801,7 @@ func TestRestoreWaitingStartsAfterInterruptedFinishes(t *testing.T) {
 	}
 	select {
 	case session := <-started:
-		if session != store.state.Jobs[0].SessionID {
+		if session != waitingSessionID {
 			t.Fatalf("second start = %q; want waiting job after the slot freed", session)
 		}
 	case <-time.After(2 * time.Second):

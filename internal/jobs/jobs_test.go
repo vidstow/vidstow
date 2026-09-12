@@ -605,7 +605,7 @@ func TestResolvePlanRejectsExpiredAndUnknownPlans(t *testing.T) {
 	manager.planCache["expired"] = cachedPlans{
 		plans: []outputplan.Plan{{ID: "video-1080-mp4"}}, expiresAt: time.Now().Add(-time.Second),
 	}
-	if _, err := manager.ResolvePlan("expired", "video-1080-mp4"); err == nil || !strings.Contains(err.Error(), "expired") {
+	if _, err := manager.ResolvePlan("expired", "video-1080-mp4"); err == nil || !errors.Is(err, ErrOutputOptionsExpired) {
 		t.Fatalf("expired ResolvePlan() error = %v", err)
 	}
 	manager.cachePlans("current", []outputplan.Plan{{ID: "video-1080-mp4"}})

@@ -61,16 +61,17 @@ var (
 		})
 		wailsruntime.Quit(ctx)
 	}
-	resolveDownloadPlan   = (*jobs.Manager).ResolvePlan
-	startStartupCleanup   = recovery.StartCleanupWorkerWithReport
-	logAppErrorf          = wailsruntime.LogErrorf
-	emitAppEvent          = wailsruntime.EventsEmit
-	openDiagnostics       = localdiagnostics.Open
-	openDiagnosticOutbox  = localdiagnostics.OpenOutbox
-	newDiagnosticUploader = localdiagnostics.NewUploader
-	newDiagnosticID       = localdiagnostics.NewUUID
-	clipboardSetText      = wailsruntime.ClipboardSetText
-	browserOpenURL        = wailsruntime.BrowserOpenURL
+	resolveDownloadPlan       = (*jobs.Manager).ResolvePlan
+	refreshExpiredOutputPlans = refreshExpiredOutputPlansDefault
+	startStartupCleanup       = recovery.StartCleanupWorkerWithReport
+	logAppErrorf              = wailsruntime.LogErrorf
+	emitAppEvent              = wailsruntime.EventsEmit
+	openDiagnostics           = localdiagnostics.Open
+	openDiagnosticOutbox      = localdiagnostics.OpenOutbox
+	newDiagnosticUploader     = localdiagnostics.NewUploader
+	newDiagnosticID           = localdiagnostics.NewUUID
+	clipboardSetText          = wailsruntime.ClipboardSetText
+	browserOpenURL            = wailsruntime.BrowserOpenURL
 )
 
 // App is the Wails-bound root. Every exported method is reachable from
@@ -704,6 +705,23 @@ func (a *App) AnalyzePlaylist(raw string) (jobs.PlaylistSummary, error) {
 // Queue
 // ---------------------------------------------------------------------------
 
+// refreshExpiredOutputPlansDefault re-runs Analyze so Download can reuse the
+// private format list after the in-memory cache expires. StartDownload calls
+// this at most once per click.
+func refreshExpiredOutputPlansDefault(a *App, rawURL string) error {
+	if a == nil || a.jobs == nil {
+		return jobs.ErrOutputOptionsExpired
+	}
+	parent := a.ctx
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 75*time.Second)
+	defer cancel()
+	_, err := a.jobs.Analyze(ctx, rawURL)
+	return err
+}
+
 // StartDownload enqueues a download and starts the FIFO worker.
 func (a *App) StartDownload(req jobs.Request) (string, error) {
 	if err := a.requireReady(); err != nil {
@@ -747,6 +765,12 @@ func (a *App) StartDownload(req jobs.Request) (string, error) {
 		return "", errors.New("an analyzed output plan is required before starting a download")
 	}
 	plan, resolveErr := resolveDownloadPlan(a.jobs, req.VideoID, req.PlanID)
+	if errors.Is(resolveErr, jobs.ErrOutputOptionsExpired) {
+		if refreshErr := refreshExpiredOutputPlans(a, req.URL); refreshErr != nil {
+			return "", errors.New(friendlyAnalyzeError(refreshErr))
+		}
+		plan, resolveErr = resolveDownloadPlan(a.jobs, req.VideoID, req.PlanID)
+	}
 	if resolveErr != nil {
 		return "", resolveErr
 	}

@@ -1156,6 +1156,7 @@ func installAppTestSeams(t *testing.T) func() {
 	oldAcquireLock := acquireInstanceLock
 	oldNotifyRunning := notifyAlreadyRunning
 	oldResolveDownloadPlan := resolveDownloadPlan
+	oldRefreshExpiredOutputPlans := refreshExpiredOutputPlans
 	oldCleanup := startStartupCleanup
 	oldLog := logAppErrorf
 	oldEmit := emitAppEvent
@@ -1185,6 +1186,7 @@ func installAppTestSeams(t *testing.T) func() {
 		acquireInstanceLock = oldAcquireLock
 		notifyAlreadyRunning = oldNotifyRunning
 		resolveDownloadPlan = oldResolveDownloadPlan
+		refreshExpiredOutputPlans = oldRefreshExpiredOutputPlans
 		startStartupCleanup = oldCleanup
 		logAppErrorf = oldLog
 		emitAppEvent = oldEmit

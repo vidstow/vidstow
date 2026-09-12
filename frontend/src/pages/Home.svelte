@@ -766,6 +766,14 @@
     });
   }
 
+  function startFailureMessage(err: unknown, fallback: string): string {
+    const message = errorMessage(err, fallback);
+    if (/output options expired|output option is no longer available/i.test(message)) {
+      return 'The formats from Analyze went stale. Click Analyze again, then Download.';
+    }
+    return message;
+  }
+
   async function enqueueVideo() {
     if (admitting || busy || batchBusy || folderBusy || !preview || !selectedPlan?.available || !folder) return;
     if (selectedPlan.requiresFfmpeg && !$ffmpeg.available) {
@@ -794,7 +802,7 @@
       }
     } catch (err) {
       if (requestGeneration === analysisGeneration) admissionError = {
-        title: 'Download could not start', message: errorMessage(err, 'Could not start this download.'),
+        title: 'Download could not start', message: startFailureMessage(err, 'Could not start this download.'),
       };
     } finally {
       admitting = null;

@@ -267,11 +267,24 @@ func TestStartDownloadExpiredPlanDoesNotRecordDiagnostic(t *testing.T) {
 		_ = app.jobs.Close(context.Background())
 		_ = app.store.Close()
 	}()
+	var refreshCount int
+	refreshExpiredOutputPlans = func(_ *App, rawURL string) error {
+		refreshCount++
+		if rawURL != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
+			t.Fatalf("refresh URL = %q", rawURL)
+		}
+		return nil
+	}
 	if _, err := app.StartDownload(jobs.Request{
 		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", VideoID: "dQw4w9WgXcQ",
 		Title: "Demo", PlanID: "expired-plan",
 	}); err == nil {
 		t.Fatal("StartDownload accepted an expired output plan")
+	} else if !errors.Is(err, jobs.ErrOutputOptionsExpired) {
+		t.Fatalf("StartDownload() = %v, want expired output options", err)
+	}
+	if refreshCount != 1 {
+		t.Fatalf("expired-plan refresh count = %d, want 1", refreshCount)
 	}
 	events, err := app.diagnostics.Recent()
 	if err != nil {
@@ -279,5 +292,56 @@ func TestStartDownloadExpiredPlanDoesNotRecordDiagnostic(t *testing.T) {
 	}
 	if len(events) != 0 {
 		t.Fatalf("expired plan recorded diagnostics: %#v", events)
+	}
+}
+
+func TestStartDownloadRefreshesExpiredPlanOnceThenContinues(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	app := NewApp()
+	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
+	if app.jobs == nil || app.diagnostics == nil {
+		t.Fatalf("startup did not initialize app: %#v", app)
+	}
+	defer func() {
+		app.stopCleanup(context.Background())
+		_ = app.jobs.Close(context.Background())
+		_ = app.store.Close()
+	}()
+	app.lastFFmpeg = ffmpegdetect.Status{Available: false, Message: "ffmpeg missing"}
+	var resolveCount int
+	var refreshCount int
+	resolveDownloadPlan = func(_ *jobs.Manager, videoID, planID string) (outputplan.Plan, error) {
+		if videoID != "dQw4w9WgXcQ" || planID != "mp3-192" {
+			return outputplan.Plan{}, errors.New("unexpected output plan request")
+		}
+		resolveCount++
+		if resolveCount == 1 {
+			return outputplan.Plan{}, jobs.ErrOutputOptionsExpired
+		}
+		return outputplan.Plan{
+			ID: "mp3-192", Kind: outputplan.KindAudio, Label: "MP3", Container: "MP3",
+			RequiresFFmpeg: true, AudioBitrateKbps: 192, Available: true, Selector: "140",
+		}, nil
+	}
+	refreshExpiredOutputPlans = func(_ *App, rawURL string) error {
+		refreshCount++
+		if rawURL != "https://www.youtube.com/watch?v=dQw4w9WgXcQ" {
+			t.Fatalf("refresh URL = %q", rawURL)
+		}
+		return nil
+	}
+	outputDir := filepath.Join(secureAppTempDir(t), "must-not-exist")
+	if _, err := app.StartDownload(jobs.Request{
+		URL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", VideoID: "dQw4w9WgXcQ",
+		Title: "Demo", PlanID: "mp3-192", OutputDir: outputDir,
+	}); err == nil {
+		t.Fatal("StartDownload accepted a plan that requires missing FFmpeg")
+	}
+	if resolveCount != 2 || refreshCount != 1 {
+		t.Fatalf("expired refresh resolve/refresh = %d/%d, want 2/1", resolveCount, refreshCount)
+	}
+	if _, err := os.Stat(outputDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("FFmpeg rejection touched output directory: %v", err)
 	}
 }
