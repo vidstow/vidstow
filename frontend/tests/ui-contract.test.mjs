@@ -9,7 +9,7 @@ test('approved navigation and window branding are used', async () => {
     read('../src/lib/components/Sidebar.svelte'),
     read('../../main.go'),
   ]);
-  for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
+  for (const label of ['Home', 'Queue', 'Following', 'Downloads', 'Settings']) assert.match(sidebar, new RegExp(`label: '${label}'`));
   assert.doesNotMatch(sidebar, /class="brand"/);
   assert.doesNotMatch(sidebar, /class="brand-mark"/);
   assert.doesNotMatch(sidebar, />VidStow</);
@@ -19,6 +19,20 @@ test('approved navigation and window branding are used', async () => {
   assert.match(main, /Title:\s+"VidStow"/);
   assert.match(main, /NSAppearanceNameDarkAqua/);
   assert.match(await read('../index.html'), /<title>VidStow<\/title>/);
+});
+
+test('Following is a real rail page with manual checks and an empty Home CTA', async () => {
+  const [following, followLib] = await Promise.all([
+    read('../src/pages/Following.svelte'),
+    read('../src/lib/follow.ts'),
+  ]);
+  assert.match(following, /id="following-title">Following</);
+  assert.match(following, /You are not following any playlists\./);
+  assert.match(following, />Check all</);
+  assert.match(following, /Check now/);
+  assert.match(following, /downloaded files and anything already queued stay/);
+  assert.match(followLib, /export const REVIEW_PAGE_SIZE = 10/);
+  assert.doesNotMatch(following, /onMount\(/);
 });
 
 test('page titles and controls match the approved redesign', async () => {
@@ -54,6 +68,8 @@ test('page titles and controls match the approved redesign', async () => {
   assert.doesNotMatch(home, /underline dotted/);
   assert.match(home, /\.try \{[\s\S]*?border-radius: 7px;/);
   assert.match(home, /This link includes a playlist/);
+  assert.match(home, /Saves future videos · Nothing downloads now/);
+  assert.match(home, /FollowSetupDialog/);
   assert.match(home, /Choose what to download/);
   assert.match(home, /class="sdialog"/);
   assert.match(home, /class="swapline"/);
@@ -186,6 +202,8 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(await read('../src/lib/subtitle-languages.ts'), /code: 'es', name: 'Spanish'/);
   assert.match(await read('../src/lib/components/OutputOptionsEditor.svelte'), /from '\.\.\/subtitle-languages\.js'/);
   assert.match(settings, />Interrupted jobs</);
+  assert.match(settings, /Followed playlists are not checked on launch/);
+  assert.match(settings, />Followed playlists</);
   assert.match(settings, /In progress continues/);
   assert.doesNotMatch(settings, /Restored as paused/);
   assert.match(settings, />General</);

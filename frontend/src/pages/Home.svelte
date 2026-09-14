@@ -1,13 +1,14 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { api, type StartRequest, type StartPlaylistRequest, type StartBatchRequest } from '../lib/api.js';
-  import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
+  import { errorMessage, ffmpeg, follows, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
+  import FollowSetupDialog from '../lib/components/FollowSetupDialog.svelte';
   import { formatBytes, formatPlanSize, formatViewCount, shortAudioChip, shortTitle } from '../lib/format.js';
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
   import { subtitleLanguageOffered } from '../lib/subtitle-languages.js';
   import type { BatchAnalysisView, InfoSummary, OutputOptions, OutputPlan, PlaylistSummary, Quality, SubtitleLanguage, UrlCheckResult } from '../lib/types.js';
 
-  const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'downloads' | 'settings' | 'about' }>();
+  const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'following' | 'downloads' | 'settings' | 'about' }>();
 
   const PLAYLIST_ADMIT_CAP = 500;
   const VIDEO_QUALITIES: Array<{ value: Quality; label: string }> = [
@@ -83,6 +84,9 @@
   let scopeFocus: 'video' | 'playlist' = 'playlist';
   let analyzeError: { title: string; message: string; retry?: boolean } | null = null;
   let detailsOpen = false;
+  let followSetupOpen = false;
+  let followSetupBusy = false;
+  let followScope: 'future' | 'all' = 'future';
 
   const batchExpiryTimer = setInterval(() => {
     if (batchReview) batchNow = Date.now();
@@ -149,6 +153,8 @@
       ].filter(Boolean).join(' · ')
     : '';
   $: playlistSavePath = playlist && folder ? joinSavePath(folder, playlist.title) : '';
+  $: followedPlaylistId = playlist?.id ?? '';
+  $: followingThis = followedPlaylistId !== '' && $follows.follows.some((item) => item.playlistId === followedPlaylistId);
 
   function syncFieldHeight() {
     const node = urlField;
@@ -863,6 +869,47 @@
     await start();
   }
 
+  function openFollowSetup() {
+    if (!playlist || followingThis || followSetupBusy) return;
+    followScope = 'future';
+    followSetupOpen = true;
+  }
+
+  async function confirmFollow() {
+    if (!playlist || followSetupBusy || followingThis) return;
+    const quality: Quality = playlistTab === 'audio' ? 'audio' : playlistQuality;
+    const audioBitrate = playlistTab === 'audio' && audioChoice !== 'original' ? Number(audioChoice) : 0;
+    if (audioBitrate && !$ffmpeg.available) {
+      requireFFmpeg('MP3 conversion needs FFmpeg. Choose original audio or configure FFmpeg.');
+      return;
+    }
+    const options = effectiveOptions(playlistOptions, playlistTab === 'video');
+    if (optionsNeedFFmpeg(options) && !$ffmpeg.available) {
+      requireFFmpeg('Subtitles and embedded details need FFmpeg. Configure FFmpeg or turn those options off.');
+      return;
+    }
+    followSetupBusy = true;
+    try {
+      const next = await api.follows.follow({
+        url: playlist.url, playlistId: playlist.id, quality, audioBitrate, scope: followScope,
+        options: { ...options, ...(options.subtitleLanguages ? { subtitleLanguages: [...options.subtitleLanguages] } : {}) },
+      });
+      follows.set(next);
+      followSetupOpen = false;
+      if (followScope === 'all') {
+        showBanner('success', `Following ${playlist.title}. Added available videos to the queue.`);
+        dispatch('goto', 'queue');
+      } else {
+        showBanner('info', `Following ${playlist.title}. Nothing downloads yet.`);
+      }
+    } catch (err) {
+      try { follows.set(await api.follows.list()); } catch { /* keep last view */ }
+      showBanner('danger', errorMessage(err, 'Could not follow this playlist.'));
+    } finally {
+      followSetupBusy = false;
+    }
+  }
+
 </script>
 
 <svelte:window on:keydown={onHomeKey} />
@@ -1058,6 +1105,12 @@
             <b title={playlist.title}>{playlist.title}</b>
           </div>
           <span class="dmeta">{playlistMeta}</span>
+          {#if followingThis}
+            <button type="button" class="follow-btn active" on:click={() => dispatch('goto', 'following')}>Following</button>
+          {:else}
+            <button type="button" class="follow-btn" on:click={openFollowSetup}>Follow</button>
+            <span class="dhint">Saves future videos · Nothing downloads now</span>
+          {/if}
           {#if linkedSwap && scopeVideo}
             <button type="button" class="swapline" on:click={swapLinkedScope}>
               Pasted video: <b>{scopeVideo.title}{#if scopeVideo.duration} · {scopeVideo.duration}{/if}</b>
@@ -1271,6 +1324,18 @@
   </fieldset>
   {/if}
 </section>
+
+<FollowSetupDialog
+  bind:open={followSetupOpen}
+  bind:scope={followScope}
+  busy={followSetupBusy}
+  title={playlist?.title ?? ''}
+  available={playlist?.available ?? 0}
+  settingsSummary={playlist ? playlistPolicyCopy().detail.replace('up to ', 'Up to ').replace('best available', 'Best available') : ''}
+  folder={playlistSavePath || folder}
+  onClose={() => { if (!followSetupBusy) followSetupOpen = false; }}
+  onConfirm={confirmFollow}
+/>
 
 <style>
   .input-help { margin: -5px 2px 0; font-size: 10px; color: var(--text-muted); flex-shrink: 0; }
@@ -1775,6 +1840,13 @@
     font-size: 13px;
   }
   .dmeta em { font-style: normal; font-weight: 650; }
+  .follow-btn {
+    display: inline-flex; align-items: center; gap: 6px; width: fit-content; min-height: 28px; margin-top: 8px; padding: 0 11px;
+    border: 1px solid rgba(96, 165, 250, 0.45); border-radius: var(--r-md);
+    background: var(--accent-soft); color: var(--accent-400); font-size: var(--fs-sm); font-weight: 600;
+  }
+  .follow-btn:hover:not(:disabled), .follow-btn.active { border-color: var(--accent-400); background: rgba(59, 130, 246, 0.2); }
+  .dhint { display: block; margin-top: 8px; color: var(--text-muted); font-size: 11.5px; }
   .dmeta.expired { color: var(--status-danger); }
   .ddisc {
     display: flex;

@@ -83,7 +83,9 @@ describe('Settings page', () => {
     expect(screen.getByRole('switch', { name: 'Create a subfolder for each download' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByText('Interrupted jobs')).toBeInTheDocument();
     expect(screen.getByText('In progress continues')).toBeInTheDocument();
-    expect(screen.getByText('The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.')).toBeInTheDocument();
+    expect(screen.getByText('The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused. Followed playlists are not checked on launch.')).toBeInTheDocument();
+    expect(screen.getByText('Followed playlists')).toBeInTheDocument();
+    expect(screen.getByText('Each follow keeps its own download settings. Edit them from Following.')).toBeInTheDocument();
     expect(screen.getByText('Maximum concurrent downloads')).toBeInTheDocument();
     expect(screen.getByText(/Range: 1–10; Recommended: 2–4/)).toBeInTheDocument();
     expect(screen.queryByText(/HTTP 429/)).not.toBeInTheDocument();

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 import Home from '../src/pages/Home.svelte';
-import { pendingUrl, settings, modal, banner, ffmpeg } from '../src/lib/stores.js';
+import { pendingUrl, settings, modal, banner, ffmpeg, follows } from '../src/lib/stores.js';
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
@@ -54,8 +54,9 @@ function installBindings() {
   const StartBatchDownload = vi.fn();
   const StartDownload = vi.fn(async () => 'job-1');
   const StartPlaylistDownload = vi.fn(async (_req: { selectedItems: number[] }) => ({ collectionId: 'playlist-1', admitted: 2 }));
-  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload } } };
-  return { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload };
+  const FollowPlaylist = vi.fn(async () => ({ follows: [], checking: false, checkDone: 0, checkTotal: 0 }));
+  (window as any).go = { main: { App: { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload, FollowPlaylist } } };
+  return { ValidateURL, AnalyzeURL, AnalyzePlaylist, AnalyzeBatchURLs, StartBatchDownload, StartDownload, StartPlaylistDownload, FollowPlaylist };
 }
 
 describe('Home analysis authority', () => {
@@ -115,6 +116,7 @@ describe('Home analysis authority', () => {
     pendingUrl.set('');
     modal.set(null);
     banner.set(null);
+    follows.set({ follows: [], checking: false, checkDone: 0, checkTotal: 0 });
     settings.update((current) => ({ ...current, downloadFolder: '/tmp/downloads', outputOptions: {} }));
     installBindings();
   });
@@ -266,6 +268,33 @@ describe('Home analysis authority', () => {
     expect(screen.getByLabelText('Range start')).toBeInTheDocument();
     expect(screen.queryByLabelText('Search playlist')).not.toBeInTheDocument();
     expect(screen.getByText('2 selected · up to 1080p')).toBeInTheDocument();
+  });
+
+  test('playlist dock shows Follow with the future-videos hint and setup dialog', async () => {
+    const user = userEvent.setup();
+    const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
+    const { FollowPlaylist, StartPlaylistDownload } = installBindings();
+    (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
+      kind: 'playlist', url: playlistURL, playlistUrl: playlistURL, playlistId: 'PLfixture',
+    }));
+    (window as any).go.main.App.AnalyzePlaylist = vi.fn(async (raw: string) => playlistSummary(raw));
+    render(Home);
+
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Follow' })).toBeInTheDocument();
+    expect(screen.getByText('Saves future videos · Nothing downloads now')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Download 2 videos' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Follow' }));
+    expect(await screen.findByRole('heading', { name: 'Follow this playlist?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Future videos only/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Download all 2 now/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Follow playlist' }));
+    await waitFor(() => expect(FollowPlaylist).toHaveBeenCalledWith(expect.objectContaining({
+      playlistId: 'PLfixture', scope: 'future',
+    })));
+    expect(StartPlaylistDownload).not.toHaveBeenCalled();
   });
 
   test('playlist Download starts the collection path, not a single video', async () => {

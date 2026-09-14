@@ -152,10 +152,17 @@
       <div class="srow">
         <div class="scopy">
           <strong>Interrupted jobs</strong>
-          <span>The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.</span>
+          <span>The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused. Followed playlists are not checked on launch.</span>
         </div>
         <div class="sact">
           <span class="sfixed">In progress continues</span>
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Followed playlists</strong>
+          <span>Each follow keeps its own download settings. Edit them from Following.</span>
         </div>
       </div>
     </section>

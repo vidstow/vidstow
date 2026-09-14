@@ -93,6 +93,9 @@ State v2 is a bounded, versioned document stored in the operating system's user
 configuration area. Transactions operate on a cloned state image under process
 and cross-process locks, then atomically replace the document.
 
+Followed playlists are a sibling document, `follows.json`, not Queue
+collections. See `docs/FOLLOW_PLAYLISTS.md`.
+
 The store distinguishes a failed operation known not to have committed from an
 indeterminate replacement outcome. An indeterminate outcome is not retried as
 though absence were proven.

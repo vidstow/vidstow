@@ -1,13 +1,17 @@
 <script lang="ts">
-  import { route, counts, history } from '../stores.js';
-  type Route = 'home' | 'queue' | 'downloads' | 'settings' | 'about';
+  import { route, counts, follows, history } from '../stores.js';
+  import { pendingCount } from '../follow.js';
+  type Route = 'home' | 'queue' | 'following' | 'downloads' | 'settings' | 'about';
 
   $: c = $counts;
   $: saved = $history.length;
+  $: queued = c.active + c.pending;
+  $: review = pendingCount($follows);
 
   const items: Array<{ key: Route; label: string; icon: string }> = [
     { key: 'home',      label: 'Home',      icon: 'home' },
     { key: 'queue',     label: 'Queue',     icon: 'queue' },
+    { key: 'following', label: 'Following', icon: 'following' },
     { key: 'downloads', label: 'Downloads', icon: 'downloads' },
   ];
   const utility: Array<{ key: Route; label: string; icon: string }> = [
@@ -36,13 +40,25 @@
                 <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/></svg>
               {:else if item.icon === 'queue'}
                 <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/></svg>
+              {:else if item.icon === 'following'}
+                <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M7 13a5 5 0 0 1 5-5h5m0 0-3-3m3 3-3 3M17 11a5 5 0 0 1-5 5H7m0 0 3 3m-3-3 3-3"/></svg>
               {:else}
                 <svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/></svg>
               {/if}
             </span>
-            <span class="nav-label">{item.label}</span>
-            {#if item.key === 'queue' && (c.active + c.pending) > 0}
-              <span class="nav-badge" aria-label={`${c.active + c.pending} jobs`}>{c.active + c.pending}</span>
+            {#if (item.key === 'queue' && queued > 0) || (item.key === 'following' && review > 0)}
+              <span class="nav-copy">
+                <span class="nav-label">{item.label}</span>
+                <span class="nav-meta">{item.key === 'queue' ? 'queued' : 'to review'}</span>
+              </span>
+            {:else}
+              <span class="nav-label">{item.label}</span>
+            {/if}
+            {#if item.key === 'queue' && queued > 0}
+              <span class="nav-badge" aria-label={`${queued} queued`}>{queued}</span>
+            {/if}
+            {#if item.key === 'following' && review > 0}
+              <span class="nav-badge" aria-label={`${review} videos to review`}>{review}</span>
             {/if}
             {#if item.key === 'downloads' && saved > 0}
               <span class="nav-badge subtle" aria-label={`${saved} downloads`}>{saved}</span>
@@ -147,6 +163,30 @@
     border-radius: 99px;
     background: var(--accent-500);
   }
+
+  .nav-item:has(.nav-copy) {
+    min-height: 40px;
+    align-items: center;
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+  .nav-copy {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+  .nav-copy .nav-label { flex: none; line-height: 1.2; }
+  .nav-meta {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    line-height: 1.2;
+  }
+  .nav-item.active .nav-meta { color: #93C5FD; }
+  .nav-item:has(.nav-copy).active::before { top: 9px; bottom: 9px; }
 
   .nav-icon { display: inline-flex; }
 

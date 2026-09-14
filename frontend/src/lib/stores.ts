@@ -2,7 +2,7 @@
 // the slices they need; transport and error normalization stay shared.
 
 import { writable, derived } from 'svelte/store';
-import type { FFmpegStatus, HistoryEntry, JobSnapshot, PersistenceStatus, Settings } from './types.js';
+import type { FFmpegStatus, FollowsView, HistoryEntry, JobSnapshot, PersistenceStatus, Settings } from './types.js';
 import type { QueueView } from './lifecycle-ui/types.js';
 
 export const settings = writable<Settings>({
@@ -27,6 +27,7 @@ export const ffmpeg = writable<FFmpegStatus>({
 export const jobs = writable<JobSnapshot[]>([]);
 export const queueView = writable<QueueView | null>(null);
 export const history = writable<HistoryEntry[]>([]);
+export const follows = writable<FollowsView>({ follows: [], checking: false, checkDone: 0, checkTotal: 0 });
 export const persistence = writable<PersistenceStatus>({ available: false, healthy: true });
 
 // Derived views used by the sidebar counters.
@@ -47,7 +48,7 @@ export const counts = derived(jobs, ($jobs) => {
   return { active, pending, complete, failed };
 });
 
-export const route = writable<'home' | 'queue' | 'downloads' | 'settings' | 'about'>('home');
+export const route = writable<'home' | 'queue' | 'following' | 'downloads' | 'settings' | 'about'>('home');
 export const pendingUrl = writable('');
 
 // Modal state — only one modal at a time.

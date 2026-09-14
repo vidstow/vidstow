@@ -5379,6 +5379,27 @@ func (m *Manager) ResolvePlaylistSelection(playlistID string, selected []int) (P
 	return summary, entries, nil
 }
 
+// PlaylistPreview returns the unexpired backend listing from AnalyzePlaylist.
+// Follow uses it to snapshot known IDs without inventing child identities.
+func (m *Manager) PlaylistPreview(playlistID string) (PlaylistSummary, error) {
+	if strings.TrimSpace(playlistID) == "" {
+		return PlaylistSummary{}, errors.New("jobs: invalid playlist id")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closing || m.closed {
+		return PlaylistSummary{}, ErrClosed
+	}
+	cached, ok := m.playlistCache[playlistID]
+	if !ok || !time.Now().Before(cached.expiresAt) {
+		delete(m.playlistCache, playlistID)
+		return PlaylistSummary{}, errors.New("jobs: playlist preview expired; analyze the playlist again")
+	}
+	summary := cached.summary
+	summary.Entries = append([]PlaylistEntrySummary(nil), cached.summary.Entries...)
+	return summary, nil
+}
+
 func summarizePlaylist(result engine.Result, rawURL string) (PlaylistSummary, error) {
 	var parent map[string]any
 	if len(result.InfoJSON) > 0 && json.Unmarshal(result.InfoJSON, &parent) != nil {
