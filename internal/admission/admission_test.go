@@ -447,3 +447,20 @@ func admissionFixture(t *testing.T, plan outputplan.Plan) (*Coordinator, *reserv
 		},
 	}, queue
 }
+
+func TestAdmitCopiesBrowserSessionFromSettings(t *testing.T) {
+	plan := outputplan.Plan{ID: "audio-mp3", Kind: outputplan.KindAudio, Label: "MP3", Container: "MP3", Selector: "ba1", RequiresFFmpeg: true}
+	coordinator, root, state, request, _ := admissionFixture(t, plan)
+	settings := state.Settings()
+	settings.BrowserSession = "chrome:Default"
+	if err := state.SetSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	result, err := coordinator.Admit(context.Background(), root, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Job.Request.BrowserSession != "chrome:Default" {
+		t.Fatalf("persisted browser session = %q", result.Job.Request.BrowserSession)
+	}
+}

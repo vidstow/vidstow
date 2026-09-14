@@ -21,6 +21,8 @@ function installBindings(overrides: Record<string, unknown> = {}) {
       downloadConcurrency: 2,
       perVideoSubfolder: true,
       automaticDiagnostics: value,
+      browserSession: '',
+      cookieFile: '',
     })),
     PickDownloadFolder: vi.fn(async () => '/tmp/chosen'),
     RevealInFinder: vi.fn(async () => {}),
@@ -28,6 +30,19 @@ function installBindings(overrides: Record<string, unknown> = {}) {
       available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7.1', ffprobePath: '/usr/bin/ffprobe', message: '',
     })),
     PickFFmpegPath: vi.fn(async () => '/opt/ffmpeg'),
+    PickCookieFile: vi.fn(async () => '/tmp/cookies.txt'),
+    ClearCookieFile: vi.fn(async () => ({
+      downloadFolder: '/tmp/downloads',
+      ffmpegPath: '/usr/bin/ffmpeg',
+      windowWidth: 1180,
+      windowHeight: 760,
+      downloadConcurrency: 2,
+      perVideoSubfolder: true,
+      automaticDiagnostics: 'disabled',
+      outputOptions: {},
+      browserSession: '',
+      cookieFile: '',
+    })),
     ConfigureFFmpeg: vi.fn(async () => ({
       available: true, path: '/opt/ffmpeg', version: 'ffmpeg version 7.1', ffprobePath: '/opt/ffprobe', message: '',
     })),
@@ -61,6 +76,8 @@ describe('Settings page', () => {
       perVideoSubfolder: true,
       automaticDiagnostics: 'disabled',
       outputOptions: {},
+      browserSession: '',
+      cookieFile: '',
     });
     ffmpeg.set({
       available: true, path: '/usr/bin/ffmpeg', version: 'ffmpeg version 7.1', ffprobePath: '/usr/bin/ffprobe', message: '',
@@ -73,6 +90,7 @@ describe('Settings page', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Performance' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Signed-in downloads' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Advanced' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Diagnostics' })).toBeInTheDocument();
     expect(screen.getByText('Default download folder')).toBeInTheDocument();
@@ -103,6 +121,30 @@ describe('Settings page', () => {
     expect(screen.getByRole('button', { name: 'View source' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Read the docs' })).toBeInTheDocument();
     expect(screen.getByText(/Built with Go · Wails · Svelte · ytdlp-go · FFmpeg/)).toBeInTheDocument();
+  });
+
+  test('signed-in downloads talks to UpdateSettings and cookie file APIs', async () => {
+    const user = userEvent.setup();
+    const App = installBindings();
+    render(Settings);
+    expect(screen.getByRole('heading', { name: 'Signed-in downloads' })).toBeInTheDocument();
+    expect(screen.getByText('Signed out. Public videos work. Links that need an account will ask.')).toBeInTheDocument();
+    // Status echo plus the browser <select> both render "Off".
+    expect(screen.getAllByText('Off').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Sign in to YouTube in that browser first. VidStow reads the session for one check at a time.')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Profile, e.g. Default')).toBeInTheDocument();
+    expect(screen.getByText('For when the browser store cannot be read. Export with Get cookies.txt LOCALLY or with the engine, and keep the file private.')).toBeInTheDocument();
+    expect(screen.getByText('No file chosen')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Browser session'), 'chrome');
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ browserSession: 'chrome' })));
+    await user.type(screen.getByLabelText('Browser profile'), 'Default');
+    await user.tab();
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ browserSession: 'chrome:Default' })));
+
+    await user.click(screen.getByRole('button', { name: 'Choose file' }));
+    await waitFor(() => expect(App.PickCookieFile).toHaveBeenCalled());
+    await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ cookieFile: '/tmp/cookies.txt' })));
   });
 
   test('subfolder switch talks to UpdateSettings', async () => {

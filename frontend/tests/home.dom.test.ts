@@ -9,7 +9,14 @@ import { pendingUrl, settings, modal, banner, ffmpeg } from '../src/lib/stores.j
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
-function videoSummary(raw: string) {
+function videoSummary(raw: string): {
+  title: string; channel: string; duration: string; thumbnail: string; videoId: string; url: string;
+  durationSeconds: number; viewCount: number; uploadDate: string; description: string;
+  access: { code: string; label: string };
+  subtitles: Array<{ code: string; name: string; auto?: boolean }>;
+  plans: Array<Record<string, unknown>>;
+  sessionLabel?: string;
+} {
   return {
     title: 'Fixture video', channel: 'Fixture channel', duration: '1:00', thumbnail: '', videoId: 'fixture0001', url: raw,
     durationSeconds: 60, viewCount: 1, uploadDate: '', description: '', access: { code: 'public', label: 'Public' },
@@ -853,6 +860,35 @@ describe('Home analysis authority', () => {
     expect(screen.queryByText('Fixture video')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
+  });
+
+  test('signin-required envelope shows the signed-in card and Open Settings', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeURL } = installBindings();
+    AnalyzeURL.mockRejectedValueOnce(new Error('vidstow:auth:' + JSON.stringify({
+      reason: 'signin-required',
+      title: 'This video needs your YouTube sign-in.',
+      message: 'Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only videos your account can already watch.',
+    })));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('This video needs your YouTube sign-in.');
+    expect(alert).toHaveTextContent('Only videos your account can already watch.');
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toHaveClass('pri');
+  });
+
+  test('a signed-in analysis shows the session line', async () => {
+    const user = userEvent.setup();
+    const { AnalyzeURL } = installBindings();
+    AnalyzeURL.mockResolvedValueOnce({ ...videoSummary(firstURL), sessionLabel: 'Chrome · Default' });
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByText('Signed in via Chrome · Default.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
   });
 
   test('a cleared default folder disables download and explains how to continue', async () => {

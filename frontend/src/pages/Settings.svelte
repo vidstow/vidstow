@@ -18,6 +18,10 @@
   let folder = '';
   let ffmpegPath = '';
   let saving = false;
+  let browserChoice = 'off';
+  let browserProfile = '';
+  let cookieFilePath = '';
+
   let build: BuildInfo = {
     version: 'Loading…', engineVersion: 'Loading…', os: '', architecture: '', goVersion: '',
   };
@@ -25,6 +29,8 @@
   onMount(() => {
     folder = $settings.downloadFolder || '';
     ffmpegPath = $settings.ffmpegPath || $ffmpeg.path || '';
+    syncBrowserFields($settings);
+
     api.app.buildInfo()
       .then((info) => { build = info; })
       .catch((err) => { showError(err, 'Could not read build information'); });
@@ -103,6 +109,84 @@
       try { settings.set(await api.settings.get()); } catch { /* retain the last known value */ }
       showError(err, 'Could not save the diagnostics preference');
     }
+  }
+
+
+  function syncBrowserFields(s: Settings) {
+    const raw = (s.browserSession || '').trim();
+    cookieFilePath = s.cookieFile || '';
+    if (!raw) {
+      browserChoice = 'off';
+      browserProfile = '';
+      return;
+    }
+    const [browser, rest] = raw.split(/:(.+)/);
+    browserChoice = browser || 'off';
+    browserProfile = (rest || '').split('::')[0] || '';
+  }
+
+  function sessionStatusLabel(s: Settings): string {
+    const spec = (s.browserSession || '').trim();
+    if (spec) {
+      const [browser, rest] = spec.split(/:(.+)/);
+      const profile = (rest || '').split('::')[0] || '';
+      const name = browserDisplayName(browser);
+      return profile ? `${name} · ${profile}` : name;
+    }
+    if ((s.cookieFile || '').trim()) return 'Cookie file';
+    return 'Off';
+  }
+
+  function browserDisplayName(browser: string): string {
+    switch ((browser || '').toLowerCase()) {
+      case 'chrome':
+      case 'chromium':
+        return 'Chrome';
+      case 'firefox':
+        return 'Firefox';
+      case 'safari':
+        return 'Safari';
+      case 'edge':
+        return 'Edge';
+      case 'brave':
+        return 'Brave';
+      default:
+        return browser;
+    }
+  }
+
+  function sessionStatusCopy(s: Settings): string {
+    if ((s.browserSession || '').trim() || (s.cookieFile || '').trim()) {
+      return 'The next signed-in check is the real test — nothing here is verified yet. Cookies are never stored.';
+    }
+    return 'Signed out. Public videos work. Links that need an account will ask.';
+  }
+
+  async function saveBrowserSession() {
+    let session = '';
+    if (browserChoice && browserChoice !== 'off') {
+      session = browserProfile.trim() ? `${browserChoice}:${browserProfile.trim()}` : browserChoice;
+    }
+    await update({ ...$settings, browserSession: session, cookieFile: cookieFilePath }, 'Signed-in downloads updated');
+    syncBrowserFields($settings);
+  }
+
+  async function pickCookieFile() {
+    try {
+      const path = await api.settings.pickCookieFile();
+      if (!path) return;
+      cookieFilePath = path;
+      await update({ ...$settings, cookieFile: path }, 'Cookie file updated');
+    } catch (err) { showError(err, 'Could not choose cookie file'); }
+  }
+
+  async function removeCookieFile() {
+    try {
+      const saved = await api.settings.clearCookieFile();
+      settings.set(saved);
+      cookieFilePath = '';
+      showBanner('success', 'Cookie file removed');
+    } catch (err) { showError(err, 'Could not remove cookie file'); }
   }
 
   function open(url: string) {
@@ -340,6 +424,54 @@
       {#if !$ffmpeg.available}
         <p class="swarn">Embedding needs FFmpeg. Install it or set its path under Advanced.</p>
       {/if}
+    </section>
+
+
+    <section class="sgroup" aria-labelledby="signin-settings-title">
+      <h2 id="signin-settings-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <span>Signed-in downloads</span>
+      </h2>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Status</strong>
+          <span>{sessionStatusCopy($settings)}</span>
+        </div>
+        <div class="sact">
+          <span class="sfixed">{sessionStatusLabel($settings)}</span>
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Browser session</strong>
+          <span>Sign in to YouTube in that browser first. VidStow reads the session for one check at a time.</span>
+        </div>
+        <div class="sact">
+          <select class="sselect" aria-label="Browser session" bind:value={browserChoice} on:change={saveBrowserSession}>
+            <option value="off">Off</option>
+            <option value="chrome">Chrome</option>
+            <option value="firefox">Firefox</option>
+            <option value="safari">Safari</option>
+            <option value="edge">Edge</option>
+            <option value="brave">Brave</option>
+          </select>
+          <input class="stext" type="text" placeholder="Profile, e.g. Default" aria-label="Browser profile" bind:value={browserProfile} disabled={browserChoice === 'off'} on:change={saveBrowserSession} />
+        </div>
+      </div>
+
+      <div class="srow">
+        <div class="scopy">
+          <strong>Cookie file fallback</strong>
+          <span>For when the browser store cannot be read. Export with Get cookies.txt LOCALLY or with the engine, and keep the file private.</span>
+          <span class="mono" class:empty={!cookieFilePath} title={cookieFilePath}>{cookieFilePath || 'No file chosen'}</span>
+        </div>
+        <div class="sact">
+          <button type="button" class="btn sm ghost" on:click={pickCookieFile}>Choose file</button>
+          <button type="button" class="btn sm ghost" disabled={!cookieFilePath} on:click={removeCookieFile}>Remove</button>
+        </div>
+      </div>
     </section>
 
     <section class="sgroup" aria-labelledby="advanced-settings-title">
@@ -702,4 +834,20 @@
     .sact { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
     .colophon { grid-template-columns: 1fr; }
   }
+
+  .stext {
+    height: 28px;
+    min-width: 140px;
+    max-width: 170px;
+    padding: 0 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: var(--surface-input);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 12px;
+  }
+  .stext::placeholder { color: var(--text-muted); }
+  .stext:focus { border-color: var(--accent-500); outline: none; }
+  .stext:disabled { opacity: 0.4; }
 </style>

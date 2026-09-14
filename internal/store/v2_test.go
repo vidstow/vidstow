@@ -1455,6 +1455,41 @@ func TestV2SettingsOutputOptionsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestV2BrowserSessionAndCookieFileRoundTripWithoutCookieBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	s, status, err := OpenV2(path)
+	if err != nil || !status.Healthy() || s == nil {
+		t.Fatalf("OpenV2 = %v, %#v, %v", s, status, err)
+	}
+	want := Settings{
+		DownloadFolder:      "/tmp/downloads",
+		DownloadConcurrency: 2,
+		BrowserSession:      "firefox:Work",
+		CookieFile:          "/tmp/private/cookies.txt",
+	}
+	if err := s.SetSettings(want); err != nil {
+		t.Fatalf("SetSettings: %v", err)
+	}
+	got := s.Settings()
+	if got.BrowserSession != want.BrowserSession || got.CookieFile != want.CookieFile {
+		t.Fatalf("round trip = %#v; want %#v", got, want)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "SID=") || strings.Contains(string(raw), "TRUE\tFALSE") {
+		t.Fatalf("state.json stored cookie bytes: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"browserSession"`) || !strings.Contains(string(raw), `firefox:Work`) ||
+		!strings.Contains(string(raw), `"cookieFile"`) || !strings.Contains(string(raw), `/tmp/private/cookies.txt`) {
+		t.Fatalf("state.json missing session fields: %s", raw)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestV2FailureEvidenceSurvivesReopenAndSnapshotIsolation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	s, _, err := OpenV2(path)

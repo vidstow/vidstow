@@ -6,7 +6,7 @@ VidStow is a local desktop application. The UI is a native window, not a website
 
 ## What it is
 
-VidStow downloads public, on-demand YouTube videos, Shorts, and playlists onto the user's machine.
+VidStow downloads on-demand YouTube videos, Shorts, and playlists onto the user's machine. Public videos work signed out. Age-restricted and account-gated videos the user's existing browser session can already watch can be downloaded when a Settings browser session or cookie-file path is configured. Cookie values are never stored.
 
 The user pastes a link (or a small batch of links), inspects what will be saved, chooses a readable output, and sends work to a durable FIFO queue. Analysis and downloads run locally. There is no VidStow account, no cloud library, and no hosted converter in the middle.
 
@@ -21,7 +21,7 @@ Current status: beta. Packaged preview is macOS Apple Silicon. The application s
 
 ## Who it is for
 
-Someone who wants a specific public YouTube video, Short, playlist, or short list of URLs saved as files they own, without signing in and without learning yt-dlp.
+Someone who wants a specific public YouTube video, Short, playlist, or short list of URLs saved as files they own, without learning yt-dlp. Optional Settings browser sign-in covers age-restricted or account-gated videos that account can already watch.
 
 Typical jobs:
 
@@ -31,7 +31,7 @@ Typical jobs:
 4. Watch progress, pause, cancel, retry, or recover when something is unsafe to guess about.
 5. Find a finished file later, open it, reveal it in the system file manager, or delete it.
 
-Not the audience: people hunting channels, live streams, private videos, other sites, or a yt-dlp replacement with every extractor and flag.
+Not the audience: people hunting channels, live streams, other sites, or a yt-dlp replacement with every extractor and flag.
 
 ## Product principles
 
@@ -52,6 +52,7 @@ Not the audience: people hunting channels, live streams, private videos, other s
 ### Supported
 
 - Public, on-demand YouTube watch URLs, Shorts URLs, and playlist URLs
+- Age-restricted and account-gated videos the user’s existing browser session can already watch, via an optional Settings browser session or cookie-file path (cookie values are never stored)
 - Links that contain both a video and a playlist (user chooses which to review)
 - Drag-and-drop of a public YouTube URL onto the window
 - Single-video analysis with curated output plans
@@ -69,17 +70,16 @@ Not the audience: people hunting channels, live streams, private videos, other s
 
 ### Out of scope
 
-- Channels, site-wide search, live streams, authenticated or private downloads
+- Channels, site-wide search, live streams
 - Sites other than YouTube
-- DRM, cookies, login, or access-control circumvention
+- In-app Google login, password capture, or persisting cookie values
+- DRM or access-control circumvention beyond borrowing a browser session the user already has
 - Universal resume or guaranteed byte reuse
 - Treating cleanup, publication, or recovery as successful when evidence is uncertain
 - Automatic updates
 - Feature parity with yt-dlp or the broader `ytdlp-go` CLI
 - Cloud sync, accounts, or a hosted library
 - Light/dark theme switching. The shipped shell is dark.
-
-If analysis cannot proceed, fail with a clear unsupported-URL dialog. Do not silently try other extractors.
 
 ## Core objects
 
@@ -259,6 +259,12 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 - Include auto-generated captions (switch, off by default). Uses auto-generated tracks when a language has no manual subtitles.
 - Embed title & channel details, Embed thumbnail artwork, Embed chapter markers (switches, need FFmpeg). The dock carries the same choices per download.
 
+**Signed-in downloads**
+
+- Status echo: Off, or the chosen browser and optional profile. Signed out copy when Off. When a session is configured, the next signed-in check is the real test — nothing in Settings is verified yet. Cookies are never stored.
+- Browser session: Off / Chrome / Firefox / Safari / Edge / Brave, plus an optional free-typed profile. Sign in to YouTube in that browser first. VidStow reads the session for one check at a time.
+- Cookie file fallback: Choose file / Remove. Path only. For when the browser store cannot be read.
+
 **Advanced**
 
 - Engine & dependencies: Ready / Missing, Recheck Dependencies, ytdlp-go version underneath.
@@ -277,7 +283,7 @@ Never display the string `yt-dlp` as the engine name. The branded engine is `ytd
 
 ## Dialogs and system states
 
-**Unsupported URL.** Title `Unsupported URL`. The link must be a valid, publicly accessible YouTube video, Short, or playlist.
+**Unsupported URL.** Title `Unsupported URL`. The link must be a valid YouTube video, Short, or playlist. Public videos work signed out; age-restricted or account-gated links need a browser session in Settings.
 
 **FFmpeg required.** Title `FFmpeg is required for most downloads`. Install it or point VidStow at it in Settings; original audio that does not need merging can still be queued. Primary: Open Settings.
 

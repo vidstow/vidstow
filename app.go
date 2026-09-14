@@ -269,6 +269,7 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		}
 	})
 	a.applyFFmpegDiscovery(ffmpegdetect.Probe(ctx, settings.FFmpegPath))
+	a.applyBrowserSession(settings)
 	emitAppEvent(ctx, "ffmpeg:update", a.ffmpegStatus())
 	if err := a.configureAutomaticDiagnostics(settings.AutomaticDiagnostics); err != nil {
 		logAppErrorf(ctx, "desktop: clear disabled diagnostics outbox: %v", err)
@@ -441,11 +442,15 @@ func (a *App) UpdateSettings(next store.Settings) (store.Settings, error) {
 	// particular, a queued stale snapshot containing "enabled" must not undo
 	// a user-facing opt-out that completed first.
 	next.AutomaticDiagnostics = current.AutomaticDiagnostics
+	if err := normalizeBrowserSettings(&next); err != nil {
+		return store.Settings{}, err
+	}
 	if err := setAppSettings(a.store, next); err != nil {
 		return store.Settings{}, err
 	}
 	a.jobs.SetConcurrency(next.DownloadConcurrency)
 	a.applyFFmpegDiscovery(ffmpegdetect.Probe(a.ctx, next.FFmpegPath))
+	a.applyBrowserSession(a.store.Settings())
 	emitAppEvent(a.ctx, "settings:update", a.store.Settings())
 	return a.store.Settings(), nil
 }
@@ -662,7 +667,7 @@ func (a *App) AnalyzeURL(raw string) (jobs.InfoSummary, error) {
 			a.recordDiagnosticProblem(operationID, problem)
 		}
 		wailsruntime.LogErrorf(a.ctx, "desktop: analyze video: %v", err)
-		return jobs.InfoSummary{}, errors.New(friendlyAnalyzeError(err))
+		return jobs.InfoSummary{}, analyzeErrorForFrontend(err)
 	}
 	if summary.Title == "" {
 		summary.Title = "Untitled video"
@@ -695,7 +700,7 @@ func (a *App) AnalyzePlaylist(raw string) (jobs.PlaylistSummary, error) {
 			a.recordDiagnosticProblem(operationID, problem)
 		}
 		wailsruntime.LogErrorf(a.ctx, "desktop: analyze playlist: %v", err)
-		return jobs.PlaylistSummary{}, errors.New(friendlyAnalyzeError(err))
+		return jobs.PlaylistSummary{}, analyzeErrorForFrontend(err)
 	}
 	summary.URL = res.PlaylistURL
 	return summary, nil
@@ -1482,13 +1487,17 @@ func classifyAnalysisProblem(err error, duration time.Duration) (localdiagnostic
 		return localdiagnostics.Problem{}, false
 	}
 	category := "extractor_failed"
-	var typed *engine.Error
-	if errors.As(err, &typed) {
-		switch typed.Category {
-		case engine.ErrorAuthentication:
-			category = "authentication_required"
-		case engine.ErrorUnsupported:
-			category = "unsupported_resource"
+	if _, ok := jobs.AsAuthFailure(err); ok {
+		category = "authentication_required"
+	} else {
+		var typed *engine.Error
+		if errors.As(err, &typed) {
+			switch typed.Category {
+			case engine.ErrorAuthentication:
+				category = "authentication_required"
+			case engine.ErrorUnsupported:
+				category = "unsupported_resource"
+			}
 		}
 	}
 	return localdiagnostics.Problem{
@@ -1734,6 +1743,73 @@ func isTerminal(s jobs.Status) bool {
 	return s == jobs.StatusComplete || s == jobs.StatusFailed || s == jobs.StatusCanceled
 }
 
+
+func (a *App) applyBrowserSession(settings store.Settings) {
+	if a == nil || a.jobs == nil {
+		return
+	}
+	if err := normalizeBrowserSettings(&settings); err != nil {
+		a.jobs.SetBrowserSession("", "")
+		return
+	}
+	a.jobs.SetBrowserSession(settings.BrowserSession, settings.CookieFile)
+}
+
+func normalizeBrowserSettings(next *store.Settings) error {
+	session, err := jobs.NormalizeBrowserSession(next.BrowserSession)
+	if err != nil {
+		return err
+	}
+	cookieFile, err := jobs.NormalizeCookieFile(next.CookieFile)
+	if err != nil {
+		return err
+	}
+	next.BrowserSession = session
+	next.CookieFile = cookieFile
+	return nil
+}
+
+func analyzeErrorForFrontend(err error) error {
+	if err == nil {
+		return nil
+	}
+	if failure, ok := jobs.AsAuthFailure(err); ok {
+		return failure
+	}
+	return errors.New(friendlyAnalyzeError(err))
+}
+
+// PickCookieFile opens a file picker for a Netscape cookie file path.
+func (a *App) PickCookieFile() (string, error) {
+	if err := a.requireReady(); err != nil {
+		return "", err
+	}
+	return wailsruntime.OpenFileDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: "Choose cookie file",
+		Filters: []wailsruntime.FileFilter{
+			{DisplayName: "Cookie files", Pattern: "*.txt;*.cookies"},
+			{DisplayName: "All files", Pattern: "*.*"},
+		},
+	})
+}
+
+// ClearCookieFile removes the configured cookie-file fallback path.
+func (a *App) ClearCookieFile() (store.Settings, error) {
+	if err := a.requireReady(); err != nil {
+		return store.Settings{}, err
+	}
+	a.settingsMu.Lock()
+	defer a.settingsMu.Unlock()
+	settings := a.store.Settings()
+	settings.CookieFile = ""
+	if err := setAppSettings(a.store, settings); err != nil {
+		return store.Settings{}, err
+	}
+	a.applyBrowserSession(settings)
+	emitAppEvent(a.ctx, "settings:update", a.store.Settings())
+	return a.store.Settings(), nil
+}
+
 func (a *App) applyFFmpegDiscovery(status ffmpegdetect.Status) {
 	a.setFFmpegStatus(status)
 	if a.jobs == nil {
@@ -1830,6 +1906,9 @@ func friendlyAnalyzeError(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "Video analysis timed out — retry"
 	}
+	if _, ok := jobs.AsAuthFailure(err); ok {
+		return "Needs sign-in. Pick a browser in Settings, then review again."
+	}
 	var typed *engine.Error
 	if errors.As(err, &typed) {
 		switch typed.Category {
@@ -1839,7 +1918,7 @@ func friendlyAnalyzeError(err error) string {
 			}
 			return "We could not read this YouTube link. It may be unavailable or unsupported."
 		case engine.ErrorAuthentication:
-			return "That video requires sign-in and is not available in this version."
+			return "Needs sign-in. Pick a browser in Settings, then review again."
 		case engine.ErrorInvalidInput:
 			return "That YouTube link is not valid."
 		case engine.ErrorNetwork:
@@ -1866,6 +1945,9 @@ func friendlyPlaylistStartError(err error) string {
 	if isMembersOnlyMedia(err) {
 		return "A selected video requires a channel membership and is not available in this version."
 	}
+	if _, ok := jobs.AsAuthFailure(err); ok {
+		return "Needs sign-in. Pick a browser in Settings, then review again."
+	}
 	var typed *engine.Error
 	if errors.As(err, &typed) {
 		switch typed.Category {
@@ -1875,7 +1957,7 @@ func friendlyPlaylistStartError(err error) string {
 			}
 			return "A selected video could not be downloaded. Uncheck unavailable videos and try again."
 		case engine.ErrorAuthentication:
-			return "A selected video requires sign-in and is not available in this version."
+			return "Needs sign-in. Pick a browser in Settings, then review again."
 		case engine.ErrorInvalidInput:
 			return "A selected playlist video is not valid."
 		case engine.ErrorNetwork:

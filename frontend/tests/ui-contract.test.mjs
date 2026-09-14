@@ -190,6 +190,7 @@ test('page titles and controls match the approved redesign', async () => {
   assert.doesNotMatch(settings, /Restored as paused/);
   assert.match(settings, />General</);
   assert.match(settings, />Performance</);
+  assert.match(settings, />Signed-in downloads</);
   assert.match(settings, />Advanced</);
   assert.match(settings, />FFmpeg path</);
   assert.match(settings, />Diagnostics</);
@@ -234,10 +235,12 @@ test('first launch asks for explicit diagnostic consent without a default', asyn
 
 test('analysis failures stay on Home and select the paste field', async () => {
   const home = await read('../src/pages/Home.svelte');
-  assert.match(home, /title: validated \? 'Could not read this link' : 'Check this link'/);
+  assert.match(home, /validated \? 'Could not read this link' : 'Check this link'/);
+  assert.match(home, /presentCaughtAnalyzeError\(/);
   assert.match(home, /presentAnalyzeError\(/);
-  assert.match(home, /title: 'Batch could not be reviewed'/);
-  assert.match(home, /title: 'Could not read the playlist'/);
+  assert.match(home, /parseAuthFailure\(/);
+  assert.match(home, /'Batch could not be reviewed'/);
+  assert.match(home, /'Could not read the playlist'/);
   assert.doesNotMatch(home, /Paste another link/);
   assert.doesNotMatch(home, /pasteAnotherLink/);
   assert.doesNotMatch(home, /app-btn/);

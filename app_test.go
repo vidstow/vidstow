@@ -63,6 +63,76 @@ func TestFriendlyAnalyzeErrorOtherUnsupportedIsUnchanged(t *testing.T) {
 	}
 }
 
+func TestFriendlyAnalyzeErrorAuthenticationUsesBatchCopy(t *testing.T) {
+	err := &engine.Error{Category: engine.ErrorAuthentication, Op: "youtube extraction", Err: errors.New("login required")}
+	if got := friendlyAnalyzeError(err); got != "Needs sign-in. Pick a browser in Settings, then review again." {
+		t.Fatalf("friendlyAnalyzeError() = %q", got)
+	}
+	failure := &jobs.AuthFailure{
+		Reason: jobs.ReasonSigninRequired,
+		Title:  "This video needs your YouTube sign-in.",
+		Message: "Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only videos your account can already watch.",
+	}
+	if got := friendlyAnalyzeError(failure); got != "Needs sign-in. Pick a browser in Settings, then review again." {
+		t.Fatalf("AuthFailure flattening = %q", got)
+	}
+}
+
+func TestAnalyzeErrorForFrontendKeepsAuthEnvelope(t *testing.T) {
+	failure := &jobs.AuthFailure{
+		Reason:  jobs.ReasonSigninRequired,
+		Title:   "This video needs your YouTube sign-in.",
+		Message: "Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only videos your account can already watch.",
+	}
+	got := analyzeErrorForFrontend(failure)
+	if got == nil || !strings.HasPrefix(got.Error(), jobs.AuthFailurePrefix) {
+		t.Fatalf("envelope = %v", got)
+	}
+	if !strings.Contains(got.Error(), `"reason":"signin-required"`) || !strings.Contains(got.Error(), failure.Title) {
+		t.Fatalf("json envelope = %q", got.Error())
+	}
+}
+
+func TestUpdateSettingsNormalizesBrowserSession(t *testing.T) {
+	restore := installAppTestSeams(t)
+	defer restore()
+	app := NewApp()
+	app.startupAt(context.Background(), filepath.Join(secureAppTempDir(t), "state.json"))
+	if app.jobs == nil {
+		t.Fatal("startup did not initialize jobs")
+	}
+	defer func() {
+		app.stopCleanup(context.Background())
+		_ = app.jobs.Close(context.Background())
+		_ = app.store.Close()
+	}()
+	next := app.GetSettings()
+	next.BrowserSession = "Chrome:Default"
+	next.CookieFile = filepath.Join(t.TempDir(), "cookies.txt")
+	saved, err := app.UpdateSettings(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.BrowserSession != "chrome:Default" {
+		t.Fatalf("normalized session = %q", saved.BrowserSession)
+	}
+	if saved.CookieFile != next.CookieFile {
+		t.Fatalf("cookie file = %q", saved.CookieFile)
+	}
+	raw, err := os.ReadFile(app.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "SID=") {
+		t.Fatalf("state stored cookie bytes: %s", raw)
+	}
+	bad := saved
+	bad.BrowserSession = "chrome:cookie=secret"
+	if _, err := app.UpdateSettings(bad); err == nil {
+		t.Fatal("UpdateSettings accepted cookie values")
+	}
+}
+
 func TestStartDownloadRejectsPlaylistURL(t *testing.T) {
 	restore := installAppTestSeams(t)
 	defer restore()

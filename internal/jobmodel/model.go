@@ -72,6 +72,13 @@ type Settings struct {
 	// ConfirmBeforeDownload is unused. Kept so existing state.json still decodes.
 	ConfirmBeforeDownload bool   `json:"confirmBeforeDownload,omitempty"`
 	AutomaticDiagnostics  string `json:"automaticDiagnostics,omitempty"`
+	// BrowserSession is an engine CookiesFromBrowser spec
+	// (`browser[:profile][::container]`), or empty/off when signed out.
+	// It never stores cookie values.
+	BrowserSession string `json:"browserSession,omitempty"`
+	// CookieFile is an optional Netscape cookie-file path used when the
+	// browser store cannot be read. Path only — never cookie bytes.
+	CookieFile string `json:"cookieFile,omitempty"`
 	// OutputOptions seeds the per-download output choices shown before a
 	// download is queued. The zero value keeps VidStow's historical output.
 	OutputOptions OutputOptions `json:"outputOptions"`
@@ -340,14 +347,17 @@ type DurableJob struct {
 // PersistedRequest is deliberately limited to safe, user-originated metadata.
 // It must never contain media URLs, headers, cookies, or credentials.
 type PersistedRequest struct {
-	SourceURL     string        `json:"sourceUrl"`
-	VideoID       string        `json:"videoId"`
-	Title         string        `json:"title"`
-	Channel       string        `json:"channel"`
-	Quality       string        `json:"quality"`
-	PlanID        string        `json:"planId"`
-	Duration      string        `json:"duration"`
-	OutputOptions OutputOptions `json:"outputOptions,omitempty"`
+	SourceURL string `json:"sourceUrl"`
+	VideoID   string `json:"videoId"`
+	Title     string `json:"title"`
+	Channel   string `json:"channel"`
+	Quality   string `json:"quality"`
+	PlanID    string `json:"planId"`
+	Duration  string `json:"duration"`
+	// BrowserSession remembers which browser choice this job used (Q4).
+	// Path/profile name only — never cookie values.
+	BrowserSession string        `json:"browserSession,omitempty"`
+	OutputOptions  OutputOptions `json:"outputOptions,omitempty"`
 }
 
 type PersistedPlan struct {

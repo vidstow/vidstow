@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onDestroy } from 'svelte';
   import { api, type StartRequest, type StartPlaylistRequest, type StartBatchRequest } from '../lib/api.js';
-  import { errorMessage, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
+  import { errorMessage, parseAuthFailure, ffmpeg, modal, pendingUrl, settings, showBanner } from '../lib/stores.js';
   import { formatBytes, formatPlanSize, formatViewCount, shortAudioChip, shortTitle } from '../lib/format.js';
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
   import { subtitleLanguageOffered } from '../lib/subtitle-languages.js';
@@ -81,7 +81,7 @@
   let scopePlaylistTask: Promise<PlaylistSummary | null> | null = null;
   let scopePlaylistFailed = false;
   let scopeFocus: 'video' | 'playlist' = 'playlist';
-  let analyzeError: { title: string; message: string; retry?: boolean } | null = null;
+  let analyzeError: { title: string; message: string; retry?: boolean; openSettings?: boolean } | null = null;
   let detailsOpen = false;
 
   const batchExpiryTimer = setInterval(() => {
@@ -95,6 +95,7 @@
   });
 
   $: folder = $settings.downloadFolder;
+  $: sessionLabel = preview?.sessionLabel || playlist?.sessionLabel || scopeVideo?.sessionLabel || scopePlaylist?.sessionLabel || '';
   $: plans = preview?.plans ?? [];
   $: selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
   $: visiblePlans = plans.filter((plan) => plan.available && plan.kind === tab);
@@ -378,11 +379,7 @@
       detailsOpen = true;
     } catch (err) {
       if (requestGeneration !== batchGeneration) return;
-      presentAnalyzeError({
-        title: 'Batch could not be reviewed',
-        retry: true,
-        message: errorMessage(err, 'Paste between 2 and 20 individual public YouTube video or Short URLs.'),
-      });
+      presentCaughtAnalyzeError(err, 'Batch could not be reviewed', 'Paste between 2 and 20 individual public YouTube video or Short URLs.');
     } finally {
       if (requestGeneration === batchGeneration) batchBusy = false;
     }
@@ -612,11 +609,12 @@
       }
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
-      presentAnalyzeError({
-        title: validated ? 'Could not read this link' : 'Check this link',
-        retry: validated,
-        message: errorMessage(err, 'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.'),
-      });
+      presentCaughtAnalyzeError(
+        err,
+        validated ? 'Could not read this link' : 'Check this link',
+        'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.',
+        validated,
+      );
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
     }
@@ -629,11 +627,7 @@
       await action();
     } catch (err) {
       if (requestGeneration !== analysisGeneration) return;
-      presentAnalyzeError({
-        title: 'Could not read the playlist',
-        retry: true,
-        message: errorMessage(err, 'Could not analyze this link.'),
-      });
+      presentCaughtAnalyzeError(err, 'Could not read the playlist', 'Could not analyze this link.');
     } finally {
       if (requestGeneration === analysisGeneration) busy = false;
     }
@@ -748,7 +742,22 @@
     });
   }
 
-  function presentAnalyzeError(next: { title: string; message: string; retry?: boolean }) {
+  
+  function presentCaughtAnalyzeError(err: unknown, fallbackTitle: string, fallbackMessage: string, retry = true) {
+    const auth = parseAuthFailure(err);
+    if (auth) {
+      presentAnalyzeError({
+        title: auth.title || fallbackTitle,
+        message: auth.message || fallbackMessage,
+        retry: true,
+        openSettings: true,
+      });
+      return;
+    }
+    presentAnalyzeError({ title: fallbackTitle, message: errorMessage(err, fallbackMessage), retry });
+  }
+
+  function presentAnalyzeError(next: { title: string; message: string; retry?: boolean; openSettings?: boolean }) {
     analyzeError = next;
     selectPasteField();
   }
@@ -965,6 +974,10 @@
     <p class="input-help" id="input-help">Up to 20 links. Shift + Enter adds another line.</p>
   {/if}
 
+  {#if sessionLabel && !analyzeError}
+    <p class="session-line"><span class="session-dot" aria-hidden="true"></span><span>Signed in via {sessionLabel}.</span><button type="button" class="session-link" on:click={() => dispatch('goto', 'settings')}>Open Settings</button></p>
+  {/if}
+
   {#if !hasDock && !analyzeError && !isWaiting}
     <p class="hint">
       One link, a playlist, or a handful — the link decides.
@@ -979,8 +992,9 @@
     <div class="errslot" role="alert">
       <b>{analyzeError.title}</b>
       <span>{analyzeError.message}</span>
-      {#if analyzeError.retry || (linkedPlaylist && scopeVideo)}
+      {#if analyzeError.retry || analyzeError.openSettings || (linkedPlaylist && scopeVideo)}
         <div class="flow-actions">
+          {#if analyzeError.openSettings}<button type="button" class="dbtn" on:click={() => dispatch('goto', 'settings')}>Open Settings</button>{/if}
           {#if analyzeError.retry}<button type="button" class="dbtn pri" on:click={() => submitPaste()}>Try again</button>{/if}
           {#if linkedPlaylist && scopeVideo}<button type="button" class="dbtn" on:click={() => { analyzeError = null; chooseScopeVideo(); }}>Use the video</button>{/if}
         </div>
@@ -2097,4 +2111,32 @@
     .dfoot { flex-direction: column; align-items: stretch; }
     .dacts { width: 100%; justify-content: flex-end; }
   }
+
+  .session-line {
+    margin: -5px 2px 0;
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+  }
+  .session-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-success);
+    flex-shrink: 0;
+  }
+  .session-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #93C5FD;
+    font-size: 10px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .session-link:hover { text-decoration: underline; }
 </style>

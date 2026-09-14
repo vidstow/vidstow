@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/tejasa97/vidstow/internal/jobmodel"
@@ -51,6 +52,8 @@ func (s *V2Store) Settings() Settings {
 		ConfirmBeforeDownload: state.Settings.ConfirmBeforeDownload,
 		OutputOptions:         state.Settings.OutputOptions.Clone(),
 		AutomaticDiagnostics:  state.Settings.AutomaticDiagnostics,
+		BrowserSession:        state.Settings.BrowserSession,
+		CookieFile:            state.Settings.CookieFile,
 	}
 }
 
@@ -72,6 +75,8 @@ func (s *V2Store) SetSettings(next Settings) error {
 		ConfirmBeforeDownload: next.ConfirmBeforeDownload,
 		OutputOptions:         next.OutputOptions.Clone(),
 		AutomaticDiagnostics:  next.AutomaticDiagnostics,
+		BrowserSession:        strings.TrimSpace(next.BrowserSession),
+		CookieFile:            strings.TrimSpace(next.CookieFile),
 	}
 	if settings.DownloadFolder == "" {
 		settings.DownloadFolder = defaultStateV2().Settings.DownloadFolder

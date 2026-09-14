@@ -51,6 +51,7 @@ test.each([
   ['rate_limited', 'Retry problem'],
   ['folder_unavailable', 'Change folder for problem'],
   ['resource_unavailable', 'Open source for problem'],
+  ['authentication_required', 'Retry problem'],
 ])('failure %s highlights its recovery action', async (category, label) => {
   queueView.set(view([{ ...row('problem'), lifecycle: 'failed', capabilities: { retry: true, changeFolder: true, openSource: true }, failure: { category, messageKey: '', heading: 'Problem', message: 'Could not finish.', recommendedAction: 'Recovery guidance', retryable: true, partialOutput: false } }]));
   render(Queue);

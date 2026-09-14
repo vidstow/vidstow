@@ -337,6 +337,10 @@
   onPauseAll={() => withPending('Pausing all…', pauseAll)}
   onResumeAll={resumeAll}
   onGoHome={() => route.set('home')}
+  onOpenSettings={() => {
+    route.set('settings');
+    queueMicrotask(() => document.getElementById('signin-settings-title')?.scrollIntoView({ block: 'start' }));
+  }}
   onClearCompleted={clearCompleted}
   onCollectionAction={collectionAction}
   onAction={(event) => withPending(actionLabels[event.action] ?? 'Updating download…', async () => {

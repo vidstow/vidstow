@@ -470,6 +470,7 @@ type Manager struct {
 	inspectResume        resumeInspector
 	prepareResumeDiscard resumeDiscardPreparer
 	ffmpegLocation       string
+	session              browserSession
 	mu                   sync.Mutex
 	all                  map[string]*jobState
 	order                []string
@@ -2198,9 +2199,9 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		failure.Retryable = true
 	case "authentication_required":
 		failure.MessageKey = "queue.failure.authentication_required"
-		failure.Heading = "Download was refused"
-		failure.Message = "The page may still play in a browser. Try again."
-		failure.RecommendedAction = "Retry this item."
+		failure.Heading = "This download needs sign-in."
+		failure.Message = "Sign in to YouTube in your browser, pick that browser in Settings, then retry this item."
+		failure.RecommendedAction = "Retry reuses the same browser session."
 		failure.Retryable = true
 	case "could_not_start":
 		failure.MessageKey = "queue.failure.could_not_start"
@@ -4563,6 +4564,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 
 	m.mu.Lock()
 	state.embedSkipped = false
+	session := m.session
 	req := engine.Request{
 		URL:            state.snap.URL,
 		OutputDir:      state.snap.OutputDir,
@@ -4575,6 +4577,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 			PreservePartialOnCancel: true,
 		},
 	}
+	session.apply(&req)
 	if state.plan != nil {
 		req.Format = state.plan.Selector
 		if state.outputTemplate != "" {
@@ -5218,6 +5221,9 @@ type PlaylistSummary struct {
 	Available       int                    `json:"available"`
 	Unavailable     int                    `json:"unavailable"`
 	Entries         []PlaylistEntrySummary `json:"entries"`
+	// SessionLabel is set when a configured browser/cookie session was
+	// attached for this playlist lookup. Never cookies.
+	SessionLabel string `json:"sessionLabel,omitempty"`
 }
 
 type PlaylistEntrySummary struct {
@@ -5247,6 +5253,9 @@ type InfoSummary struct {
 	Access          AccessSummary      `json:"access"`
 	Subtitles       []SubtitleLanguage `json:"subtitles,omitempty"`
 	Plans           []outputplan.Plan  `json:"plans"`
+	// SessionLabel is set when a configured browser/cookie session was
+	// attached for this analysis (e.g. "Chrome · Default"). Never cookies.
+	SessionLabel string `json:"sessionLabel,omitempty"`
 }
 
 // SubtitleLanguage is one caption track reported by analysis, used to render
@@ -5286,11 +5295,11 @@ func (m *Manager) AnalyzePlaylist(ctx context.Context, rawURL string) (PlaylistS
 	analysisCtx, cancel := context.WithCancel(ctx)
 	stopLifecycle := context.AfterFunc(lifecycleCtx, cancel)
 	defer func() { stopLifecycle(); cancel(); m.analysisWG.Done() }()
-	result, err := runner(analysisCtx, engine.Request{
+	result, session, err := m.runAnalyzeWithSession(analysisCtx, engine.Request{
 		URL: rawURL, Simulate: true,
 		Playlist:   engine.PlaylistOptions{Flat: true, End: MaxPlaylistEntries},
 		Filesystem: engine.FilesystemOptions{FfmpegLocation: ffmpegLocation},
-	})
+	}, runner)
 	if err != nil {
 		return PlaylistSummary{}, err
 	}
@@ -5298,6 +5307,7 @@ func (m *Manager) AnalyzePlaylist(ctx context.Context, rawURL string) (PlaylistS
 	if err != nil {
 		return PlaylistSummary{}, err
 	}
+	summary.SessionLabel = session.label()
 	expectedID := playlistIDFromURL(rawURL)
 	if expectedID == "" || summary.ID != expectedID {
 		return PlaylistSummary{}, errors.New("analyze playlist: playlist identity mismatch")
@@ -5528,7 +5538,7 @@ func (m *Manager) AnalyzeForAdmission(ctx context.Context, rawURL string) (InfoS
 			FfmpegLocation: ffmpegLocation,
 		},
 	}
-	result, err := runner(analysisCtx, req)
+	result, session, err := m.runAnalyzeWithSession(analysisCtx, req, runner)
 	if err != nil {
 		return InfoSummary{}, nil, err
 	}
@@ -5536,6 +5546,7 @@ func (m *Manager) AnalyzeForAdmission(ctx context.Context, rawURL string) (InfoS
 	if err != nil {
 		return InfoSummary{}, nil, err
 	}
+	summary.SessionLabel = session.label()
 	return summary, privatePlans, nil
 }
 

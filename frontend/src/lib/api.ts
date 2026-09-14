@@ -93,6 +93,8 @@ export const api = {
     get: () => call<Settings>('GetSettings'),
     update: (next: Settings) => call<Settings>('UpdateSettings', next),
     setAutomaticDiagnostics: (preference: 'enabled' | 'disabled') => call<Settings>('SetAutomaticDiagnostics', preference),
+    pickCookieFile: () => call<string>('PickCookieFile'),
+    clearCookieFile: () => call<Settings>('ClearCookieFile'),
   },
   ffmpeg: {
     status: () => call<FFmpegStatus>('GetFFmpegStatus'),

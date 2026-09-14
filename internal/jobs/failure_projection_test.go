@@ -24,7 +24,7 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 	}{
 		{name: "network", code: "network", category: "network_interrupted", retry: true, messageKey: "queue.failure.network_interrupted"},
 		{name: "rate limited", code: "network", httpStatus: 429, category: "rate_limited", retry: true, heading: "YouTube asked VidStow to slow down", messageKey: "queue.failure.rate_limited"},
-		{name: "authentication", code: "authentication", category: "authentication_required", retry: true, openSource: true, heading: "Download was refused", messageKey: "queue.failure.authentication_required"},
+		{name: "authentication", code: "authentication", category: "authentication_required", retry: true, openSource: true, heading: "This download needs sign-in.", messageKey: "queue.failure.authentication_required"},
 		{name: "unavailable", code: "unsupported", category: "resource_unavailable", retry: true, openSource: true, messageKey: "queue.failure.resource_unavailable"},
 		{name: "invalid input", code: "invalid_input", category: "could_not_start", retry: true, heading: "Download could not start", messageKey: "queue.failure.could_not_start"},
 		{name: "destination exists", code: "destination-exists", category: "destination_exists", retry: true, heading: "File already in the folder", messageKey: "queue.failure.destination_exists"},

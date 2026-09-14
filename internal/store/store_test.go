@@ -45,6 +45,8 @@ func TestStoreRoundtrip(t *testing.T) {
 	settings := s.Settings()
 	settings.DownloadFolder = filepath.Join(dir, "downloads")
 	settings.FFmpegPath = "/opt/local/bin/ffmpeg"
+	settings.BrowserSession = "chrome:Default"
+	settings.CookieFile = filepath.Join(dir, "cookies.txt")
 	if err := s.SetSettings(settings); err != nil {
 		t.Fatalf("SetSettings: %v", err)
 	}
@@ -81,6 +83,12 @@ func TestStoreRoundtrip(t *testing.T) {
 	}
 	if got := s2.Settings().FFmpegPath; got != settings.FFmpegPath {
 		t.Fatalf("FFmpegPath = %q, want %q", got, settings.FFmpegPath)
+	}
+	if got := s2.Settings().BrowserSession; got != "chrome:Default" {
+		t.Fatalf("BrowserSession = %q", got)
+	}
+	if got := s2.Settings().CookieFile; got != settings.CookieFile {
+		t.Fatalf("CookieFile = %q", got)
 	}
 	if got := len(s2.History()); got != 1 {
 		t.Fatalf("history length = %d, want 1", got)
