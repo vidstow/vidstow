@@ -488,7 +488,7 @@
     <tbody>
       <tr><td><b>Where you sign in</b></td><td>Inside 4K, seen as an iPad</td><td>In Safari or Chrome itself, then VidStow borrows that session</td></tr>
       <tr><td><b>What gets stored</b></td><td>Session inside 4K</td><td>Only the browser name and profile — never the cookies</td></tr>
-      <tr><td><b>Unlocks</b></td><td>Age-restricted, Liked, Watch Later, private you can watch, Premium</td><td>Same set on YouTube only, gated by the scope choice in section 10</td></tr>
+      <tr><td><b>Unlocks</b></td><td>Age-restricted, Liked, Watch Later, private you can watch, Premium</td><td>Same set, YouTube only, once the scope question in section 10 settles</td></tr>
       <tr><td><b>Channels, live, other sites</b></td><td>Supported in 4K</td><td>Stay out, as the VidStow brief already says</td></tr>
     </tbody>
   </table></div>
@@ -1038,9 +1038,9 @@
   <div class="tblwrap"><table>
     <thead><tr><th>Button</th><th>What it does</th><th>Before · main</th><th>After · this feature</th></tr></thead>
     <tbody>
-      <tr><td><b>Retry</b></td><td>Attempts the same download again with the row's own options</td><td>Secondary — retrying signed-out rarely helps</td><td><b>Leads, full width</b> — reuses the recorded browser session</td></tr>
-      <tr><td><b>Open Settings</b></td><td>Leaves Queue for the Signed-in downloads group</td><td>Absent</td><td><b>New</b>, beside Retry</td></tr>
-      <tr><td><b>Open source</b></td><td>Opens the YouTube page in a browser to check it by eye</td><td><b>Leads, full width</b> — today a refused download is usually checked, not fixed, in app</td><td>Demoted to an ordinary button</td></tr>
+      <tr><td><b>Retry</b></td><td>Attempts the same download again with the row's own options</td><td>Secondary — retrying signed-out rarely helps</td><td><b>Leads, full width</b> — same session again, assuming the memory question below lands that way</td></tr>
+      <tr><td><b>Open Settings</b></td><td>Jumps from Queue to the Signed-in downloads group</td><td>Absent</td><td><b>New</b>, beside Retry</td></tr>
+      <tr><td><b>Open source</b></td><td>Opens the YouTube page in a browser to check it by eye</td><td><b>Leads, full width</b> — today a refused download gets eyeballed in a browser, since the app itself can't fix sign-in</td><td>Demoted to an ordinary button</td></tr>
       <tr><td><b>Copy link</b></td><td>Copies the source link for pasting elsewhere</td><td>Ordinary button</td><td>Unchanged</td></tr>
       <tr><td><b>Remove</b></td><td>Forgets the queue entry; files on disk stay untouched</td><td>Quiet, right aligned</td><td>Unchanged</td></tr>
     </tbody>
@@ -1126,9 +1126,9 @@
     <thead><tr><th>Content</th><th>Needs sign-in</th><th>Stance</th></tr></thead>
     <tbody>
       <tr><td><b>Public video, Short, playlist</b></td><td>No</td><td>Unchanged — no session needed</td></tr>
-      <tr><td><b>Age-restricted video you can watch</b></td><td>Yes</td><td>Support first</td></tr>
-      <tr><td><b>Liked, Watch Later, private playlist you can watch</b></td><td>Yes</td><td>Support behind the scope choice in section 10</td></tr>
-      <tr><td><b>Channel membership item you joined</b></td><td>Yes</td><td>Same gate — only what the account can watch</td></tr>
+      <tr><td><b>Age-restricted video you can watch</b></td><td>Yes</td><td>Yes, and first on the list</td></tr>
+      <tr><td><b>Liked, Watch Later, private playlist you can watch</b></td><td>Yes</td><td>Yes, once the scope question in section 10 settles</td></tr>
+      <tr><td><b>Channel membership item you joined</b></td><td>Yes</td><td>Same deal — only what your account can already watch</td></tr>
       <tr><td><b>DRM rentals, other sites, live, full channels</b></td><td>—</td><td>Stay out, as the brief already says</td></tr>
     </tbody>
   </table></div>
@@ -1138,8 +1138,8 @@
     <thead><tr><th>Platform</th><th>Browsers that can be read</th><th>Watch for</th></tr></thead>
     <tbody>
       <tr><td><b>macOS</b></td><td>Chrome, Firefox, Safari</td><td>Keychain prompt for Chrome; Safari uses its own cookie store</td></tr>
-      <tr><td><b>Linux</b></td><td>Chrome, Chromium, Brave, Firefox</td><td>Newer encrypted values need a password provider the app does not guess</td></tr>
-      <tr><td><b>Windows</b></td><td>Chrome, Chromium, Edge, Brave, Vivaldi, Opera, Firefox</td><td>Newest app-bound values may import partially and say so</td></tr>
+      <tr><td><b>Linux</b></td><td>Chrome, Chromium, Brave, Firefox</td><td>Newer encrypted values need a system password the app won't go fishing for</td></tr>
+      <tr><td><b>Windows</b></td><td>Chrome, Chromium, Edge, Brave, Vivaldi, Opera, Firefox</td><td>Newest app-bound values might come through partially — and the app will tell you when they do</td></tr>
     </tbody>
   </table></div>
   <p class="note">One habit worth building: YouTube quietly rotates cookies on open tabs. The reliable move is a calm, quiet profile — or just closing the YouTube tab once you're signed in — which happens to be exactly what the engine docs already suggest. Firefox folks can even name a profile plus a container, like <span class="kbd">firefox:work::Personal</span>.</p>
@@ -1148,15 +1148,15 @@
   <div class="tblwrap"><table>
     <thead><tr><th>File</th><th>Area</th><th>Change</th></tr></thead>
     <tbody>
-      <tr><td class="mono">internal/store/store.go</td><td>Settings</td><td>Add the browser choice and cookie file path with the same text validation as the download folder</td></tr>
+      <tr><td class="mono">internal/store/store.go</td><td>Settings</td><td>Add the browser choice and cookie file path, validated just like the download folder</td></tr>
       <tr><td class="mono">app.go</td><td>AnalyzeURL · AnalyzePlaylist · batch admission</td><td>Return a keyed sign-in error instead of a flat string — including the stale-plan refresh path — so Home, batch, and Queue each render their own copy. Attach the configured session to every attempt; on a session-unreadable failure, retry once signed out before reporting.</td></tr>
-      <tr><td class="mono">batch.go</td><td>Per-line admission</td><td>Translate the keyed error into each line's reason string; statuses and counts untouched</td></tr>
-      <tr><td class="mono">internal/jobs/jobs.go</td><td>Analyze + Download run · Queue copy</td><td>Thread the choice into every <span class="mono">engine.Request</span>; new Heading, Message, and RecommendedAction for <span class="mono">authentication_required</span>; under the recommended Retry answer, record the choice on the row</td></tr>
+      <tr><td class="mono">batch.go</td><td>Per-line admission</td><td>Turn the keyed error into each line's reason string; statuses and counts stay exactly as they are</td></tr>
+      <tr><td class="mono">internal/jobs/jobs.go</td><td>Analyze + Download run · Queue copy</td><td>Pass the choice into every <span class="mono">engine.Request</span>, with a new Heading, Message, and RecommendedAction for <span class="mono">authentication_required</span> — and if the memory answer wins, record the choice on the row</td></tr>
       <tr><td class="mono">frontend/src/lib/types.ts</td><td>Settings shape</td><td>Mirror the new fields so the UI and the Go side cannot drift</td></tr>
       <tr><td class="mono">frontend/src/pages/Settings.svelte</td><td>Signed-in downloads group</td><td>Status echo, browser picker, profile, cookie file — new group, existing row idiom, no Check button in v1</td></tr>
-      <tr><td class="mono">frontend/src/pages/Home.svelte</td><td>Error card + session line + batch reason</td><td>Map the keyed sign-in error to its own title and two buttons; render the session line whenever a session is configured; batch reason copy</td></tr>
-      <tr><td class="mono">frontend/src/lib/lifecycle-ui/QueueOverview.svelte</td><td>Failed-row recovery + inspector</td><td><span class="mono">recoveryAction</span> returns retry for sign-in failures; new Open Settings button on those rows navigates via the page dispatch</td></tr>
-      <tr><td class="mono">PRODUCT.md</td><td>Scope</td><td>Move bounded sign-in from out of scope to supported, with the DRM and no-storage lines kept</td></tr>
+      <tr><td class="mono">frontend/src/pages/Home.svelte</td><td>Error card + session line + batch reason</td><td>Give the keyed sign-in error its own title and two buttons; show the session line whenever a session is set; batch reason copy</td></tr>
+      <tr><td class="mono">frontend/src/lib/lifecycle-ui/QueueOverview.svelte</td><td>Failed-row recovery + inspector</td><td>Teach <span class="mono">recoveryAction</span> to answer retry for sign-in failures; the new Open Settings button on those rows navigates through the page dispatch</td></tr>
+      <tr><td class="mono">PRODUCT.md</td><td>Scope</td><td>Move bounded sign-in into supported, keeping the DRM and no-storage lines right where they are</td></tr>
     </tbody>
   </table></div>
 
@@ -1235,8 +1235,8 @@ type Settings struct {
     <h4>Which import path should ship?</h4>
     <p>Under the hood both roads lead to the same two engine fields. Reading the browser is the comfortable everyday path; the file is there for the day the browser store won't cooperate.</p>
     <label><input type="radio" name="method" value="Both browser and file (recommended)" checked> <span><strong>Both browser and file.</strong> Everyday borrowing plus a fallback when the store cannot be read.</span></label>
-    <label><input type="radio" name="method" value="Browser only"> <span><strong>Browser only.</strong> Smallest surface, no file handling at all.</span></label>
-    <label><input type="radio" name="method" value="File only"> <span><strong>File only.</strong> Explicit export step, avoids profile and Keychain quirks.</span></label>
+    <label><input type="radio" name="method" value="Browser only"> <span><strong>Browser only.</strong> The simplest version — no file handling at all.</span></label>
+    <label><input type="radio" name="method" value="File only"> <span><strong>File only.</strong> You export the file yourself, sidestepping profile and Keychain quirks entirely.</span></label>
     <button class="pbtn sm pri" type="submit">Queue this answer</button>
     <div class="qstate">Not queued yet.</div>
   </form>
@@ -1245,7 +1245,7 @@ type Settings struct {
     <h4>What should sign-in unlock first?</h4>
     <p>Whatever you decide here, public videos behave exactly as they do today. The only real question is how far the very first signed-in slice should reach.</p>
     <label><input type="radio" name="scope" value="Age-restricted plus my private (recommended)" checked> <span><strong>Age-restricted plus my private.</strong> Anything the account can already watch on YouTube, including Liked and Watch Later.</span></label>
-    <label><input type="radio" name="scope" value="Age-restricted only"> <span><strong>Age-restricted only.</strong> Smallest promise; private lists stay unsupported for now.</span></label>
+    <label><input type="radio" name="scope" value="Age-restricted only"> <span><strong>Age-restricted only.</strong> The smallest promise we can make; private lists stay unsupported for now.</span></label>
     <button class="pbtn sm pri" type="submit">Queue this answer</button>
     <div class="qstate">Not queued yet.</div>
   </form>
@@ -1258,7 +1258,7 @@ type Settings struct {
     <h4>What should Retry remember?</h4>
     <p>Here's the thing about Retry: it only means the same thing if it runs under the same session. Forget the session and every retry starts with an awkward "wait, which browser?" moment.</p>
     <label><input type="radio" name="retry" value="Remember browser choice per job (recommended)" checked> <span><strong>Remember browser choice per job.</strong> The row names its session and Retry repeats it.</span></label>
-    <label><input type="radio" name="retry" value="Ask every time"> <span><strong>Ask every time.</strong> No per-job memory; each Retry re-picks.</span></label>
+    <label><input type="radio" name="retry" value="Ask every time"> <span><strong>Ask every time.</strong> The row remembers nothing, so every Retry starts from scratch.</span></label>
     <button class="pbtn sm pri" type="submit">Queue this answer</button>
     <div class="qstate">Not queued yet.</div>
   </form>
