@@ -48,6 +48,11 @@ func TestResolvePlaylistSelectionUsesOnlyTrustedAvailableEntries(t *testing.T) {
 		t.Fatal("returned selection aliases trusted cache")
 	}
 
+	preview, err := manager.PlaylistPreview("PLfixture")
+	if err != nil || preview.ID != "PLfixture" || len(preview.Entries) != 3 {
+		t.Fatalf("PlaylistPreview = %#v err=%v", preview, err)
+	}
+
 	for name, selected := range map[string][]int{
 		"duplicate": {1, 1}, "unavailable": {2}, "unknown": {4}, "invalid": {0},
 	} {

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import App from '../src/App.svelte';
-import { ffmpeg, history, jobs, pendingUrl, persistence, queueView, route, settings } from '../src/lib/stores.js';
+import { ffmpeg, follows, history, jobs, pendingUrl, persistence, queueView, route, settings } from '../src/lib/stores.js';
 
 const firstURL = 'https://www.youtube.com/watch?v=fixture0001';
 
@@ -54,6 +54,9 @@ function installBindings() {
         ListJobs: vi.fn(async () => []),
         GetQueueView: vi.fn(async () => emptyQueueView),
         ListDownloads: vi.fn(async () => []),
+        ListFollows: vi.fn(async () => ({ follows: [], checking: false, checkDone: 0, checkTotal: 0 })),
+        CheckFollow: vi.fn(async () => ({ follows: [], checking: false, checkDone: 0, checkTotal: 0 })),
+        CheckAllFollows: vi.fn(async () => ({ follows: [], checking: false, checkDone: 0, checkTotal: 0 })),
         GetFFmpegStatus: vi.fn(async () => ({
           available: true, path: '/usr/bin/ffmpeg', version: '7.0', ffprobePath: '/usr/bin/ffprobe', message: '',
         })),
@@ -93,6 +96,7 @@ describe('Home analysis survives navigation', () => {
     pendingUrl.set('');
     jobs.set([]);
     history.set([]);
+    follows.set({ follows: [], checking: false, checkDone: 0, checkTotal: 0 });
     queueView.set(null);
     persistence.set({ available: true, healthy: true });
     ffmpeg.set({ available: true, path: '', version: '', ffprobePath: '', message: '' });
@@ -120,6 +124,10 @@ describe('Home analysis survives navigation', () => {
 
     await user.click(screen.getByRole('button', { name: 'Queue' }));
     expect(await screen.findByRole('heading', { name: 'Queue' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument();
+    const followingNav = screen.getByRole('button', { name: 'Following' });
+    const queueNav = screen.getByRole('button', { name: 'Queue' });
+    expect(queueNav.compareDocumentPosition(followingNav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Nothing here yet' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Go to Home' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Analyze' })).not.toBeInTheDocument();
@@ -146,6 +154,19 @@ describe('Home analysis survives navigation', () => {
     await user.click(screen.getByRole('button', { name: 'Home' }));
     expect(await screen.findByText('Fixture video')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+  });
+
+  test('Following sits under Queue and shows the empty copy without checking', async () => {
+    const user = userEvent.setup();
+    render(App);
+    await waitForHome();
+    const app = (window as any).go.main.App;
+    await user.click(screen.getByRole('button', { name: 'Following' }));
+    expect(await screen.findByRole('heading', { name: 'Following' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'You are not following any playlists.' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Go to Home' })).toBeInTheDocument();
+    expect(app.CheckFollow).not.toHaveBeenCalled();
+    expect(app.CheckAllFollows).not.toHaveBeenCalled();
   });
 
   test('the status bar has no Path label', async () => {

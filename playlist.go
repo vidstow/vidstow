@@ -51,6 +51,10 @@ type analyzedPlaylistChild struct {
 // through the trusted preview, analyzes every canonical child on the backend,
 // chooses curated plans, then delegates one atomic collection to State v2.
 func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (PlaylistStartResult, error) {
+	return a.admitPlaylistDownload(req, "")
+}
+
+func (a *App) admitPlaylistDownload(req StartPlaylistRequest, outputDir string) (PlaylistStartResult, error) {
 	if err := a.requireReady(); err != nil {
 		return PlaylistStartResult{}, err
 	}
@@ -104,7 +108,9 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (PlaylistStartResu
 	}
 
 	settings := a.store.Settings()
-	outputDir := filepath.Join(settings.DownloadFolder, playlistSubfolder(preview.Title, preview.ID))
+	if strings.TrimSpace(outputDir) == "" {
+		outputDir = filepath.Join(settings.DownloadFolder, playlistSubfolder(preview.Title, preview.ID))
+	}
 	outputDir, err = canonicalOutputRequestPath(outputDir)
 	if err != nil {
 		return PlaylistStartResult{}, err

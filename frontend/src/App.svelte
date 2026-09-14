@@ -2,7 +2,8 @@
   import { onDestroy, onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { api } from './lib/api.js';
-  import { errorMessage, ffmpeg, history, jobs, queueView, route, settings, modal, persistence, pendingUrl, showBanner } from './lib/stores.js';
+  import { errorMessage, ffmpeg, follows, history, jobs, queueView, route, settings, modal, persistence, pendingUrl, showBanner } from './lib/stores.js';
+  import { applyFollowsView, emptyFollowsView } from './lib/follow.js';
   import { youtubeUrlFromText } from './lib/format.js';
   import type { QueueView } from './lib/lifecycle-ui/types.js';
   import { newestQueueView } from './lib/queue-view.js';
@@ -16,6 +17,7 @@
   import Banner from './lib/components/Banner.svelte';
   import Home from './pages/Home.svelte';
   import Queue from './pages/Queue.svelte';
+  import Following from './pages/Following.svelte';
   import Downloads from './pages/Downloads.svelte';
   import Settings from './pages/Settings.svelte';
   import About from './pages/About.svelte';
@@ -38,6 +40,7 @@
       api.events.onQueueView(applyQueueView),
       api.events.onJobQueueView(applyQueueView),
       api.events.onHistory((entries) => history.set(entries ?? [])),
+      api.events.onFollows((view) => follows.set(applyFollowsView(undefined, view))),
       api.events.onSettings((value) => settings.set(value)),
       api.events.onFFmpeg((status) => {
         ffmpeg.set(status);
@@ -58,11 +61,12 @@
       if (cannotSave(startupStatus)) {
         return;
       }
-      const [savedSettings, initialJobs, initialQueueView, savedHistory, ffmpegStatus, persistenceStatus] = await Promise.all([
+      const [savedSettings, initialJobs, initialQueueView, savedHistory, initialFollows, ffmpegStatus, persistenceStatus] = await Promise.all([
         api.settings.get(),
         api.jobs.list(),
         api.queue.get(),
         api.downloads.list(),
+        api.follows.list().catch(() => emptyFollowsView()),
         api.ffmpeg.status(),
         api.app.persistenceStatus(),
       ]);
@@ -70,6 +74,7 @@
       jobs.set(initialJobs ?? []);
       applyQueueView(initialQueueView);
       history.set(savedHistory ?? []);
+      follows.set(applyFollowsView(undefined, initialFollows));
       ffmpeg.set(ffmpegStatus);
       persistence.set(persistenceStatus);
       if (startupStatus.warning === 'queue-reset') {
@@ -128,7 +133,7 @@
     if (next?.persistence) persistence.set(next.persistence);
   }
 
-  function navigate(target: 'home' | 'queue' | 'downloads' | 'settings' | 'about') {
+  function navigate(target: 'home' | 'queue' | 'following' | 'downloads' | 'settings' | 'about') {
     route.set(target);
   }
 
@@ -250,6 +255,9 @@
         <div class="home-host" hidden={$route !== 'home'} inert={$route !== 'home'}>
           <Home on:goto={(e) => navigate(e.detail)} />
         </div>
+        <div class="following-host" hidden={$route !== 'following'} inert={$route !== 'following'}>
+          <Following on:goto={(e) => navigate(e.detail)} />
+        </div>
         {#if $route === 'queue'}
           <Queue />
         {:else if $route === 'downloads'}
@@ -309,8 +317,12 @@
   .home-host {
     height: 100%;
   }
-  .home-host[hidden] {
+  .home-host[hidden],
+  .following-host[hidden] {
     display: none;
+  }
+  .following-host {
+    height: 100%;
   }
   .startup-shell {
     align-items: center;

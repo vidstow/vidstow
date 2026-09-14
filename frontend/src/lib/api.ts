@@ -10,6 +10,10 @@ import type {
   BatchStartResult,
   BuildInfo,
   FFmpegStatus,
+  FollowOutputRequest,
+  FollowPlaylistRequest,
+  FollowReviewRequest,
+  FollowsView,
   HistoryEntry,
   InfoSummary,
   JobSnapshot,
@@ -134,6 +138,18 @@ export const api = {
     remove: (id: string) => call<void>('RemoveJob', id),
     clearCompleted: () => call<void>('ClearCompletedJobs'),
   },
+  follows: {
+    list: () => call<FollowsView>('ListFollows'),
+    follow: (req: FollowPlaylistRequest) => call<FollowsView>('FollowPlaylist', req),
+    unfollow: (id: string) => call<FollowsView>('UnfollowPlaylist', id),
+    check: (id: string) => call<FollowsView>('CheckFollow', id),
+    checkAll: () => call<FollowsView>('CheckAllFollows'),
+    stop: () => call<FollowsView>('StopFollowChecks'),
+    admit: (req: FollowReviewRequest) => call<FollowsView>('AdmitFollowReview', req),
+    skip: (req: FollowReviewRequest) => call<FollowsView>('SkipFollowItems', req),
+    restore: (req: FollowReviewRequest) => call<FollowsView>('RestoreFollowItems', req),
+    updateOutput: (req: FollowOutputRequest) => call<FollowsView>('UpdateFollowOutput', req),
+  },
   queue: {
     get: () => call<QueueView>('GetQueueView'),
     pause: (id: string, token: string) => call<void>('PauseQueueJob', id, token),
@@ -195,6 +211,8 @@ export const api = {
       }),
     onHistory: (cb: (entries: HistoryEntry[]) => void) =>
       window.runtime?.EventsOn?.('history:update', (entries: HistoryEntry[]) => cb(entries ?? [])),
+    onFollows: (cb: (view: FollowsView) => void) =>
+      window.runtime?.EventsOn?.('follows:update', (view: FollowsView) => cb(view ?? { follows: [], checking: false, checkDone: 0, checkTotal: 0 })),
     onSettings: (cb: (settings: Settings) => void) =>
       window.runtime?.EventsOn?.('settings:update', (settings: Settings) => cb(settings)),
     onFFmpeg: (cb: (status: FFmpegStatus) => void) =>

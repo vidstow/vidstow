@@ -60,7 +60,7 @@ test('zinc sidebar starts at Home, Settings only, and no FFmpeg footer', async (
   assert.doesNotMatch(sidebar, /class="brand-mark"/);
   assert.doesNotMatch(sidebar, />VidStow</);
   assert.doesNotMatch(sidebar, /brand-mark\.(?:svg|png)|<img/);
-  for (const label of ['Home', 'Queue', 'Downloads', 'Settings']) {
+  for (const label of ['Home', 'Queue', 'Following', 'Downloads', 'Settings']) {
     assert.match(sidebar, new RegExp(`label: '${label}'`));
   }
   assert.doesNotMatch(sidebar, /label: 'About'/);
@@ -86,13 +86,15 @@ test('app shell mounts the workstation, status bar, and keeps the About page', a
   assert.match(app, /class="home-host"/);
   assert.match(app, /hidden=\{\$route !== 'home'\}/);
   assert.doesNotMatch(app, /\{#if \$route === 'home'\}/);
+  assert.match(app, /class="following-host"/);
+  assert.match(app, /hidden=\{\$route !== 'following'\}/);
   assert.match(app, /\$route === 'about'/);
-  assert.match(app, /navigate\(target: 'home' \| 'queue' \| 'downloads' \| 'settings' \| 'about'\)/);
+  assert.match(app, /navigate\(target: 'home' \| 'queue' \| 'following' \| 'downloads' \| 'settings' \| 'about'\)/);
   assert.doesNotMatch(app, /pendingHomeFocus/);
   assert.doesNotMatch(app, /key === 'l'/);
   assert.doesNotMatch(app, /key === '2'/);
   assert.doesNotMatch(app, /event\.key === ','/);
-  assert.match(stores, /writable<'home' \| 'queue' \| 'downloads' \| 'settings' \| 'about'>/);
+  assert.match(stores, /writable<'home' \| 'queue' \| 'following' \| 'downloads' \| 'settings' \| 'about'>/);
   assert.match(status, /'Not set'/);
   assert.match(status, /Idle/);
   assert.match(status, /\$\{active\}\/\$\{limit\} slots/);

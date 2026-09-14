@@ -263,7 +263,68 @@ export interface QueueEvent {
   persistence?: PersistenceStatus;
 }
 
-export interface AppError {
-  reason: string;
-  message: string;
+export interface FollowItem {
+  videoId: string;
+  url: string;
+  title: string;
+  duration?: string;
+  thumbnail?: string;
+  available: boolean;
+  index: number;
+}
+
+export interface FollowOutput {
+  quality: Quality;
+  audioBitrate?: number;
+  options?: OutputOptions;
+  folder: string;
+}
+
+export interface FollowRecord {
+  id: string;
+  playlistId: string;
+  sourceUrl: string;
+  title: string;
+  channel?: string;
+  thumbnail?: string;
+  videoCount: number;
+  output: FollowOutput;
+  knownVideoIds: string[];
+  pending?: FollowItem[];
+  skipped?: FollowItem[];
+  lastCheckedAt?: string;
+  lastCheckError?: string;
+  createdAt: string;
+  updatedAt: string;
+  checkState?: 'idle' | 'checking' | 'waiting';
+}
+
+export interface FollowsView {
+  follows: FollowRecord[];
+  checking: boolean;
+  checkDone: number;
+  checkTotal: number;
+  currentFollowId?: string;
+}
+
+export interface FollowPlaylistRequest {
+  url: string;
+  playlistId: string;
+  quality: Quality;
+  audioBitrate?: number;
+  options?: OutputOptions;
+  scope: 'future' | 'all';
+}
+
+export interface FollowReviewRequest {
+  followId: string;
+  videoIds: string[];
+}
+
+export interface FollowOutputRequest {
+  followId: string;
+  quality: Quality;
+  audioBitrate?: number;
+  options?: OutputOptions;
+  folder?: string;
 }

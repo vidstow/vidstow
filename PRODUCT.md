@@ -27,9 +27,10 @@ Typical jobs:
 
 1. Analyze one public video or Short, pick a video or audio output, add it to the queue.
 2. Review a playlist, pick a subset (checkboxes or a numeric range), apply one output policy, admit the collection.
-3. Paste 2 to 20 individual video or Short URLs, drop invalid and duplicate lines, admit the ready ones as one batch.
-4. Watch progress, pause, cancel, retry, or recover when something is unsafe to guess about.
-5. Find a finished file later, open it, reveal it in the system file manager, or delete it.
+3. Follow a public playlist to watch for future videos, check later by hand, review new entries in Following, and admit chosen ones to Queue.
+4. Paste 2 to 20 individual video or Short URLs, drop invalid and duplicate lines, admit the ready ones as one batch.
+5. Watch progress, pause, cancel, retry, or recover when something is unsafe to guess about.
+6. Find a finished file later, open it, reveal it in the system file manager, or delete it.
 
 Not the audience: people hunting channels, live streams, private videos, other sites, or a yt-dlp replacement with every extractor and flag.
 
@@ -60,6 +61,7 @@ Not the audience: people hunting channels, live streams, private videos, other s
 - One output policy per playlist or batch admission
 - FIFO queue with 1 to 10 concurrent downloads (default 2)
 - Durable collections: a playlist or batch appears as one expandable parent with independent child jobs
+- Follow public playlists: remember the playlist and its download settings, check later by hand, review new videos in Following, then admit chosen ones as a playlist collection
 - Persistent download history with search, open, reveal, remove-from-history, and delete-file
 - Destination reservations so VidStow does not silently overwrite an unrelated file
 - External FFmpeg/FFprobe detection (PATH, Homebrew default prefixes, or a user-selected pair)
@@ -70,6 +72,7 @@ Not the audience: people hunting channels, live streams, private videos, other s
 ### Out of scope
 
 - Channels, site-wide search, live streams, authenticated or private downloads
+- Auto-check on launch, background polling, or following anything other than a public playlist URL
 - Sites other than YouTube
 - DRM, cookies, login, or access-control circumvention
 - Universal resume or guaranteed byte reuse
@@ -91,6 +94,8 @@ If analysis cannot proceed, fail with a clear unsupported-URL dialog. Do not sil
 
 **Output options.** Per-download extras on video outputs, seeded from the Settings defaults: subtitle mode (off, sidecar file, embedded), a default subtitle language (**English or first available** or one named language), languages reported by analysis with auto-generated tracks marked, auto-caption fallback, sidecar format (SRT/VTT), and embed flags for title and channel details, thumbnail artwork, and chapter markers. **File** saves a caption file next to the video. **Embed** writes captions inside the video, so the folder still shows one MP4. If that video has no captions VidStow can put in the file, the download still completes and Queue says so. FFmpeg-dependent choices clamp when FFmpeg is missing. Audio outputs leave subtitle choices out. A backend-authored note describes non-default choices in queue metadata; durable jobs keep their options across retries and relaunch.
 
+**Follow.** A durable watch on one public playlist, stored in `follows.json`, not in Queue collections. It owns playlist identity, saved output options, the destination folder, the known video id set, and pending/skipped review lists. Videos already in the playlist when the user follows are not new. Checks run only when asked. Review lives in Following. Admission reuses playlist collections.
+
 **Queue view.** The only source of truth for the Queue page. It includes rows, collections, occupancy summary, queue-level capabilities, a command token, and persistence health. The frontend presents this view. It does not reconstruct authority from job snapshots.
 
 **History entry.** A completed download that survives app launches: title, channel, quality, container, size, path, thumbnail, completion time, and a missing-file flag.
@@ -111,12 +116,12 @@ Layout, top to bottom:
 
 Fixed width. Order:
 
-- Primary nav: Home, Queue, Downloads. The product name lives in the native title bar. The rail does not repeat the wordmark.
+- Primary nav: Home, Queue, Following, Downloads. The product name lives in the native title bar. The rail does not repeat the wordmark.
 - Utility nav: Settings only. About is not in the sidebar. The About route still exists and renders the Settings page, including the colophon at the bottom.
 
 FFmpeg readiness does not live in the rail. It belongs on Settings under Advanced.
 
-Queue shows an accent badge for active + pending/paused jobs. Downloads shows a quieter badge for history count. Active nav uses a soft accent wash and a left accent bar.
+Queue shows an accent badge for active + pending/paused jobs, with a quiet `queued` caption under the label when the badge is shown. Following shows an accent badge for videos waiting in review, with a quiet `to review` caption. Downloads shows a quieter badge for history count. Active nav uses a soft accent wash and a left accent bar.
 
 ### Status bar
 
@@ -129,7 +134,7 @@ Engine and FFmpeg names do not belong here.
 
 ### Main pane
 
-Each route starts on the Home nav row. Home’s header is the analyze bar itself. Queue, Downloads, and Settings titles sit on that same line.
+Each route starts on the Home nav row. Home’s header is the analyze bar itself. Queue, Following, Downloads, and Settings titles sit on that same line.
 
 ### Global overlays
 
@@ -147,7 +152,7 @@ Settings hard-codes Show in Finder. Downloads uses Reveal.
 
 ### Home
 
-Home is intake. It is the only place work is analyzed and admitted. A live analysis stays for the rest of this window session. Opening Queue, Downloads, Settings, or About does not discard it. Coming back shows the same field, dock, and selection. An edited URL, a new Analyze, a dropped URL, or Start over from Home replaces it.
+Home is intake. It is the only place work is analyzed. A live analysis stays for the rest of this window session. Opening Queue, Following, Downloads, Settings, or About does not discard it. Coming back shows the same field, dock, and selection. An edited URL, a new Analyze, a dropped URL, or Start over from Home replaces it. Follow from a playlist dock remembers the playlist without replacing Download.
 
 **One field.** No page title. No Single URL / Batch URLs switch. Placeholder: `Paste a YouTube URL`. Enter submits Analyze. Paste still accepts several lines, or more than one `http` URL on a line. Under the empty field: `One link, a playlist, or a handful — the link decides.`, then **Try** with compact bordered chips for a video, a playlist, and several links. Those chips fill the field. Analyze is the only submit. A watch URL that also has a list id is not a Try chip. Paste it and Home asks before any dock.
 
@@ -177,6 +182,7 @@ Changing the URL clears analysis.
 - Episode review: `N of M selected`, All, None, Range as two position fields plus Apply. All fills the fields with first–last index. None clears them. Rows are checkbox, title, duration. Unavailable rows are visible, dimmed, not selectable
 - Range Apply with an invalid span shows `Enter positions from N to M` on the header. Selection is by original index
 - Footer: **Change** then the playlist folder path. **Download N videos**. N is selected count. Success navigates to Queue
+- **Follow** sits under playlist identity, not next to Download. Hint until the playlist is followed: `Saves future videos · Nothing downloads now`. After save the control reads **Following**. Home selection is unchanged. Follow opens a setup dialog: playlist title, saved settings, folder, a manual-checks callout, and **Future videos only** vs **Download all N now**. Future-only downloads nothing. Download all N now follows, then admits the current available videos as one playlist collection. Confirming Follow does not auto-check.
 
 More than 100 selected videos asks `Add this playlist?` before enqueue.
 
@@ -220,6 +226,16 @@ Progress, speed, and ETA are live presentation. They do not authorize buttons.
 
 Failed rows show a category heading and guidance from the backend. The next step is whichever capability is actually on.
 
+### Following
+
+Following is the watch list for playlists the user chose to Follow on Home. It is not Queue. Header `Following` with `{N} playlists · {M} videos to review · Checks are manual`, plus **Check all**. While a check runs, the header is `Checking {k} of {n}` and **Stop checking**. Checks are serial. Stop keeps finds already written. App open never starts a check.
+
+**Empty.** `You are not following any playlists.` / `Head to Home, analyze a public playlist, and choose Follow — checks are manual, and you decide which new videos actually download.` **Go to Home**.
+
+**List.** Three-line rows: title · channel · count; review or check status (and an inline **Check failed** chip when needed); saved settings summary. **Review N new** when pending. **Check now** or **Retry check**. Overflow menu: Edit download settings, Unfollow playlist. Path and long errors live in the detail view.
+
+**Detail / review.** Back to Following. Pending rows start selected when available. Page size is 10. **Download** and **Skip** apply to the on-screen page. Confirm before queuing that page when more pending videos remain off-screen. Download admits a playlist collection on Queue using the follow's saved settings. Skip is selected-only; **Undo** or **Return to review** restores. Caught up: `You’re caught up.` **Check now**. Unfollow confirms and names pending review; files and queued jobs stay.
+
 ### Downloads
 
 History of completed files. Header `Downloads` and search. Search across title, channel, filename, quality, container, and playlist/collection title.
@@ -245,7 +261,8 @@ Grouped cards. Uppercase micro-headings. Each row is label + control, descriptio
 
 - Default download folder, Show in Finder, **Change Folder**. Show in Finder is hard-coded on every OS.
 - Create a subfolder for each download (switch). Playlist admission still uses a playlist folder under that root.
-- Interrupted jobs are a fixed value, `In progress continues`. The download that was in progress continues on launch. Waiting stays waiting. Paused stays paused.
+- Interrupted jobs are a fixed value, `In progress continues`. The download that was in progress continues on launch. Waiting stays waiting. Paused stays paused. Followed playlists are not checked on launch.
+- Followed playlists keep the download settings saved with each follow. Edit those settings from Following.
 
 **Performance**
 
@@ -374,7 +391,7 @@ This is a desktop app. Do not pretend to be a phone layout. Below ~760px the que
 - Backend-authored plans, capabilities, and tokens
 - Conservative recovery and action-required honesty
 - No-account, local-first data story and diagnostic consent
-- Route set: Home, Queue, Downloads, Settings, About
+- Route set: Home, Queue, Following, Downloads, Settings, About
 - Cross-platform product intent
 
 Build a beautiful professional desktop tool around those constraints. Do not add features to fill the window.

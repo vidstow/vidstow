@@ -19,6 +19,7 @@ import (
 	"github.com/tejasa97/vidstow/internal/admission"
 	localdiagnostics "github.com/tejasa97/vidstow/internal/diagnostics"
 	"github.com/tejasa97/vidstow/internal/ffmpegdetect"
+	"github.com/tejasa97/vidstow/internal/follow"
 	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/vidstow/internal/jobs"
 	"github.com/tejasa97/vidstow/internal/recovery"
@@ -102,6 +103,13 @@ type App struct {
 	lastFFmpeg             ffmpegdetect.Status
 	quitMu                 sync.Mutex
 	playlistMu             sync.Mutex
+	follows                *follow.Store
+	followMu               sync.Mutex
+	followCheckCancel      context.CancelFunc
+	followCheckStates      map[string]string
+	followCheckDone        int
+	followCheckTotal       int
+	followCheckCurrent     string
 	batchMu                sync.Mutex
 	batchPlans             map[string]*cachedBatchAnalysis
 	quitPermit             bool
@@ -192,6 +200,12 @@ func (a *App) startupAt(ctx context.Context, statePath string) {
 		return
 	}
 	a.store = st
+	if opened, openFollowsErr := follow.Open(follow.PathForState(statePath)); openFollowsErr != nil {
+		logAppErrorf(ctx, "desktop: open follows: %v", openFollowsErr)
+	} else {
+		a.follows = opened
+	}
+	// Follows never auto-check on launch. Checks start only from Check now / Check all.
 
 	if err := prepareStartupStateRoots(st.Snapshot()); err != nil {
 		a.recordDiagnosticProblem("", classifyStartupRootProblem(err))
