@@ -6,7 +6,7 @@ VidStow is a local desktop application. The UI is a native window, not a website
 
 ## What it is
 
-VidStow downloads on-demand YouTube videos, Shorts, and playlists onto the user's machine. Public videos work signed out. Age-restricted and account-gated videos the user's existing browser session can already watch can be downloaded when a Settings browser session or cookie-file path is configured. Cookie values are never stored.
+VidStow downloads on-demand YouTube videos, Shorts, and playlists onto the user's machine. Public videos work signed out. Age-restricted and account-gated videos, plus Liked, Watch Later, and other playlists that account can already open, can be downloaded when a Settings browser session or cookie-file path is configured. Cookie values are never stored.
 
 The user pastes a link (or a small batch of links), inspects what will be saved, chooses a readable output, and sends work to a durable FIFO queue. Analysis and downloads run locally. There is no VidStow account, no cloud library, and no hosted converter in the middle.
 
@@ -21,7 +21,7 @@ Current status: beta. Packaged preview is macOS Apple Silicon. The application s
 
 ## Who it is for
 
-Someone who wants a specific public YouTube video, Short, playlist, or short list of URLs saved as files they own, without learning yt-dlp. Optional Settings browser sign-in covers age-restricted or account-gated videos that account can already watch.
+Someone who wants a specific public YouTube video, Short, playlist, or short list of URLs saved as files they own, without learning yt-dlp. Optional Settings browser sign-in covers age-restricted or account-gated videos and playlists that account can already watch or open.
 
 Typical jobs:
 
@@ -52,7 +52,7 @@ Not the audience: people hunting channels, live streams, other sites, or a yt-dl
 ### Supported
 
 - Public, on-demand YouTube watch URLs, Shorts URLs, and playlist URLs
-- Age-restricted and account-gated videos the user’s existing browser session can already watch, via an optional Settings browser session or cookie-file path (cookie values are never stored)
+- Age-restricted and account-gated videos the user’s existing browser session can already watch, and Liked / Watch Later / other library or private playlists that session can already open, via an optional Settings browser session or cookie-file path (cookie values are never stored)
 - Links that contain both a video and a playlist (user chooses which to review)
 - Drag-and-drop of a public YouTube URL onto the window
 - Single-video analysis with curated output plans
@@ -284,6 +284,8 @@ Never display the string `yt-dlp` as the engine name. The branded engine is `ytd
 ## Dialogs and system states
 
 **Unsupported URL.** Title `Unsupported URL`. The link must be a valid YouTube video, Short, or playlist. Public videos work signed out; age-restricted or account-gated links need a browser session in Settings.
+
+**Sign-in required.** Title and body come from the `vidstow:auth:` envelope. Primary action is Open Settings. AnalyzePlaylist uses this path when the engine reports authentication (Liked, Watch Later, private lists), not the generic unsupported playlist card.
 
 **FFmpeg required.** Title `FFmpeg is required for most downloads`. Install it or point VidStow at it in Settings; original audio that does not need merging can still be queued. Primary: Open Settings.
 

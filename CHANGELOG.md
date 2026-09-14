@@ -15,11 +15,15 @@ does not exist yet.
 ### Added
 
 - Signed-in downloads: optionally borrow a YouTube browser session (or a
-  cookie-file path) from Settings for age-restricted and account-gated videos.
-  Cookie values are never stored. When a session is configured it is attached
-  on every analyze and download; if the session cannot be read, the attempt
-  retries once signed out so public videos still work. Chrome profiles that
-  contain a few unusable cookie names still import the rest (engine v0.3.1).
+  cookie-file path) from Settings for age-restricted and account-gated videos
+  and for Liked, Watch Later, and other playlists that account can already
+  open. Cookie values are never stored. When a session is configured it is
+  attached on every analyze and download, including Full playlist /
+  AnalyzePlaylist; if the session cannot be read, the attempt retries once
+  signed out so public videos still work. Chrome profiles that contain a few
+  unusable cookie names still import the rest (engine v0.3.1). Engine fetch
+  for those library playlists lands with the ytdlp-go signed-in browse fix
+  once that release is tagged and pinned.
 
 ### Changed
 
@@ -27,7 +31,10 @@ does not exist yet.
 
 ### Fixed
 
-- No entries yet.
+- Playlist Analyze now returns the same sign-in envelope (Open Settings) when
+  the engine reports authentication — Liked, Watch Later, and other lists that
+  need a session — instead of the generic “Could not read the playlist” /
+  unsupported card.
 
 ## [0.1.0-beta.6] - 2026-09-12
 

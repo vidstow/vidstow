@@ -257,3 +257,68 @@ func TestDownloadSessionUnreadableStillDeniedReturnsEnvelope(t *testing.T) {
 		t.Fatalf("ErrorReason = %q; want %s", snap.ErrorReason, ReasonSessionUnreadable)
 	}
 }
+
+func TestAnalyzePlaylistAuthenticationReturnsEnvelope(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "")
+	var seen engine.Request
+	manager.runAnalyze = func(_ context.Context, req engine.Request) (engine.Result, error) {
+		seen = req
+		return engine.Result{}, &engine.Error{
+			Category: engine.ErrorAuthentication,
+			Op:       "youtube playlist iteration",
+			Err:      errors.New("playlist access denied"),
+		}
+	}
+	_, err := manager.AnalyzePlaylist(context.Background(), "https://www.youtube.com/playlist?list=LL")
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonSigninRequired {
+		t.Fatalf("err = %#v", err)
+	}
+	if seen.CookiesFromBrowser != "chrome" || seen.CookieFile != "" {
+		t.Fatalf("attached session = %#v", seen)
+	}
+	if !failure.SessionAttempted || failure.Title != "This video isn't available to your account." {
+		t.Fatalf("failure = %#v", failure)
+	}
+}
+
+func TestAnalyzePlaylistAuthenticationUnsignedReturnsEnvelope(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.runAnalyze = func(context.Context, engine.Request) (engine.Result, error) {
+		return engine.Result{}, &engine.Error{
+			Category: engine.ErrorAuthentication,
+			Op:       "youtube extraction",
+			Err:      errors.New("playlist access denied"),
+		}
+	}
+	_, err := manager.AnalyzePlaylist(context.Background(), "https://www.youtube.com/playlist?list=WL")
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonSigninRequired {
+		t.Fatalf("err = %#v", err)
+	}
+	if failure.SessionAttempted || failure.Title != "This video needs your YouTube sign-in." {
+		t.Fatalf("failure = %#v", failure)
+	}
+}
+
+func TestAnalyzePlaylistUnsupportedStaysUnenveloped(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.runAnalyze = func(context.Context, engine.Request) (engine.Result, error) {
+		return engine.Result{}, &engine.Error{
+			Category: engine.ErrorUnsupported,
+			Op:       "youtube playlist iteration",
+			Err:      errors.New("playlist unavailable"),
+		}
+	}
+	_, err := manager.AnalyzePlaylist(context.Background(), "https://www.youtube.com/playlist?list=PLfixture")
+	if _, ok := AsAuthFailure(err); ok {
+		t.Fatalf("unsupported became AuthFailure: %#v", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "playlist unavailable") {
+		t.Fatalf("err = %v", err)
+	}
+}
