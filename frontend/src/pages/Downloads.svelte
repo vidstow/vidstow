@@ -119,7 +119,7 @@
 </script>
 
 <section class="page downloads-page" aria-labelledby="downloads-title">
-  <header class="dhead">
+  <header class="page-header dhead">
     <h1 id="downloads-title">Downloads</h1>
     <input
       class="dsearch"
@@ -272,12 +272,6 @@
     flex-shrink: 0;
     min-height: calc(var(--page-pad-y) + 28px + 16px);
     padding: var(--page-pad-y) var(--page-pad-x) 16px;
-  }
-  .dhead h1 {
-    margin: 0;
-    font-size: 17px;
-    font-weight: 650;
-    letter-spacing: -0.02em;
   }
   .downloads-page input[type="search"].dsearch {
     width: 240px;

@@ -368,8 +368,8 @@
 
 <section class="page queue-page" aria-labelledby="lifecycle-queue-title">
   {#if displayItems.length === 0}
-    <header class="qhead">
-      <div class="qident">
+    <header class="page-header qhead">
+      <div>
         <h1 id="lifecycle-queue-title">{title}</h1>
         <p class="qslots">{slotCopy}</p>
       </div>
@@ -384,8 +384,8 @@
   {:else}
     <div class="qwrap">
       <div class="qmaster">
-        <header class="qhead">
-          <div class="qident">
+        <header class="page-header qhead">
+          <div>
             <h1 id="lifecycle-queue-title">{title}</h1>
             <p class="qslots">{slotCopy}</p>
           </div>
@@ -637,27 +637,18 @@
   }
   .qhead {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 14px;
     flex-shrink: 0;
     min-height: calc(var(--page-pad-y) + 28px + 16px);
     padding: var(--page-pad-y) var(--page-pad-x) 16px;
   }
-  .qident {
-    display: flex;
+  .qhead > div {
+    flex: 1;
     min-width: 0;
-    align-items: baseline;
-    gap: 10px;
-  }
-  .qhead h1 {
-    margin: 0;
-    font-size: 17px;
-    font-weight: 650;
-    letter-spacing: -0.02em;
   }
   .qslots {
-    margin: 0;
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 500;
@@ -694,7 +685,6 @@
   .failure-details { font-size: 11px; color: var(--text-secondary); }
   .failure-details summary { cursor: pointer; margin-top: 8px; }
   .failure-details span, .failure-details time { display: block; margin-top: 4px; }
-  .qident { flex-wrap: wrap; }
   .action-icon { width: 14px; height: 14px; flex-shrink: 0; }
   .app-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   .app-btn.quiet { border-color: transparent; background: transparent; color: var(--text-secondary); }
@@ -845,8 +835,6 @@
   .qslots { line-height: 1.5; }
   @media (max-width: 1050px) {
     .qwrap { grid-template-columns: minmax(0, 1fr) 280px; }
-    .qhead { align-items: flex-start; }
-    .qident { flex-direction: column; gap: 4px; }
     .qentry { gap: 6px; padding-right: 8px; }
     .row-action { padding: 0 9px; }
     .qentry .qrow.live-row { grid-template-columns: 48px minmax(0, 1fr); }
