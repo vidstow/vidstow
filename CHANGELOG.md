@@ -14,7 +14,11 @@ does not exist yet.
 
 ### Added
 
-- No entries yet.
+- Signed-in downloads: optionally borrow a YouTube browser session (or a
+  cookie-file path) from Settings for age-restricted and account-gated videos.
+  Cookie values are never stored. When a session is configured it is attached
+  on every analyze and download; if the session cannot be read, analyze retries
+  once signed out so public videos still work.
 
 ### Changed
 
