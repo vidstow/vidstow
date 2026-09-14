@@ -1906,7 +1906,10 @@ func friendlyAnalyzeError(err error) string {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "Video analysis timed out — retry"
 	}
-	if _, ok := jobs.AsAuthFailure(err); ok {
+	if failure, ok := jobs.AsAuthFailure(err); ok {
+		if failure.Reason == jobs.ReasonSessionUnreadable {
+			return "Session unreadable. Check the browser choice in Settings, then review again."
+		}
 		return "Needs sign-in. Pick a browser in Settings, then review again."
 	}
 	var typed *engine.Error
@@ -1945,7 +1948,10 @@ func friendlyPlaylistStartError(err error) string {
 	if isMembersOnlyMedia(err) {
 		return "A selected video requires a channel membership and is not available in this version."
 	}
-	if _, ok := jobs.AsAuthFailure(err); ok {
+	if failure, ok := jobs.AsAuthFailure(err); ok {
+		if failure.Reason == jobs.ReasonSessionUnreadable {
+			return "Session unreadable. Check the browser choice in Settings, then review again."
+		}
 		return "Needs sign-in. Pick a browser in Settings, then review again."
 	}
 	var typed *engine.Error

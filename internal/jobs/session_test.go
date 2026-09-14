@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -184,5 +185,75 @@ func TestSigninRequiredDoesNotRetrySignedOut(t *testing.T) {
 	}
 	if !failure.SessionAttempted || failure.Title != "This video isn't available to your account." {
 		t.Fatalf("failure = %#v", failure)
+	}
+}
+
+func TestDownloadSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "")
+	var calls []engine.Request
+	manager.runDownload = func(_ context.Context, req engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		calls = append(calls, req)
+		if req.CookiesFromBrowser != "" {
+			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "import browser cookies", Err: errors.New("keychain denied")}
+		}
+		return engine.Result{Filename: filepath.Join(t.TempDir(), "ok.mp4")}, nil
+	}
+	id, err := manager.Submit(Request{URL: "https://example.invalid/video", OutputDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snap, ok := manager.Find(id)
+		if ok && snap.Status == StatusComplete {
+			break
+		}
+		if ok && snap.Status == StatusFailed {
+			t.Fatalf("download failed: %#v", snap)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	snap, ok := manager.Find(id)
+	if !ok || snap.Status != StatusComplete {
+		t.Fatalf("snap = %#v ok=%v calls=%d", snap, ok, len(calls))
+	}
+	if len(calls) != 2 {
+		t.Fatalf("calls = %d; want signed-in then signed-out", len(calls))
+	}
+	if calls[0].CookiesFromBrowser == "" || calls[1].CookiesFromBrowser != "" || calls[1].CookieFile != "" {
+		t.Fatalf("retry sequence = %#v", calls)
+	}
+}
+
+func TestDownloadSessionUnreadableStillDeniedReturnsEnvelope(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "")
+	manager.runDownload = func(_ context.Context, req engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		if req.CookiesFromBrowser != "" {
+			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "parse browser cookie source", Err: errors.New("no such browser")}
+		}
+		return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "youtube extraction", Err: errors.New("login required")}
+	}
+	id, err := manager.Submit(Request{URL: "https://example.invalid/video", OutputDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snap, ok := manager.Find(id)
+		if ok && (snap.Status == StatusFailed || snap.Status == StatusComplete) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	snap, ok := manager.Find(id)
+	if !ok || snap.Status != StatusFailed {
+		t.Fatalf("snap = %#v", snap)
+	}
+	if snap.ErrorReason != ReasonSessionUnreadable {
+		t.Fatalf("ErrorReason = %q; want %s", snap.ErrorReason, ReasonSessionUnreadable)
 	}
 }

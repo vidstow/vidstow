@@ -277,3 +277,29 @@ func (m *Manager) runAnalyzeWithSession(ctx context.Context, req engine.Request,
 	}
 	return engine.Result{}, session, err
 }
+
+// runDownloadWithSession always attaches a configured session on download. If
+// the failure is session-unreadable, it retries once signed out so public
+// videos still finish; gated content surfaces as AuthFailure.
+func (m *Manager) runDownloadWithSession(ctx context.Context, req engine.Request, handler engine.EventHandler, runner downloadRunner) (engine.Result, error) {
+	session := m.browserSessionSnapshot()
+	session.apply(&req)
+	result, err := runner(ctx, req, handler)
+	if err == nil {
+		return result, nil
+	}
+	if session.configured() && isSessionUnreadableError(err) {
+		signedOut := req
+		signedOut.CookiesFromBrowser = ""
+		signedOut.CookieFile = ""
+		retry, retryErr := runner(ctx, signedOut, handler)
+		if retryErr == nil {
+			return retry, nil
+		}
+		return engine.Result{}, authFailureFor(err, session, true)
+	}
+	if isSigninRequiredError(err) || isSessionUnreadableError(err) {
+		return engine.Result{}, authFailureFor(err, session, session.configured())
+	}
+	return engine.Result{}, err
+}

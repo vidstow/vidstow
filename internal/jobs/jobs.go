@@ -2148,6 +2148,10 @@ func queueCapabilitiesFor(state *jobState, snap JobSnapshot) QueueJobCapabilitie
 		caps.StartAgain = failure.Category == "disk_full" || failure.Category == "permission_denied"
 		caps.ChangeFolder = failure.Category == "folder_unavailable" || failure.Category == "disk_full" || failure.Category == "permission_denied"
 		caps.OpenSource = snap.URL != "" && (failure.Category == "authentication_required" || failure.Category == "resource_unavailable")
+		// Session-unreadable is a local Settings problem; Open source / Copy link add clutter.
+		if failureErrorCode(state, snap) == ReasonSessionUnreadable {
+			caps.OpenSource = false
+		}
 		caps.CopyLink = caps.OpenSource
 		return caps
 	case StatusCanceled:
@@ -2198,6 +2202,15 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		failure.RecommendedAction = "Check your connection, then retry this item."
 		failure.Retryable = true
 	case "authentication_required":
+		code := failureErrorCode(state, snap)
+		if code == ReasonSessionUnreadable {
+			failure.MessageKey = "queue.failure.session_unreadable"
+			failure.Heading = "Could not read the browser session."
+			failure.Message = "Check the browser choice in Settings, then try again."
+			failure.RecommendedAction = "Open Settings, then retry this item."
+			failure.Retryable = true
+			break
+		}
 		failure.MessageKey = "queue.failure.authentication_required"
 		failure.Heading = "This download needs sign-in."
 		failure.Message = "Sign in to YouTube in your browser, pick that browser in Settings, then retry this item."
@@ -2279,7 +2292,7 @@ func failureCategoryForCode(code string) string {
 	switch strings.TrimSpace(code) {
 	case "network", retryCodeMediaLinkExpired, retryCodeYouTubeChallengePreTransfer:
 		return "network_interrupted"
-	case "authentication":
+	case "authentication", ReasonSigninRequired, ReasonSessionUnreadable:
 		return "authentication_required"
 	case "unsupported":
 		return "resource_unavailable"
@@ -4564,7 +4577,6 @@ func (m *Manager) run(state *jobState, worker *worker) {
 
 	m.mu.Lock()
 	state.embedSkipped = false
-	session := m.session
 	req := engine.Request{
 		URL:            state.snap.URL,
 		OutputDir:      state.snap.OutputDir,
@@ -4577,7 +4589,6 @@ func (m *Manager) run(state *jobState, worker *worker) {
 			PreservePartialOnCancel: true,
 		},
 	}
-	session.apply(&req)
 	if state.plan != nil {
 		req.Format = state.plan.Selector
 		if state.outputTemplate != "" {
@@ -4651,7 +4662,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		return nil
 	}
 
-	result, err := runner(ctx, req, handler)
+	result, err := m.runDownloadWithSession(ctx, req, handler, runner)
 	diagnostic := terminalDownloadDiagnostic(err, sawDownload, sawPostprocess, time.Since(started))
 	if processingHeld {
 		<-m.processing
@@ -5030,6 +5041,12 @@ func humanError(err error) string {
 	if err == nil {
 		return "Failed"
 	}
+	if failure, ok := AsAuthFailure(err); ok {
+		if failure.Message != "" {
+			return failure.Message
+		}
+		return failure.Title
+	}
 	switch {
 	case errors.Is(err, syscall.ENOSPC):
 		return "Not enough disk space"
@@ -5175,6 +5192,9 @@ func errorReason(err error) string {
 	if isExpiredMediaLinkError(err) {
 		return retryCodeMediaLinkExpired
 	}
+	if failure, ok := AsAuthFailure(err); ok {
+		return failure.Reason
+	}
 	switch {
 	case errors.Is(err, syscall.ENOSPC):
 		return "disk_full"
@@ -5186,6 +5206,14 @@ func errorReason(err error) string {
 		return string(typed.Category)
 	}
 	return "internal"
+}
+
+func failureErrorCode(state *jobState, snap JobSnapshot) string {
+	code := strings.TrimSpace(snap.ErrorReason)
+	if state != nil && state.fromStateV2 && strings.TrimSpace(state.durable.LastErrorCode) != "" {
+		return strings.TrimSpace(state.durable.LastErrorCode)
+	}
+	return code
 }
 
 func clampFloat(v float64) float64 {

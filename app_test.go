@@ -78,6 +78,18 @@ func TestFriendlyAnalyzeErrorAuthenticationUsesBatchCopy(t *testing.T) {
 	}
 }
 
+
+func TestFriendlyAnalyzeErrorSessionUnreadableUsesBatchCopy(t *testing.T) {
+	failure := &jobs.AuthFailure{
+		Reason:  jobs.ReasonSessionUnreadable,
+		Title:   "Could not read the browser session.",
+		Message: "Check the browser choice in Settings, then try again.",
+	}
+	if got := friendlyAnalyzeError(failure); got != "Session unreadable. Check the browser choice in Settings, then review again." {
+		t.Fatalf("friendlyAnalyzeError() = %q", got)
+	}
+}
+
 func TestAnalyzeErrorForFrontendKeepsAuthEnvelope(t *testing.T) {
 	failure := &jobs.AuthFailure{
 		Reason:  jobs.ReasonSigninRequired,
