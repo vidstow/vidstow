@@ -1,0 +1,2174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VidStow — Follow, end to end</title>
+  <style>
+    @font-face { font-family: Geist; src: url("assets/geist.woff2") format("woff2"); font-display: swap; }
+    :root {
+      --surface-bg: #121212; --surface-base: #111113; --surface-raised: #18181B;
+      --surface-sunken: #0C0C0E; --surface-subtle: #101012; --surface-sidebar: #18181B;
+      --surface-input: #1F1F23; --surface-hover: #18181B; --surface-active: #27272A;
+      --border-subtle: #202023; --border-default: #27272A; --border-strong: #3F3F46;
+      --text-primary: #FAFAFA; --text-secondary: #A1A1AA; --text-muted: #8A8A93; --text-disabled: #52525B; --text-on-accent: #FFFFFF;
+      --accent-500: #3B82F6; --accent-600: #2563EB; --accent-400: #60A5FA;
+      --accent-soft: rgba(59, 130, 246, 0.13); --accent-ring: rgba(59, 130, 246, 0.3);
+      --status-success: #22C55E; --status-success-soft: rgba(34, 197, 94, 0.12);
+      --status-danger: #EF4444; --status-danger-soft: rgba(239, 68, 68, 0.12);
+      --status-warning: #F59E0B; --status-info: #3B82F6;
+      --font-sans: Geist, ui-sans-serif, system-ui, sans-serif;
+      --font-mono: "Geist Mono", ui-monospace, Menlo, Consolas, monospace;
+      --fs-xs: 10px; --fs-sm: 11px; --fs-md: 12px; --fs-lg: 14px; --fs-xl: 16px; --fs-2xl: 18px;
+      --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+      --r-sm: 3px; --r-md: 4px; --r-lg: 6px; --r-xl: 8px; --r-full: 9999px;
+      --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24); --shadow-modal: 0 20px 56px rgba(0, 0, 0, 0.62);
+      --sidebar-w: 160px; --statusbar-h: 22px; --title-h: 32px;
+      --rail-pad-top: 38px; --nav-first-gap: 2px;
+      --page-pad-x: 24px; --page-pad-y: calc(var(--rail-pad-top) + var(--nav-first-gap));
+      --page-pad-bottom: 40px; --page-title-gap: 6px; --page-section-gap: 16px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: #050506; color: var(--text-primary);
+      font-family: var(--font-sans); font-size: 15px; line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, textarea, select { font: inherit; color: inherit; }
+    button { cursor: pointer; background: none; border: 0; padding: 0; appearance: none; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; }
+    a { color: #93C5FD; }
+    .top {
+      position: sticky; top: 0; z-index: 40;
+      display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+      min-height: 52px; padding: 8px 24px;
+      border-bottom: 1px solid var(--border-default);
+      background: color-mix(in srgb, #0C0C0E 90%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .mark { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; background: linear-gradient(180deg, #3B82F6, #1D4ED8); }
+    .mark svg { width: 11px; height: 11px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .top strong { font-size: 13px; font-weight: 600; }
+    .top nav { display: flex; gap: 2px; margin-left: auto; flex-wrap: wrap; }
+    .top nav a { padding: 5px 8px; border-radius: 6px; color: var(--text-secondary); text-decoration: none; font-size: 11.5px; font-weight: 500; }
+    .top nav a:hover { color: var(--text-primary); background: #18181B; }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 72px; }
+    .lede h1 { margin: 0 0 12px; font-size: 28px; font-weight: 650; letter-spacing: -0.04em; }
+    .lede p { margin: 0 0 12px; max-width: 74ch; color: var(--text-secondary); }
+    .lede b, .caption b, .step-copy b { color: var(--text-primary); font-weight: 600; }
+    .note {
+      display: inline-block; margin-top: 4px; padding: 3px 10px;
+      border: 1px solid var(--border-default); border-radius: 99px;
+      color: var(--text-muted); font-size: 12px;
+    }
+    .steps {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+      margin: 22px 0 18px; padding: 0; list-style: none;
+    }
+    .steps button {
+      display: block; width: 100%; padding: 12px; border: 1px solid var(--border-default);
+      border-radius: 10px; background: var(--surface-raised); color: var(--text-primary); text-align: left;
+    }
+    .steps button:hover { border-color: #3F3F46; }
+    .steps button.on { border-color: rgba(59, 130, 246, 0.55); background: var(--accent-soft); }
+    .steps b { display: block; font-size: 13px; }
+    .steps span { color: var(--text-muted); font-size: 11.5px; }
+    .tour-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin: 0 0 16px;
+    }
+    .tour-bar .app-btn { min-height: 32px; }
+    .caption {
+      margin: 14px 0 0; max-width: 74ch; color: var(--text-secondary); font-size: 14.5px;
+    }
+    .stage-wrap { overflow: auto; padding-bottom: 8px; }
+    .window {
+      width: 1180px; height: 760px;
+      display: grid; grid-template-rows: var(--title-h) 1fr var(--statusbar-h);
+      overflow: hidden; border: 1px solid #1A1A1E; border-radius: 12px;
+      background: var(--surface-bg); box-shadow: 0 24px 80px rgba(0,0,0,0.55);
+      font-family: var(--font-sans); font-size: var(--fs-md); line-height: 1.45; color: var(--text-primary);
+      user-select: none; position: relative;
+    }
+    .titlebar {
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 14px 0 12px; border-bottom: 1px solid var(--border-default);
+      background: var(--surface-sidebar); color: var(--text-secondary); font-size: 13px; font-weight: 500;
+    }
+    .lights { position: absolute; left: 12px; display: flex; gap: 7px; }
+    .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+    .lights i:nth-child(1) { background: #EF4444; }
+    .lights i:nth-child(2) { background: #F59E0B; }
+    .lights i:nth-child(3) { background: #22C55E; }
+    .workstation { display: flex; min-height: 0; overflow: hidden; }
+    .sidebar {
+      width: var(--sidebar-w); flex-shrink: 0; background: var(--surface-sidebar);
+      border-right: 1px solid var(--border-default); display: flex; flex-direction: column;
+      padding: var(--rail-pad-top) 6px 12px;
+    }
+    .sidebar nav { flex: 1; padding-top: var(--nav-first-gap); }
+    .sidebar nav.utility { flex: 0; padding-top: 8px; border-top: 1px solid var(--border-default); }
+    .sidebar ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .nav-item {
+      position: relative; width: 100%; display: flex; align-items: center; gap: 8px;
+      min-height: 30px; padding: 0 8px 0 10px; border-radius: 7px;
+      color: var(--text-secondary); font-size: 13px;
+    }
+    .nav-item:hover { background: var(--surface-raised); color: var(--text-primary); }
+    .nav-item.active { background: var(--accent-soft); color: var(--text-primary); }
+    .nav-item.active::before {
+      content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 2px;
+      border-radius: 99px; background: var(--accent-500);
+    }
+    nav.utility .nav-item { background: var(--surface-active); color: var(--text-primary); }
+    nav.utility .nav-item:hover { background: #3F3F46; }
+    nav.utility .nav-item.active { background: var(--accent-soft); }
+    .nav-icon { display: inline-flex; }
+    .nav-label { flex: 1; text-align: left; }
+    .nav-badge {
+      background: var(--accent-600); color: #fff; font-size: 10px; font-weight: 600;
+      padding: 0 5px; height: 17px; min-width: 17px; display: inline-grid; place-items: center;
+      border-radius: var(--r-full); font-variant-numeric: tabular-nums;
+    }
+    .main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--surface-bg); }
+    .scroll { position: relative; flex: 1; min-height: 0; overflow-y: auto; }
+    .page {
+      width: 100%; margin: 0; padding: var(--page-pad-y) var(--page-pad-x) var(--page-pad-bottom);
+      display: flex; flex-direction: column; gap: var(--page-section-gap); min-height: 100%;
+    }
+    .page.following-page { min-height: 0; flex: 1; }
+    .page.fill { height: 100%; min-height: 0; overflow: hidden; padding-bottom: 20px; }
+    .page-header h1, .follow-header h1, .detail-identity h1 {
+      margin: 0; font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -0.03em; line-height: 1.2;
+    }
+    .page-header p, .follow-header p { margin: var(--page-title-gap) 0 0; color: var(--text-secondary); font-size: var(--fs-sm); }
+    .app-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px;
+      padding: 0 14px; border: 1px solid var(--border-default); border-radius: var(--r-md);
+      background: var(--surface-base); color: var(--text-primary); font-size: var(--fs-sm); font-weight: 600; line-height: 1;
+      white-space: nowrap;
+    }
+    .app-btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
+    .app-btn.primary { color: #fff; background: var(--accent-600); border-color: var(--accent-600); }
+    .app-btn.primary:hover:not(:disabled) { background: var(--accent-500); border-color: var(--accent-500); }
+    .app-btn.quiet { background: transparent; border-color: transparent; color: var(--text-secondary); }
+    .app-btn.danger { color: var(--status-danger); }
+    .status-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      height: var(--statusbar-h); padding: 0 14px; border-top: 1px solid var(--border-default);
+      background: #0A0A0C; color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; line-height: 1;
+    }
+    .status-bar strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-bar .live { color: var(--accent-400); }
+
+    .composer { width: 100%; flex-shrink: 0; }
+    .fieldwrap {
+      display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border-default);
+      border-radius: 10px; background: var(--surface-base); overflow: hidden;
+    }
+    .fieldwrap:focus-within { border-color: var(--accent-500); }
+    .urlrow { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 6px 0 14px; }
+    .urlrow textarea {
+      flex: 1; min-width: 0; height: auto; min-height: 28px; padding: 6px 0; border: 0; background: none;
+      resize: none; outline: none; font-family: var(--font-mono); font-size: 13px; line-height: 1.4;
+      color: var(--text-secondary); overflow-wrap: anywhere;
+    }
+    .fieldwrap:focus-within textarea { color: var(--text-primary); }
+    .input-help { margin: -5px 2px 0; font-size: 10px; color: var(--text-muted); }
+    .hint {
+      width: min(780px, 100%); margin: 0 auto; padding: 14px 4px 0;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      color: var(--text-muted); font-size: 13px; text-align: center; line-height: 1.7;
+    }
+    .tries { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; font-size: 12px; }
+    .try {
+      display: inline-flex; align-items: center; height: 24px; padding: 0 9px;
+      border: 1px solid var(--border-default); border-radius: 7px; background: var(--surface-raised);
+      color: var(--text-secondary); font-size: 12px;
+    }
+    .try:hover { border-color: var(--border-strong); color: var(--text-primary); }
+    .dbtn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 24px; padding: 0 9px;
+      border: 1px solid var(--border-default); border-radius: 6px; background: var(--surface-raised);
+      color: var(--text-primary); font-size: 11px; font-weight: 500;
+    }
+    .dbtn:hover:not(:disabled) { background: var(--surface-hover); }
+    .dbtn.pri { background: var(--accent-600); border-color: var(--accent-600); color: #fff; }
+    .dbtn.pri:hover:not(:disabled) { background: #1D4ED8; }
+    .dbtn svg { width: 12px; height: 12px; }
+    .dbtn.query { background: #FAFAFA; border-color: #FAFAFA; color: #09090B; font-weight: 600; gap: 5px; min-width: 84px; }
+    .dbtn.query:hover:not(:disabled) { background: #E4E4E7; border-color: #E4E4E7; }
+    .dbtn.query svg { width: 12px; height: 12px; }
+    .hud-strip { border-top: 1px solid var(--border-default); background: var(--surface-subtle); }
+    .hud-bar { height: 2px; background: var(--surface-raised); overflow: hidden; }
+    .hud-progress {
+      height: 100%; width: 45%;
+      background: linear-gradient(90deg, transparent, var(--accent-500), #60A5FA);
+      animation: hud-sweep 1.4s ease-in-out infinite;
+    }
+    @keyframes hud-sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+    .hud-row { padding: 8px 14px 9px; }
+    .hud-copy strong { font-size: 13px; font-weight: 500; }
+    .wait-dots::after { content: ''; animation: wait-dots 1.25s steps(1, end) infinite; }
+    @keyframes wait-dots {
+      0%, 24% { content: ''; } 25%, 49% { content: '.'; } 50%, 74% { content: '..'; } 75%, 100% { content: '...'; }
+    }
+    .flow-review { border: 0; margin: 0; padding: 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; overflow: auto; }
+    .playlist-pane { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 8px; }
+    .dock {
+      display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--border-default);
+      border-radius: 10px; background: var(--surface-raised);
+    }
+    .drow2 {
+      display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 10px 14px;
+      align-items: start; padding: 16px 16px 0;
+    }
+    .thumb, .cover {
+      overflow: hidden; border-radius: var(--r-sm); background: var(--surface-sunken);
+    }
+    .drow2 .thumb {
+      grid-area: auto; width: 160px; height: 90px; max-height: 90px; aspect-ratio: 16 / 9; align-self: start;
+    }
+    .thumb.count {
+      display: grid; place-items: center; color: var(--accent-400); font-weight: 700; font-size: 28px;
+      border: 1px solid var(--border-default);
+    }
+    .thumb img, .cover img, .art img, .qth img, .kth img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .dmain2 { display: flex; flex-direction: column; min-width: 0; padding-bottom: 8px; }
+    .dtop b { font-size: 15px; font-weight: 600; line-height: 1.35; }
+    .dmeta { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 13px; }
+    .follow-btn {
+      display: inline-flex; align-items: center; gap: 6px; width: fit-content; min-height: 28px; margin-top: 8px; padding: 0 11px;
+      border: 1px solid rgba(96, 165, 250, 0.45); border-radius: var(--r-md);
+      background: var(--accent-soft); color: var(--accent-400); font-size: var(--fs-sm); font-weight: 600;
+    }
+    .follow-btn svg { width: 14px; height: 14px; }
+    .follow-btn:hover:not(:disabled), .follow-btn.active { border-color: var(--accent-400); background: rgba(59, 130, 246, 0.2); }
+    .opt-sections { border-top: 1px solid var(--border-subtle); background: var(--surface-subtle); margin-top: 8px; }
+    .erow {
+      display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: center;
+      padding: 10px 14px; min-height: 44px;
+    }
+    .erow + .erow { border-top: 1px solid var(--border-subtle); }
+    .erow.disabled { opacity: 0.42; }
+    .elab { color: var(--text-secondary); font-size: 12px; font-weight: 550; }
+    .ectl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+    .type-pills {
+      display: inline-flex; padding: 2px; background: var(--surface-sunken);
+      border: 1px solid var(--border-default); border-radius: 6px; gap: 2px;
+    }
+    .type-pills button {
+      min-height: 22px; padding: 0 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    }
+    .type-pills button.active { background: var(--surface-base); color: var(--text-primary); box-shadow: var(--shadow-card); }
+    .chips { display: flex; flex-wrap: nowrap; gap: 4px; min-width: 0; }
+    .elab .only { display: block; margin-top: 1px; color: var(--text-muted); font-size: 10px; font-weight: 500; }
+    .seg {
+      height: 26px; padding: 0 10px; border: 1px solid var(--border-default); border-radius: 7px;
+      background: var(--surface-base); color: var(--text-secondary); font-size: 12px;
+    }
+    .seg:hover { border-color: var(--border-strong); color: var(--text-primary); }
+    .seg.on { border-color: rgba(59, 130, 246, 0.55); background: var(--accent-soft); color: #93C5FD; }
+    .triad {
+      display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border-default);
+      border-radius: 8px; background: var(--surface-base);
+    }
+    .triad button { height: 24px; padding: 0 10px; border-radius: 6px; color: var(--text-muted); font-size: 12px; font-weight: 550; }
+    .triad button.on { background: var(--surface-raised); color: var(--text-primary); }
+    .triad button.on.file { color: #93C5FD; background: var(--accent-soft); }
+    .dd {
+      display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
+      border: 1px solid var(--border-default); border-radius: 7px; background: var(--surface-base);
+      color: var(--text-primary); font-size: 12px; position: relative;
+    }
+    .dd .cat { color: var(--text-muted); }
+    .dd .chev { color: var(--text-muted); font-size: 10px; }
+    .ddwrap { position: relative; }
+    .fmt-menu {
+      position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; min-width: 220px;
+      max-height: 280px; overflow: auto; padding: 4px 0; border: 1px solid var(--border-default);
+      border-radius: 8px; background: var(--surface-raised); box-shadow: var(--shadow-card);
+    }
+    .fmt-opt {
+      display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 8px;
+      width: 100%; height: 28px; padding: 0 12px; color: var(--text-secondary); font-size: 12px; text-align: left;
+    }
+    .fmt-opt:hover, .fmt-opt.on { background: var(--surface-hover); color: var(--text-primary); }
+    .fmt-check { color: var(--accent-400); font-size: 11px; }
+    .also {
+      height: 26px; padding: 0 10px; border: 1px solid var(--border-default); border-radius: 99px;
+      background: transparent; color: var(--text-muted); font-size: 12px;
+    }
+    .also.on { border-color: rgba(59, 130, 246, 0.45); background: var(--accent-soft); color: #93C5FD; }
+    .also:disabled { opacity: 0.45; }
+    .ddisc {
+      display: flex; align-items: baseline; gap: 10px; margin: 2px 16px 0; padding: 5px 8px;
+      border-radius: 6px; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; text-align: left;
+    }
+    .ddisc.has:hover { background: var(--surface-base); }
+    .ddisc .dlnk { color: #93C5FD; }
+    .ddisc.has:hover .dlnk { text-decoration: underline; }
+    .ddisc .chev { font-size: 9px; align-self: center; }
+    .ddisc.has[aria-expanded="true"] .chev { transform: rotate(90deg); }
+    .dfoot {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      margin-top: 8px; padding: 8px 10px 8px 16px; border-top: 1px solid var(--border-subtle); background: var(--surface-base);
+    }
+    .dleft { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .dpath {
+      min-width: 0; overflow: hidden; color: var(--text-muted); font-family: var(--font-mono);
+      font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .eplist {
+      display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden;
+      border: 1px solid var(--border-default); border-radius: 10px; background: var(--surface-base);
+    }
+    .ephead {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 8px 12px; border-bottom: 1px solid var(--border-default); background: var(--surface-raised);
+      color: var(--text-secondary); font-size: 11.5px;
+    }
+    .rng { display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
+    .rng > button, .eprange button { color: #93C5FD; font-size: 11.5px; }
+    .rng > button:hover, .eprange button:hover { text-decoration: underline; }
+    .eprange { display: inline-flex; align-items: center; gap: 6px; }
+    .eprange input {
+      width: 46px; height: 22px; padding: 0 6px; text-align: center; font-family: var(--font-mono); font-size: 11px;
+      background: var(--surface-base); border: 1px solid var(--border-default); border-radius: var(--r-md); color: var(--text-primary);
+    }
+    .epscroll { flex: 1; min-height: 0; overflow-y: auto; }
+    .eprow { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+      width: 100%; padding: 6px 12px; color: var(--text-secondary); font-size: 12px; text-align: left; }
+    .eprow + .eprow { border-top: 1px solid var(--border-default); }
+    .eprow:hover { background: var(--surface-raised); }
+    .eprow .chk { width: 12px; height: 12px; border: 1px solid var(--border-strong); border-radius: 3px; }
+    .eprow.sel .chk { background: var(--accent-600); border-color: var(--accent-600); }
+    .eptitle { min-width: 0; display: flex; align-items: baseline; }
+    .eprow b { overflow: hidden; color: var(--text-primary); font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+    .eprow .epnote { margin-left: 6px; color: var(--text-muted); font-size: 10.5px; }
+    .eprow .epd { color: var(--text-muted); font-family: var(--font-mono); font-size: 10.5px; }
+    .eprow.unsel b, .eprow.unsel .epd, .eprow.unsel .epnote { opacity: 0.5; }
+    .epcommit {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 5px 6px 5px 10px; border-top: 1px solid var(--border-strong); background: var(--surface-raised);
+      color: var(--text-secondary); font-size: 11.5px;
+    }
+    .epacts { display: flex; align-items: center; gap: 6px; }
+
+    .follow-header { display: flex; align-items: flex-start; gap: 16px; }
+    .follow-header > div { flex: 1; }
+    .follow-list { border-top: 1px solid var(--border-default); }
+    .follow-row {
+      display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; gap: 16px; align-items: center;
+      padding: 18px 0; border-bottom: 1px solid var(--border-default);
+    }
+    .art { width: 80px; aspect-ratio: 16 / 10; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-md); background: var(--surface-raised); padding: 0; }
+    .art.large { width: 104px; flex: 0 0 auto; }
+    .art .thumb { width: 100%; height: 100%; border: 0; border-radius: 0; }
+    .follow-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; color: var(--text-secondary); font-size: var(--fs-sm); }
+    .follow-copy b { color: var(--accent-400); font-weight: 600; }
+    .title-button { width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--fs-lg); font-weight: 650; text-align: left; }
+    .title-button:hover { text-decoration: underline; }
+    .check-error { color: #FCA5A5; }
+    .row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+    .more { min-width: 32px; padding: 0 8px; }
+    .menu-wrap { position: relative; }
+    .menu {
+      position: absolute; z-index: 20; right: 0; top: calc(100% + 4px); width: 190px; padding: 5px;
+      border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--surface-raised);
+      box-shadow: var(--shadow-modal);
+    }
+    .menu button { width: 100%; padding: 8px 9px; border-radius: var(--r-sm); text-align: left; color: var(--text-primary); }
+    .menu button:hover { background: var(--surface-active); }
+    .menu button.danger { color: #FCA5A5; }
+    .empty-follow, .review-empty, .page-empty {
+      flex: 1; display: grid; place-content: center; justify-items: center; text-align: center; padding: 60px 20px;
+    }
+    .empty-follow .mark, .page-empty .mark-empty {
+      width: 40px; height: 40px; margin-bottom: 14px; display: grid; place-items: center;
+      border-radius: 10px; border: 1px solid var(--border-default); background: var(--surface-raised); color: var(--text-muted);
+    }
+    .empty-follow .mark svg { width: 20px; height: 20px; }
+    .empty-follow h2, .review-empty h2 { margin: 0; font-size: var(--fs-xl); }
+    .empty-follow p, .review-empty p { max-width: 440px; margin: 9px 0 16px; color: var(--text-secondary); }
+    .page-empty { padding: 56px var(--page-pad-x) 40px; align-content: start; padding-top: 16px; }
+    .page-empty .mark-empty {
+      width: 40px; height: 40px; margin-bottom: 14px; display: grid; place-items: center;
+      border-radius: 10px; border: 1px solid var(--border-default); background: var(--surface-raised); color: var(--text-muted);
+    }
+    .page-empty h2 { margin: 0; font-size: 15px; font-weight: 600; }
+    .page-empty p { margin: 6px 0 0; color: var(--text-muted); font-size: 13px; white-space: pre-line; max-width: 36ch; }
+    .cta {
+      display: inline-flex; align-items: center; gap: 7px; height: 32px; margin-top: 18px; padding: 0 14px 0 12px;
+      border: 1px solid var(--accent-600); border-radius: 8px; background: var(--accent-600); color: #fff; font-size: 13px; font-weight: 600;
+    }
+    .back { display: inline-flex; align-items: center; gap: 6px; width: fit-content; color: var(--text-secondary); padding: 2px 0; }
+    .back:hover { color: var(--text-primary); }
+    .detail-identity { display: flex; align-items: flex-start; gap: 16px; }
+    .detail-identity > div:nth-child(2) { flex: 1; min-width: 0; }
+    .detail-identity p { margin: 5px 0 0; color: var(--text-secondary); }
+    .identity-menu { margin-left: auto; }
+    .saved-settings { border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-subtle); padding: 12px 14px; }
+    .saved-settings.summary { display: flex; align-items: center; gap: 12px; }
+    .saved-settings strong, .saved-settings .path { display: block; }
+    .saved-settings .path { margin-top: 3px; overflow-wrap: anywhere; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--fs-sm); }
+    .saved-settings > p { margin: 10px 0; color: var(--text-secondary); font-size: var(--fs-sm); }
+    .folder-field { display: grid; grid-template-columns: 125px 1fr; align-items: center; gap: 12px; margin-top: 8px; color: var(--text-secondary); }
+    .folder-field input {
+      height: 34px; padding: 0 12px; background: var(--surface-base); border: 1px solid var(--border-default);
+      border-radius: var(--r-md); color: var(--text-primary);
+    }
+    .edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .output-row { display: flex; align-items: center; gap: 8px; }
+    .output-row select {
+      width: auto; min-width: 145px; height: 30px; padding-left: 9px; padding-right: 28px;
+      background: var(--surface-base); border: 1px solid var(--border-default); border-radius: var(--r-md);
+    }
+    .segmented { display: flex; border: 1px solid var(--border-default); border-radius: var(--r-md); overflow: hidden; }
+    .segmented button { min-height: 28px; padding: 0 10px; color: var(--text-secondary); }
+    .segmented button.on { color: var(--text-primary); background: var(--accent-soft); }
+    .notice {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 16px;
+      padding: 12px 14px; border: 1px solid rgba(59,130,246,.35); border-radius: var(--r-md);
+      background: var(--accent-soft); flex-wrap: wrap;
+    }
+    .notice > span:first-child { flex: 1 1 220px; min-width: 0; color: var(--text-primary); font-size: 13px; line-height: 1.45; }
+    .notice-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .notice-actions button {
+      display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 0 11px;
+      border: 1px solid var(--border-default); border-radius: 7px; background: var(--surface-base);
+      color: var(--text-primary); font-size: 12px; font-weight: 600;
+    }
+    .notice-actions button:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+    .notice-actions button.confirm {
+      background: var(--accent-600); border-color: var(--accent-600); color: #fff;
+    }
+    .notice-actions button.confirm:hover { background: var(--accent-500); border-color: var(--accent-500); }
+    .skipped-list button { display: inline-flex; align-items: center; gap: 6px; color: var(--accent-400); }
+    .danger-notice { border-color: rgba(239,68,68,.35); background: var(--status-danger-soft); color: #FCA5A5; }
+    .skipped-list { border-top: 1px solid var(--border-default); padding-top: 8px; }
+    .skipped-heading { min-height: 32px; }
+    .skipped-row {
+      display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 7px 8px;
+      border-top: 1px solid var(--border-default); color: var(--text-secondary);
+    }
+    .skipped-row span { flex: 1; }
+
+    .overlay { position: absolute; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgba(0,0,0,.64); }
+    .overlay.soft { background: rgba(17, 24, 39, 0.32); }
+    .dialog {
+      width: min(480px, 94%); padding: 20px; border: 1px solid var(--border-strong); border-radius: var(--r-lg);
+      background: var(--surface-raised); box-shadow: var(--shadow-modal);
+    }
+    .dialog.compact { width: min(320px, 94%); padding: 14px 16px 12px; background: var(--surface-base); border-color: var(--border-default); }
+    .dialog header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .dialog h2 { flex: 1; margin: 0; font-size: 17px; }
+    .dialog.compact h2 { font-size: 15px; font-weight: 650; }
+    .dialog header button { color: var(--text-muted); font-size: 20px; }
+    .dialog > strong { display: block; }
+    .callout { margin: 16px 0; padding: 2px 0 2px 12px; border-left: 2px solid var(--accent-400); }
+    .callout p { margin: 6px 0; color: var(--text-secondary); }
+    .callout b { color: var(--text-primary); }
+    dl { margin: 0; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--r-md); }
+    dl > div + div { margin-top: 8px; }
+    dt { color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .04em; }
+    dd { margin: 2px 0 0; color: var(--text-secondary); }
+    .dialog .path { overflow-wrap: anywhere; font-family: var(--font-mono); font-size: var(--fs-sm); }
+    .dialog .note { margin: 12px 0 0; color: var(--text-secondary); font-size: var(--fs-sm); border: 0; padding: 0; border-radius: 0; display: block; }
+    .progress { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--text-secondary); }
+    .progress i {
+      width: 14px; height: 14px; border: 2px solid var(--border-strong); border-top-color: var(--accent-400);
+      border-radius: 50%; animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dialog footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .dialog.compact footer { margin-top: 14px; }
+    .dialog.compact .lead { margin: 8px 0 0; color: var(--text-secondary); font-size: 13px; }
+
+    .banner {
+      position: absolute; bottom: calc(var(--statusbar-h) + 12px); left: 50%; transform: translateX(-50%);
+      background: var(--surface-raised); border: 1px solid var(--border-default); border-radius: var(--r-full);
+      padding: 10px 16px; display: flex; align-items: center; gap: 12px; box-shadow: var(--shadow-card);
+      font-size: var(--fs-sm); z-index: 80; max-width: min(560px, 92%);
+    }
+    .banner .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .banner.success { border-color: var(--status-success); }
+    .banner.success .dot { background: var(--status-success); }
+    .banner.info { border-color: var(--status-info); }
+    .banner.info .dot { background: var(--status-info); }
+    .banner.danger { border-color: var(--status-danger); }
+    .banner.danger .dot { background: var(--status-danger); }
+
+    .action-icon, .action-icon svg, .section-title > svg, .app-btn > svg, .cta > svg {
+      width: 14px; height: 14px; max-width: 14px; max-height: 14px; flex: 0 0 14px; display: block;
+    }
+    .dbtn svg { width: 12px; height: 12px; max-width: 12px; max-height: 12px; flex: 0 0 12px; }
+    .queue-page { position: absolute; inset: 0; padding: 0; gap: 0; overflow: hidden; display: flex; flex-direction: column; }
+    .qwrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; height: 100%; min-height: 0; }
+    .qmaster { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .qhead {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-shrink: 0;
+      min-height: calc(var(--page-pad-y) + 28px + 16px); padding: var(--page-pad-y) var(--page-pad-x) 16px;
+    }
+    .qident { display: flex; min-width: 0; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .qhead h1, .dhead h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.02em; }
+    .qslots { margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .qlist { flex: 1; overflow-y: auto; padding: 0 calc(var(--page-pad-x) - 8px) 16px; }
+    .section-title {
+      display: flex; align-items: center; gap: 7px; margin: 18px 8px 10px;
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+    }
+    .section-count { margin-left: auto; padding: 1px 6px; border-radius: 5px; background: var(--surface-raised); font-size: 10px; font-variant-numeric: tabular-nums; }
+    .mark-empty svg { width: 20px; height: 20px; max-width: 20px; max-height: 20px; flex: 0 0 20px; }
+    .qrow {
+      width: 100%; border: 0; background: transparent; color: var(--text-primary); font-family: inherit;
+      display: grid; grid-template-columns: 34px minmax(0, 1fr) 150px; gap: 12px; align-items: center;
+      height: 36px; padding: 0 8px; border-radius: 7px; text-align: left;
+    }
+    .qrow:hover { background: #131316; }
+    .qrow.sel { background: var(--surface-raised); }
+    .qth { width: 34px; height: 22px; border-radius: 3px; overflow: hidden; background: #152033; display: grid; place-items: center; }
+    .qmid { display: block; min-width: 0; }
+    .qt { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 12.5px; font-weight: 500; }
+    .qtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .qkind { flex-shrink: 0; color: #93C5FD; font-size: 10px; font-style: normal; font-weight: 650; letter-spacing: 0.04em; }
+    .qbar { display: block; height: 3px; margin-top: 4px; border-radius: 99px; background: #26262C; overflow: hidden; }
+    .qbar i { display: block; height: 100%; background: var(--accent-500); }
+    .qtail { text-align: right; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+    .qinsp { border-left: 1px solid var(--border-default); background: #0D0D0F; padding: var(--page-pad-y) var(--page-pad-x) 18px; overflow-y: auto; }
+    .qinsp h3 { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; }
+    .ibig { width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; object-fit: cover; display: block; margin: 12px 0; }
+    .imeta { color: var(--text-secondary); font-size: 12px; margin-bottom: 12px; }
+    .ibar { height: 5px; border-radius: 99px; background: #26262C; overflow: hidden; margin-bottom: 8px; }
+    .ibar i { display: block; height: 100%; background: var(--accent-500); }
+    .kids { display: flex; flex-direction: column; gap: 2px; margin: 0 0 4px; }
+    .kid { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 5px 8px; border-radius: 6px; font-size: 12px; color: var(--text-secondary); }
+    .kid.live { background: var(--surface-raised); color: var(--text-primary); }
+    .kt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kth { width: 34px; height: 22px; border-radius: 3px; overflow: hidden; background: #152033; }
+    .kd { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+    .kbar { display: block; height: 3px; margin-top: 4px; border-radius: 99px; background: #26262C; overflow: hidden; }
+    .kbar i { display: block; height: 100%; background: var(--accent-500); }
+    .ibtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .app-btn { gap: 6px; }
+    .downloads-page { position: absolute; inset: 0; padding: 0; gap: 0; overflow: hidden; display: flex; flex-direction: column; }
+    .dhead { display: flex; align-items: center; justify-content: space-between; padding: var(--page-pad-y) var(--page-pad-x) 16px; }
+    .dsearch {
+      width: 240px; height: 28px; padding: 0 10px; border: 1px solid var(--border-default); border-radius: 7px;
+      background: var(--surface-base); color: var(--text-primary); font-size: 12px;
+    }
+    .settings-page h1 { margin: 0 0 18px; font-size: 22px; }
+    .sgroup { border: 1px solid var(--border-default); border-radius: 10px; background: var(--surface-raised); overflow: hidden; margin-bottom: 16px; }
+    .sgroup h2 {
+      display: flex; align-items: center; gap: 8px; margin: 0; padding: 12px 16px; font-size: 13px; font-weight: 650;
+      border-bottom: 1px solid var(--border-default);
+    }
+    .srow { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
+    .srow + .srow { border-top: 1px solid var(--border-subtle); }
+    .scopy strong { display: block; font-size: 13px; }
+    .scopy span { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; }
+    .scopy .mono { font-family: var(--font-mono); font-size: 11px; }
+    .switch {
+      width: 36px; height: 20px; border-radius: 99px; background: var(--surface-active); position: relative; border: 0;
+    }
+    .switch.on { background: var(--accent-600); }
+    .switch span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+    .switch.on span { left: 18px; }
+    .sfixed { color: var(--text-muted); font-size: 12px; }
+
+    .tour-hit {
+      outline: 1.5px dashed rgba(245, 158, 11, 0.85); outline-offset: 3px; border-radius: 8px;
+    }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    @media (prefers-reduced-motion: reduce) {
+      .hud-progress, .wait-dots::after, .progress i { animation: none; }
+    }
+    @media (max-width: 900px) {
+      .steps { grid-template-columns: 1fr 1fr; }
+      .reco-pair { grid-template-columns: 1fr; }
+    }
+    .reco, .demo { scroll-margin-top: 64px; }
+    .reco { margin: 44px 0 8px; border-top: 1px solid var(--border-default); padding-top: 28px; }
+    .reco h2 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.03em; }
+    .reco-lede { margin: 10px 0 20px; max-width: 74ch; color: var(--text-secondary); font-size: 14.5px; }
+    .reco-card {
+      margin: 0 0 12px; padding: 16px 18px; border: 1px solid var(--border-default);
+      border-radius: 12px; background: var(--surface-raised);
+    }
+    .reco-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .reco-num {
+      flex: 0 0 auto; width: 26px; height: 26px; display: grid; place-items: center;
+      border-radius: 50%; background: var(--accent-soft); border: 1px solid rgba(59,130,246,.45);
+      color: #93C5FD; font-size: 13px; font-weight: 700;
+    }
+    .reco-head h3 { margin: 1px 0 4px; font-size: 15.5px; font-weight: 650; }
+    .reco-head p { margin: 0; color: var(--text-secondary); font-size: 13.5px; max-width: 76ch; }
+    .reco-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .reco-tag { display: inline-block; margin-bottom: 6px; font-size: 11px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
+    .reco-tag.before { color: #FBBF24; }
+    .reco-tag.after { color: #6EE7B7; }
+    .mock {
+      border: 1px solid var(--border-default); border-radius: 8px; background: var(--surface-base);
+      padding: 12px 14px; font-size: 12px; color: var(--text-secondary); min-height: 118px;
+    }
+    .mock .mock-title { color: var(--text-primary); font-size: 13.5px; font-weight: 650; }
+    .mock .mock-line { display: block; margin-top: 3px; }
+    .mock .mock-hint { display: block; margin-top: 8px; color: var(--text-muted); font-size: 11.5px; }
+    .mock .mock-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .mock .chip {
+      display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 11px;
+      border: 1px solid var(--border-default); color: var(--text-muted);
+    }
+    .mock .chip.bad { border-color: rgba(239,68,68,.4); color: #FCA5A5; }
+    .mock .chip.good { border-color: rgba(59,130,246,.45); color: #93C5FD; background: var(--accent-soft); }
+    .reco-do { margin: 12px 0 0; color: var(--text-secondary); font-size: 13px; }
+    .reco-do b { color: var(--text-primary); }
+    .reco-foot { margin: 18px 0 0; color: var(--text-muted); font-size: 12.5px; }
+    .demo { margin: 28px 0 8px; border-top: 1px solid var(--border-default); padding-top: 28px; }
+    .demo h2 { margin: 0; font-size: 22px; font-weight: 650; letter-spacing: -0.03em; }
+    .demo-lede { margin: 10px 0 0; max-width: 74ch; color: var(--text-secondary); font-size: 14.5px; }
+    .demo-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0 14px; }
+    .demo-tabs button {
+      min-height: 30px; padding: 0 12px; border: 1px solid var(--border-default); border-radius: 8px;
+      background: var(--surface-raised); color: var(--text-secondary); font-size: 12px; font-weight: 600;
+    }
+    .demo-tabs button:hover { border-color: var(--border-strong); color: var(--text-primary); }
+    .demo-tabs button.on { border-color: rgba(59,130,246,.55); background: var(--accent-soft); color: #93C5FD; }
+    .demo-status {
+      display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+      margin: 14px 0 0; max-width: 80ch; color: var(--text-secondary); font-size: 14px;
+    }
+    .demo-status button { color: #93C5FD; font-size: 13px; font-weight: 600; }
+    .demo-status button:hover { text-decoration: underline; }
+    #demoApp .nav-item.has-meta {
+      min-height: 40px; align-items: center; padding-top: 5px; padding-bottom: 5px;
+    }
+    #demoApp .nav-copy {
+      flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    }
+    #demoApp .nav-copy .nav-label { flex: none; line-height: 1.2; }
+    #demoApp .nav-meta {
+      font-size: 10px; font-weight: 500; color: var(--text-muted); line-height: 1.2;
+    }
+    #demoApp .nav-item.active .nav-meta { color: #93C5FD; }
+    #demoApp .nav-item.has-meta.active::before { top: 9px; bottom: 9px; }
+    #demoApp .art {
+      display: grid; place-items: center; overflow: hidden; padding: 0;
+      background:
+        linear-gradient(160deg, rgba(59,130,246,.18), rgba(15,23,42,.9)),
+        #0F172A;
+    }
+    #demoApp .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #demoApp .art.tone-lofi {
+      background:
+        linear-gradient(145deg, rgba(167,139,250,.22), rgba(15,23,42,.92)),
+        #111827;
+    }
+    #demoApp .art.tone-arch {
+      background:
+        linear-gradient(145deg, rgba(56,189,248,.18), rgba(15,23,42,.92)),
+        #0B1220;
+    }
+    #demoApp .art .art-mark,
+    #demoApp .art .art-mark {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(226,232,240,.78);
+    }
+    #demoApp .title-button .tmeta,
+    #demoApp .title-button .tmeta,
+    #demoApp .title-btn .tmeta {
+      color: var(--text-muted); font-size: 12px; font-weight: 500; letter-spacing: 0;
+    }
+    #demoApp .art.large img,
+    #demoApp .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #demoApp .art.large { width: 104px; flex: 0 0 auto; }
+    #demoApp .row-actions .app-btn svg,
+    #demoApp .follow-header .app-btn svg,
+    #demoApp .back svg { width: 14px; height: 14px; flex: 0 0 14px; }
+    #demoApp .app-btn.more { min-width: 32px; padding: 0 8px; }
+    .dchip {
+      display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 11px;
+      border: 1px solid var(--border-default); color: var(--text-muted); white-space: nowrap;
+    }
+    .dchip.bad { border-color: rgba(239,68,68,.4); color: #FCA5A5; }
+    .dchip.good { border-color: rgba(59,130,246,.45); color: #93C5FD; background: var(--accent-soft); }
+    .dhint { display: block; margin-top: 8px; color: var(--text-muted); font-size: 11.5px; }
+    .dscope { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
+    .dscope-opt {
+      text-align: left; border: 1px solid var(--border-default); border-radius: 8px;
+      padding: 10px 12px 10px 36px; background: var(--surface-base); position: relative;
+    }
+    .dscope-opt::before {
+      content: ""; position: absolute; left: 12px; top: 14px; width: 14px; height: 14px;
+      border: 1.5px solid var(--border-strong); border-radius: 50%; background: var(--surface-sunken);
+    }
+    .dscope-opt:hover { border-color: var(--border-strong); }
+    .dscope-opt b { display: block; font-size: 13px; }
+    .dscope-opt span { display: block; margin-top: 2px; color: var(--text-secondary); font-size: 12px; }
+    .dscope-opt.on { border-color: rgba(59,130,246,.55); background: var(--accent-soft); }
+    .dscope-opt.on::before {
+      border-color: var(--accent-400); box-shadow: inset 0 0 0 3.5px var(--accent-500);
+    }
+    .dscope-opt.secondary { opacity: 0.92; }
+    .dscope-opt.secondary span { color: var(--text-muted); }
+    .dempty { flex: 1; display: grid; place-content: center; justify-items: center; text-align: center; padding: 56px 20px; }
+    .dempty h2 { margin: 0; font-size: var(--fs-xl); }
+    .dempty p { max-width: 440px; margin: 9px 0 16px; color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <span class="mark" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2 8.5 6 2.5l4 6"/><path d="M4 9.5h4"/></svg></span>
+    <strong>Follow, end to end</strong>
+    <nav>
+      <a href="index.html">Design review</a>
+      <a href="TESTING.md">Native tests</a>
+      <a href="prototype.html">Earlier prototype</a>
+      <a href="#recommendations">Recommendations</a>
+    </nav>
+  </header>
+  <div class="wrap">
+    <div class="lede">
+      <h1>Follow a playlist, then review what arrives later</h1>
+      <p><strong>Follow</strong> remembers a whole public playlist, along with the download settings you already picked on <strong>Home</strong>. Videos that are already there will not bug you as new. Checks happen only when you ask, and you personally choose which new videos head to the <strong>Queue</strong>.</p>
+      <p>The window below is a clickable simulation of the real thing. Step through it at your own pace, or try it in the app yourself — nothing here downloads or saves anything.</p>
+      <span class="note">1180 × 760 · zinc chrome from the native window · follow copy from this checkout</span>
+    </div>
+    <ol class="steps" id="steps"></ol>
+    <div class="tour-bar">
+      <button type="button" class="app-btn" id="prev">Previous</button>
+      <button type="button" class="app-btn primary" id="next">Next</button>
+      <button type="button" class="app-btn quiet" id="reset">Start over</button>
+    </div>
+    <div class="stage-wrap">
+      <div class="window" id="app" aria-label="VidStow"></div>
+    </div>
+    <p class="caption" id="caption"></p>
+    <section class="reco" id="recommendations" aria-label="Recommended changes">
+      <h2>Recommended changes</h2>
+      <p class="reco-lede">The overall direction here is solid — I checked it against 4K Video Downloader+ running alongside, and the bones are right. What follows are seven fairly small changes that clear up the confusing spots without adding any new features. Each one shows what is there now and what I would ship instead.</p>
+
+      <article class="reco-card">
+        <div class="reco-head"><span class="reco-num">1</span><div>
+          <h3>Give Follow a little more weight on Home</h3>
+          <p>Right now the Follow button sits quietly under the playlist title, and most first-timers will blow straight past it on their way to Download. Its spot is exactly right — attached to the playlist itself rather than the current selection — it just needs a little hint underneath so people actually notice it is there.</p>
+        </div></div>
+        <div class="reco-pair">
+          <div><span class="reco-tag before">Now</span><div class="mock">
+            <span class="mock-title">Building LLMs from scratch</span>
+            <span class="mock-line">Playlist · 43 videos</span>
+            <div class="mock-row"><button type="button" class="follow-btn" tabindex="-1">Follow</button></div>
+          </div></div>
+          <div><span class="reco-tag after">Recommended</span><div class="mock">
+            <span class="mock-title">Building LLMs from scratch</span>
+            <span class="mock-line">Playlist · 43 videos</span>
+            <div class="mock-row"><button type="button" class="follow-btn" tabindex="-1">Follow</button></div>
+            <span class="mock-hint">Saves future videos · Nothing downloads now</span>
+          </div></div>
+        </div>
+        <p class="reco-do"><b>Change:</b> leave the button where it is, and add the hint line beneath it until someone follows for the first time.</p>
+      </article>
+
+      <article class="reco-card">
+        <div class="reco-head"><span class="reco-num">2</span><div>
+          <h3>Name the videos already here in the setup</h3>
+          <p>Saying “future videos only” is honest, but it leaves people guessing about the videos sitting right in front of them. If you are following a course halfway through, you have no way to tell whether those older lectures are quietly ignored or about to flood your review list.</p>
+        </div></div>
+        <div class="reco-pair">
+          <div><span class="reco-tag before">Now</span><div class="mock">
+            <span class="mock-title">Follow this playlist?</span>
+            <span class="mock-line"><b>Future videos only.</b> Videos already in this playlist will not appear as new.</span>
+            <span class="mock-line"><b>Manual checks.</b> Open Following and choose Check now.</span>
+          </div></div>
+          <div><span class="reco-tag after">Recommended</span><div class="mock">
+            <span class="mock-title">Follow this playlist?</span>
+            <span class="mock-line"><b>Future videos only.</b> The 43 already here won’t show up as new.</span>
+            <span class="mock-line"><b>Download all 43 now.</b> Start those downloads, then keep following for new ones.</span>
+            <span class="mock-line"><b>Manual checks.</b> We’ll only look for new videos when you hit Check now.</span>
+          </div></div>
+        </div>
+        <p class="reco-do"><b>Change:</b> put the real number in the dialog, and let people pick — just the future videos, or download all 43 now.</p>
+      </article>
+
+      <article class="reco-card">
+        <div class="reco-head"><span class="reco-num">3</span><div>
+          <h3>Compress each Following row to three lines</h3>
+          <p>Four lines per row does not sound like much until you have three or four followed playlists with errors sprinkled in. At the smaller window size the whole page turns into a long scroll where everything shouts at the same volume and nothing stands out.</p>
+        </div></div>
+        <div class="reco-pair">
+          <div><span class="reco-tag before">Now</span><div class="mock">
+            <span class="mock-title">Building LLMs from scratch</span>
+            <span class="mock-line">Vizuara · 46 videos</span>
+            <span class="mock-line">3 to review · Last checked Just now</span>
+            <span class="mock-line">Up to 1080p · File · English · SRT</span>
+            <span class="mock-line">Couldn’t check for updates. Saved videos are still available.</span>
+          </div></div>
+          <div><span class="reco-tag after">Recommended</span><div class="mock">
+            <span class="mock-title">Building LLMs from scratch <span style="color:var(--text-muted);font-weight:500">· Vizuara · 46</span></span>
+            <span class="mock-line">3 to review · Last checked Just now <span class="chip bad">Check failed</span></span>
+            <span class="mock-line">Up to 1080p · File · English · SRT</span>
+            <span class="mock-hint">Full folder path and error detail live in the detail view.</span>
+          </div></div>
+        </div>
+        <p class="reco-do"><b>Change:</b> roll the channel and count up into the title line, keep one line for status and one for settings, and leave the full folder path for the detail view.</p>
+      </article>
+
+      <article class="reco-card">
+        <div class="reco-head"><span class="reco-num">4</span><div>
+          <h3>Show real check progress</h3>
+          <p>When the app just says “checking playlists,” you have no idea whether that means one playlist or five, or whether it will take seconds or minutes. 4K handles this nicely with a per-item spinner and a last-updated time, so even a slow run never feels stuck.</p>
+        </div></div>
+        <div class="reco-pair">
+          <div><span class="reco-tag before">Now</span><div class="mock">
+            <span class="mock-line">Status bar: Checking playlists</span>
+            <div class="mock-row"><span class="chip">Row: Checking…</span></div>
+          </div></div>
+          <div><span class="reco-tag after">Recommended</span><div class="mock">
+            <span class="mock-line">Header: <b>Checking 2 of 5</b> · Stop checking</span>
+            <div class="mock-row"><span class="chip good">Row 2: Checking…</span><span class="chip">Rows 3–5: Waiting to check</span></div>
+          </div></div>
+        </div>
+        <p class="reco-do"><b>Change:</b> count it out in the header, like 2 of 5, and skip the percentage bar unless we genuinely know the total.</p>
+      </article>
+
+      <article class="reco-card">
+        <div class="reco-head"><span class="reco-num">5</span><div>
+          <h3>Guard the big review</h3>
+          <p>Pre-selecting three new lectures is a kindness. Pre-selecting forty is a trap, because one stray click on Download queues the whole lot — and the All available escape hatch sits quietly up above where nobody looks.</p>
+        </div></div>
+        <div class="reco-pair">
+          <div><span class="reco-tag before">Now</span><div class="mock">
+            <span class="mock-line">40 of 40 selected</span>
+            <div class="mock-row"><button type="button" class="app-btn primary" tabindex="-1">Download 40 videos</button></div>
+          </div></div>
+          <div><span class="reco-tag after">Recommended</span><div class="mock">
+            <span class="mock-line">40 new · showing 10 · 10 of 10 selected</span>
+            <div class="mock-row"><button type="button" class="app-btn primary" tabindex="-1">Download 10 videos</button><span class="chip">Shown videos only</span></div>
+            <span class="mock-hint">Confirm before queueing a batch above the page size.</span>
+          </div></div>
+        </div>
+        <p class="reco-do"><b>Change:</b> page through large reviews ten or so at a time, keep Download and Skip scoped to what is on screen, and ask for confirmation before a big batch heads to the queue.</p>
+      </article>
+
+      <article class="reco-card">
+        <div class="reco-head"><span class="reco-num">6</span><div>
+          <h3>Reuse the same output editor when editing saved settings</h3>
+          <p>Home and Following both edit the exact same thing — quality plus File or Embed — but they look like completely different controls. Anyone comparing the two will reasonably conclude they are different features.</p>
+        </div></div>
+        <div class="reco-pair">
+          <div><span class="reco-tag before">Now</span><div class="mock">
+            <span class="mock-line">Home: Video | 1080p 720p · File Embed · Title &amp; channel</span>
+            <span class="mock-line">Following edit: Video/Audio toggle + quality dropdown</span>
+          </div></div>
+          <div><span class="reco-tag after">Recommended</span><div class="mock">
+            <span class="mock-line"><b>Up to 1080p · File · English · SRT</b> · Edit</span>
+            <span class="mock-hint">One shared editor in both places. Saving notes that queued items keep the settings they started with.</span>
+          </div></div>
+        </div>
+        <p class="reco-do"><b>Change:</b> build one shared editor and use it in both places, with the File and Embed wording kept identical.</p>
+      </article>
+
+      <article class="reco-card">
+        <div class="reco-head"><span class="reco-num">7</span><div>
+          <h3>Say what the two badges mean, once</h3>
+          <p>The sidebar shows two numbers that look like the same kind of backlog, but they mean totally different things: one counts videos still waiting for your decision, the other counts downloads already on their way. Nobody is going to guess that on their own.</p>
+        </div></div>
+        <div class="reco-pair">
+          <div><span class="reco-tag before">Now</span><div class="mock">
+            <div class="mock-row"><span class="chip">Following · 3</span><span class="chip">Queue · 2</span></div>
+            <span class="mock-hint">Plus two messages for one skip: a floating banner and an inline notice.</span>
+          </div></div>
+          <div><span class="reco-tag after">Recommended</span><div class="mock">
+            <span class="mock-line"><b>Queue</b> <span class="chip">2</span></span>
+            <span class="mock-line" style="color:var(--text-muted)">queued</span>
+            <span class="mock-line" style="margin-top:8px"><b>Following</b> <span class="chip good">40</span></span>
+            <span class="mock-line" style="color:var(--text-muted)">to review</span>
+            <span class="mock-hint">Keep the compact number. Put the meaning under the label, not inside the pill.</span>
+          </div></div>
+        </div>
+        <p class="reco-do"><b>Change:</b> leave the rail badge as a number. Add a quiet caption under Queue and Following so the two counts do not look like the same backlog. Spell it out once in the empty states, and merge the double skip messages into one.</p>
+      </article>
+
+      <p class="reco-foot">Put together with the 4K window open in the background for reference. Nothing here was downloaded or saved.</p>
+    </section>
+    <section class="demo" id="recommended-demo" aria-label="Recommended end state demo">
+      <h2>Try the recommended end state</h2>
+      <p class="demo-lede">This is all seven changes working together in one clickable window. You can follow from Home with or without grabbing the current videos, run a check across two playlists, review three new arrivals, survive a forty-video pileup, and edit everything through one shared editor. Nothing here downloads or saves anything.</p>
+      <div class="demo-tabs" id="demoTabs" role="group" aria-label="Demo views">
+        <button type="button" data-dtab="home">Home</button>
+        <button type="button" data-dtab="following">Following</button>
+        <button type="button" data-dtab="checking">Checking</button>
+        <button type="button" data-dtab="review">Review</button>
+        <button type="button" data-dtab="big">Big batch</button>
+      </div>
+      <div class="stage-wrap">
+        <div class="window" id="demoApp" aria-label="VidStow recommended demo"></div>
+      </div>
+      <p class="demo-status" id="demoStatus" role="status"></p>
+    </section>
+  </div>
+
+<script>
+const PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu";
+const FOLDER = "/Users/tejas/Downloads/vidstow";
+const LANGS = [
+  ["", "English or first available"], ["en", "English"], ["es", "Spanish"], ["pt", "Portuguese"],
+  ["fr", "French"], ["de", "German"], ["hi", "Hindi"], ["ja", "Japanese"], ["ko", "Korean"],
+  ["zh", "Chinese"], ["ar", "Arabic"], ["it", "Italian"], ["ru", "Russian"],
+];
+const LECTURE_SEED = [
+  "Lecture 1: Building LLMs from scratch: Series introduction",
+  "Lecture 2: Large Language Models (LLM) Basics",
+  "Lecture 3: Pretraining LLMs vs Finetuning LLMs",
+  "Lecture 4: What are transformers?",
+  "Lecture 5: How does GPT-3 really work?",
+  "Lecture 6: Stages of building an LLM from Scratch",
+  "Lecture 7: Working with text data",
+  "Lecture 8: Attention mechanisms",
+  "Lecture 9: Implementing GPT",
+  "Lecture 10: Pretraining on unlabeled data",
+  "Lecture 11: Fine-tuning for classification",
+  "Lecture 12: Instruction fine-tuning",
+  "Lecture 13: Parameter-efficient fine-tuning",
+  "Lecture 14: Evaluating generated text",
+  "Lecture 15: Building a classification dataset",
+];
+const LECTURES = Array.from({ length: 43 }, (_, i) => LECTURE_SEED[i] || `Lecture ${i + 1}`);
+const NEW_VIDEOS = [
+  { id: "v44", title: "Lecture 44: Evaluating a language model", duration: "32:18", available: true },
+  { id: "v45", title: "Lecture 45: Training with preference data", duration: "46:02", available: true },
+  { id: "v46", title: "Lecture 46: Building a retrieval system", duration: "28:41", available: true },
+];
+const ICONS = {
+  home: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M3 11l9-7 9 7v9a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2z"/></svg>',
+  queue: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/></svg>',
+  following: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M7 13a5 5 0 0 1 5-5h5m0 0-3-3m3 3-3 3M17 11a5 5 0 0 1-5 5H7m0 0 3 3m-3-3 3-3"/></svg>',
+  downloads: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M5 20h14"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  search: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20.5 20.5-3.8-3.8"/></svg>',
+  dl: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>',
+  pause: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>',
+  download: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg>',
+  retry: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10a9 9 0 1 1 2.6 8.4M3 4v6h6"/></svg>',
+  review: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 11v6M12 7h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0"/></svg>',
+  more: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>',
+  skip: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4l10 8-10 8zM19 5v14"/></svg>',
+  undo: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h10.5a5.5 5.5 0 1 1 0 11H11"/></svg>',
+  back: '<svg class="action-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
+};
+const STEPS = [
+  { id: "home", title: "Paste a playlist on Home", copy: "Everything starts on Home, same as always — paste a link like you normally would. There is no separate place for follows: just use <b>a playlist</b>, hit <b>Analyze</b>, and the Follow option shows up from there." },
+  { id: "analyzed", title: "Follow sits with the playlist identity", copy: "You will find <b>Follow</b> tucked under the playlist title rather than next to <b>Download 43 videos</b>, and that placement is doing real work. Download grabs whatever you have selected right now, while Follow remembers the whole playlist for later checks." },
+  { id: "setup", title: "Confirm future videos only", copy: "The setup dialog lays everything out before you commit: which playlist, which output settings, which folder. It tells you plainly that checks are manual, and that following will not download a thing on its own." },
+  { id: "following-home", title: "Home keeps the current selection", copy: "Once you confirm, the button simply becomes <b>Following</b>. Your 43 selected videos stay exactly as they were, and nothing sneaks into the <b>Queue</b> behind your back." },
+  { id: "list", title: "Following is a playlist list", copy: "The Following list answers three questions at a glance: which playlist is this, does anything need your eyes, and when did the last check actually succeed. And just opening the app never kicks off a check by itself." },
+  { id: "checking", title: "Check now looks for additions", copy: "<b>Check now</b> looks at just this playlist, while <b>Check all</b> works through your follows one by one. If you get impatient, <b>Stop checking</b> halts the run but keeps everything found so far." },
+  { id: "review", title: "Review new videos in Following", copy: "Reviewing happens here in <b>Following</b>, not back on Home where it would bulldoze whatever you were doing. Available videos start off selected, and unchecking one just unchecks it — the row stays put." },
+  { id: "partial", title: "Download only the videos you keep", copy: "Try unchecking one lecture: the button becomes <b>Download 2 videos</b>, those two head to the Queue, and the one you skipped stays right here for whenever." },
+  { id: "queue", title: "Queue owns the transfer", copy: "Over in <b>Queue</b>, those two arrive as one playlist collection. From here on they are the Queue's responsibility — if a transfer fails later, you deal with it here instead of watching the video mysteriously reappear in Following." },
+  { id: "skip", title: "Skip is selected-only and recoverable", copy: "<b>Skip 1 selected</b> clears that video from review without downloading anything. Changed your mind? <b>Undo</b> or <b>Return to review</b> brings it straight back." },
+  { id: "failed", title: "A failed check does not hide review", copy: "This time the check itself failed — a network hiccup, whatever it was. Your earlier finds are still here under <b>Review 1 new</b>, and the app still shows when the last good check ran." },
+  { id: "settings", title: "Edit download settings without unfollowing", copy: "You can change quality or folder on a follow whenever you like, no unfollowing required. Anything already sitting in the Queue keeps the settings it started with — only new downloads pick up the changes." },
+  { id: "unfollow", title: "Unfollow does not delete files", copy: "Unfollow lives tucked in the playlist menu, away from the everyday buttons. The confirmation names the playlist and anything still waiting, and your downloaded files and queued items stay exactly where they are." },
+];
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function word(n, one, many) { return `${n} ${n === 1 ? one : many}`; }
+function thumb(kind) {
+  const src = kind === "video" ? "assets/video-thumb.jpg" : "assets/llm-thumb.jpg";
+  return `<img src="${src}" alt="" referrerpolicy="no-referrer" />`;
+}
+function langName(code) { return (LANGS.find(([c]) => c === code) || LANGS[0])[1]; }
+function summary(s) {
+  if (s.tab === "audio") return s.audio === "original" ? "Original audio" : `MP3 ${s.audio}`;
+  const out = `Up to ${s.quality}`;
+  if (!s.subtitleMode) return `${out} · Subtitles off`;
+  return [out, s.subtitleMode === "embed" ? "Embed" : "File", langName(s.lang), (s.format || "srt").toUpperCase()].join(" · ");
+}
+function pathFor(title) { return `${FOLDER}/${title}`; }
+function fresh() {
+  return {
+    route: "home", url: "", analyzing: false, playlist: false, video: false, batch: false, detailsOpen: true,
+    selected: new Set(LECTURES.map((_, i) => i + 1)),
+    opts: { tab: "video", quality: "1080p", audio: "original", subtitleMode: "sidecar", lang: "", format: "srt", embedMetadata: true, embedChapters: true },
+    followSetup: false, followBusy: false, follows: [], detail: null, reviewSel: new Set(),
+    editing: false, edit: null, menu: "", langOpen: false, fmtOpen: false, skippedOpen: false,
+    undo: null, checking: false, banner: null, modal: null, queue: [], highlight: "",
+    subfolder: true,
+  };
+}
+
+let S = fresh();
+let step = 0;
+let timers = [];
+function later(fn, ms) { const t = setTimeout(fn, ms); timers.push(t); return t; }
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+function llmFollow(extra = {}) {
+  return {
+    id: "llm", playlistId: "PLPTV0NXA_ZSgsLAr8YCgCwhPIJNNtexWu", title: "Building LLMs from scratch",
+    channel: "Vizuara", count: 43, kind: "llm",
+    pending: [], skipped: [], checkState: "idle", lastChecked: "Today at 10:42", error: false,
+    settings: { ...S.opts }, folder: pathFor("Building LLMs from scratch"),
+    ...extra,
+  };
+}
+
+function applyStep(i) {
+  clearTimers();
+  step = i;
+  S = fresh();
+  const id = STEPS[i].id;
+  if (id === "home") { S.highlight = "try-playlist"; }
+  if (id === "analyzed") { S.url = PLAYLIST_URL; S.playlist = true; S.highlight = "follow-btn"; }
+  if (id === "setup") { S.url = PLAYLIST_URL; S.playlist = true; S.followSetup = true; S.highlight = "follow-confirm"; }
+  if (id === "following-home") {
+    S.url = PLAYLIST_URL; S.playlist = true; S.follows = [llmFollow({ lastChecked: "Today, when followed" })];
+      S.banner = { kind: "success", message: "You are now following Building LLMs from scratch. Whenever you like, open Following and check for new videos." };
+    S.highlight = "follow-btn";
+  }
+  if (id === "list") {
+    S.follows = [llmFollow({ lastChecked: "Today, when followed" })];
+    S.route = "following"; S.highlight = "check-now";
+  }
+  if (id === "checking") {
+    S.follows = [llmFollow({ checkState: "checking", lastChecked: "Today, when followed" })];
+    S.checking = true; S.route = "following"; S.highlight = "check-all";
+    later(() => {
+      const f = S.follows[0];
+      f.checkState = "idle"; f.pending = NEW_VIDEOS.map(v => ({ ...v })); f.count = 46; f.lastChecked = "Just now";
+      S.checking = false; S.highlight = "review-new"; render();
+    }, 1100);
+  }
+  if (id === "review" || id === "partial") {
+    S.follows = [llmFollow({ pending: NEW_VIDEOS.map(v => ({ ...v })), count: 46, lastChecked: "Just now" })];
+    S.route = "following"; S.detail = "llm";
+    S.reviewSel = new Set(id === "partial" ? ["v45", "v46"] : ["v44", "v45", "v46"]);
+    S.highlight = id === "partial" ? "download-sel" : "review-list";
+  }
+  if (id === "queue") {
+    S.follows = [llmFollow({ pending: [{ ...NEW_VIDEOS[0] }], count: 46, lastChecked: "Just now" })];
+    S.queue = [{
+      id: "q1", title: "Building LLMs from scratch", total: 2, completed: 0, progress: 0.22,
+      children: [
+        { id: "c1", title: NEW_VIDEOS[1].title, progress: 0.38, speed: "4.2 MB/s", eta: "12s" },
+        { id: "c2", title: NEW_VIDEOS[2].title, progress: 0, speed: "", eta: "waiting" },
+      ],
+    }];
+    S.route = "queue"; S.highlight = "queue-row";
+    S.banner = { kind: "success", message: "Added 2 videos to the queue." };
+  }
+  if (id === "skip") {
+    S.follows = [llmFollow({
+      pending: [], skipped: [{ ...NEW_VIDEOS[0] }], count: 46, lastChecked: "Just now",
+    })];
+    S.queue = [{ id: "q1", title: "Building LLMs from scratch", total: 2, completed: 1, progress: 0.6, children: [
+      { id: "c1", title: NEW_VIDEOS[1].title, progress: 1, speed: "", eta: "" },
+      { id: "c2", title: NEW_VIDEOS[2].title, progress: 0.2, speed: "3.1 MB/s", eta: "8s" },
+    ] }];
+    S.route = "following"; S.detail = "llm"; S.skippedOpen = true;
+    S.undo = { ids: ["v44"] };
+    S.banner = { kind: "info", message: "Skipped 1 video — it is sitting under Skipped videos below if you change your mind." };
+    S.highlight = "skipped";
+  }
+  if (id === "failed") {
+    S.follows = [llmFollow({
+      pending: [{ ...NEW_VIDEOS[0] }], count: 46, lastChecked: "Today at 10:42", error: true,
+    })];
+    S.route = "following"; S.highlight = "review-new";
+  }
+  if (id === "settings") {
+    S.follows = [llmFollow({ pending: [{ ...NEW_VIDEOS[0] }], count: 46, lastChecked: "Today at 10:42" })];
+    S.route = "following"; S.detail = "llm"; S.editing = true;
+    S.edit = { ...S.opts, quality: "720p", folder: pathFor("Building LLMs from scratch") };
+    S.reviewSel = new Set(["v44"]);
+    S.highlight = "save-settings";
+  }
+  if (id === "unfollow") {
+    S.follows = [llmFollow({ pending: [{ ...NEW_VIDEOS[0] }], count: 46, lastChecked: "Today at 10:42" })];
+    S.route = "following"; S.detail = "llm";
+    S.reviewSel = new Set(["v44"]);
+    S.modal = { kind: "unfollow", title: "Unfollow Building LLMs from scratch?", message: "This removes the playlist and its saved settings. 1 video waiting in review will leave Following along with it. Your downloaded files and anything already queued stay right where they are." };
+    S.highlight = "unfollow-confirm";
+  }
+  render();
+}
+
+function reviewCount() { return S.follows.reduce((n, f) => n + f.pending.length, 0); }
+function savedFollow() { return S.follows.find(f => f.id === "llm"); }
+function detail() { return S.follows.find(f => f.id === S.detail) || null; }
+function hit(name) { return S.highlight === name ? " tour-hit" : ""; }
+
+function renderOptions(target) {
+  const o = target === "edit" ? S.edit : S.opts;
+  const video = (o.tab || "video") === "video";
+  const qualities = target === "edit"
+    ? [["4k", "4K"], ["1080p", "1080p"], ["720p", "720p"]]
+    : [["1080p", "1080p"], ["720p", "720p"]];
+  const audio = [["original", "Original audio"], ["128", "MP3 128"], ["192", "MP3 192"], ["256", "MP3 256"]];
+  const output = target === "edit"
+    ? `<div class="output-row">
+        <div class="segmented">
+          <button type="button" class="${video ? "on" : ""}" data-act="edit-tab" data-v="video">Video</button>
+          <button type="button" class="${!video ? "on" : ""}" data-act="edit-tab" data-v="audio">Audio</button>
+        </div>
+        ${video
+          ? `<select aria-label="Video quality" data-act="edit-quality">${qualities.map(([v,l]) => `<option value="${v}" ${o.quality === v ? "selected" : ""}>${l}</option>`).join("")}</select>`
+          : `<select aria-label="Audio output" data-act="edit-audio">${audio.map(([v,l]) => `<option value="${v}" ${o.audio === v ? "selected" : ""}>${l}</option>`).join("")}</select>`}
+      </div>`
+    : `<div class="output-controls ectl">
+        <div class="type-pills" role="group" aria-label="Media format type">
+          <button type="button" class="${video ? "active" : ""}" data-act="tab" data-v="video">Video</button>
+          <button type="button" class="${!video ? "active" : ""}" data-act="tab" data-v="audio">Audio</button>
+        </div>
+        <div class="chips">
+          ${(video ? qualities : audio).map(([v,l]) => `<button type="button" class="seg ${((video ? o.quality : o.audio) === v) ? "on" : ""}" data-act="${video ? "quality" : "audio"}" data-v="${v}">${l}</button>`).join("")}
+        </div>
+      </div>`;
+  return `<div class="opt-sections">
+    <div class="erow"><span class="elab">Output</span><div class="ectl">${output}</div></div>
+    <div class="erow ${video ? "" : "disabled"}">
+      <span class="elab">Subtitles${video ? "" : `<span class="only" style="display:block;margin-top:1px;color:var(--text-muted);font-size:10px">Video only</span>`}</span>
+      <div class="ectl">
+        <div class="triad">
+          <button type="button" class="${!o.subtitleMode ? "on" : ""}" data-act="sub-mode" data-v="">Off</button>
+          <button type="button" class="${o.subtitleMode === "sidecar" ? "on file" : ""}" data-act="sub-mode" data-v="sidecar">File</button>
+          <button type="button" class="${o.subtitleMode === "embed" ? "on file" : ""}" data-act="sub-mode" data-v="embed">Embed</button>
+        </div>
+        <div class="ddwrap">
+          <button type="button" class="dd" data-act="lang-toggle" ${(!video || !o.subtitleMode) ? "disabled" : ""}>
+            <span class="cat">Language</span><span>${esc(langName(o.lang))}</span><span class="chev">▾</span>
+          </button>
+          ${S.langOpen ? `<div class="fmt-menu">${LANGS.map(([c,n]) => `<button type="button" class="fmt-opt ${o.lang === c ? "on" : ""}" data-act="lang" data-v="${c}"><span class="fmt-check">${o.lang === c ? "✓" : ""}</span><span>${n}</span></button>`).join("")}</div>` : ""}
+        </div>
+        <div class="ddwrap">
+          <button type="button" class="dd" data-act="fmt-toggle" ${(!video || !o.subtitleMode || o.subtitleMode === "embed") ? "disabled" : ""}>
+            <span class="cat">Format</span><span>${(o.format || "srt").toUpperCase()}</span><span class="chev">▾</span>
+          </button>
+          ${S.fmtOpen ? `<div class="fmt-menu">${[["","Original"],["srt","SRT"],["vtt","VTT"]].map(([c,n]) => `<button type="button" class="fmt-opt ${o.format === c ? "on" : ""}" data-act="fmt" data-v="${c}"><span class="fmt-check">${o.format === c ? "✓" : ""}</span><span>${n}</span></button>`).join("")}</div>` : ""}
+        </div>
+      </div>
+    </div>
+    <div class="erow">
+      <span class="elab">In the file</span>
+      <div class="ectl">
+        <button type="button" class="also ${o.embedMetadata ? "on" : ""}" data-act="flag" data-v="embedMetadata">Title &amp; channel</button>
+        <button type="button" class="also" disabled title="Artwork embedding is temporarily unavailable.">Artwork</button>
+        <button type="button" class="also ${o.embedChapters ? "on" : ""}" data-act="flag" data-v="embedChapters">Chapters</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function homePage() {
+  const followed = !!savedFollow();
+  const n = S.selected.size;
+  const policy = S.opts.tab === "audio"
+    ? (S.opts.audio === "original" ? "Original audio" : `MP3 ${S.opts.audio} · converted with FFmpeg`)
+    : `up to ${S.opts.quality}`;
+  const hasDock = S.playlist || S.video || S.batch;
+  let dock = "";
+  if (S.playlist) {
+    dock = `<div class="flow-review"><div class="playlist-pane">
+      <section class="dock" aria-label="Playlist">
+        <div class="drow2">
+          <div class="thumb">${thumb("llm")}</div>
+          <div class="dmain2">
+            <div class="dtop"><b>Building LLMs from scratch</b></div>
+            <span class="dmeta">Playlist · 43 videos</span>
+            <button type="button" class="follow-btn${followed ? " active" : ""}${hit("follow-btn")}" data-act="${followed ? "open-follow" : "open-setup"}">${ICONS.following}${followed ? "Following" : "Follow"}</button>
+          </div>
+        </div>
+        ${renderOptions("home")}
+        <button type="button" class="ddisc has" aria-expanded="${S.detailsOpen}" data-act="toggle-details">
+          <span class="chev">▸</span><span class="dlnk">43 episodes</span><span class="dp">${policy}</span>
+        </button>
+        <footer class="dfoot">
+          <span class="dleft"><button type="button" class="dbtn">Change</button><span class="dpath">${esc(pathFor("Building LLMs from scratch"))}</span></span>
+          ${S.detailsOpen ? "" : `<button type="button" class="dbtn pri" data-act="download-home">${n ? `${ICONS.dl}Download ${n} videos` : "Select videos"}</button>`}
+        </footer>
+      </section>
+      ${S.detailsOpen ? `<div class="eplist">
+        <div class="ephead">
+          <span>${n} of 43 selected</span>
+          <span class="rng">
+            <button type="button" data-act="sel-all">All</button>
+            <button type="button" data-act="sel-none">None</button>
+            <form class="eprange" data-act="range"><span>Range</span>
+              <input type="number" value="1" aria-label="Range start" />
+              <span>–</span>
+              <input type="number" value="43" aria-label="Range end" />
+              <button type="submit">Apply</button>
+            </form>
+          </span>
+        </div>
+        <div class="epscroll">${LECTURES.map((t, i) => {
+          const idx = i + 1; const on = S.selected.has(idx);
+          return `<button type="button" class="eprow ${on ? "sel" : "unsel"}" data-act="toggle-ep" data-v="${idx}"><span class="chk"></span><span class="eptitle"><b>${esc(t)}</b></span></button>`;
+        }).join("")}</div>
+        <div class="epcommit">
+          <span>${n} selected · ${policy}</span>
+          <button type="button" class="dbtn pri" data-act="download-home">${n ? `${ICONS.dl}Download ${n} videos` : "Select videos"}</button>
+        </div>
+      </div>` : ""}
+    </div></div>`;
+  } else if (S.video) {
+    dock = `<div class="flow-review"><section class="dock" aria-label="Video">
+      <div class="drow2">
+        <div class="thumb">${thumb("video")}</div>
+        <div class="dmain2">
+          <div class="dtop"><b>Let’s build GPT: from scratch, in code, spelled out.</b></div>
+          <span class="dmeta">Andrej Karpathy · 2:13:04 · 1.5M views</span>
+        </div>
+      </div>
+      ${renderOptions("home")}
+      <footer class="dfoot">
+        <span class="dleft"><button type="button" class="dbtn">Change</button><span class="dpath">${esc(FOLDER)}</span></span>
+        <button type="button" class="dbtn pri" data-act="download-video">${ICONS.dl}Download</button>
+      </footer>
+    </section></div>`;
+  } else if (S.batch) {
+    dock = `<div class="flow-review"><section class="dock" aria-label="Batch">
+      <div class="drow2">
+        <div class="thumb count">2</div>
+        <div class="dmain2">
+          <div class="dtop"><b>Batch of public videos</b></div>
+          <span class="dmeta">2 videos ready</span>
+        </div>
+      </div>
+      ${renderOptions("home")}
+      <footer class="dfoot">
+        <span class="dleft"><button type="button" class="dbtn">Change</button><span class="dpath">${esc(FOLDER)}</span></span>
+        <button type="button" class="dbtn pri" data-act="download-video">${ICONS.dl}Download 2 videos</button>
+      </footer>
+    </section></div>`;
+  }
+  return `<section class="page home${hasDock ? " fill" : ""}" aria-label="Home">
+    <form class="composer" data-act="analyze-form">
+      <div class="fieldwrap">
+        <div class="urlrow">
+          <label class="visually-hidden" for="video-url">YouTube video, Short, or playlist URL</label>
+          <textarea id="video-url" rows="1" placeholder="Paste a YouTube URL" spellcheck="false">${esc(S.url)}</textarea>
+          ${S.analyzing
+            ? `<button class="dbtn query" type="button" data-act="stop"><span style="width:8px;height:8px;border-radius:1.5px;background:currentColor;display:block"></span>Stop</button>`
+            : `<button class="dbtn query${hit("analyze")}" type="submit" ${S.url.trim() ? "" : "disabled"}>${ICONS.search}Analyze</button>`}
+        </div>
+        ${S.analyzing ? `<div class="hud-strip"><div class="hud-bar"><div class="hud-progress"></div></div><div class="hud-row"><span class="hud-copy"><strong>${/playlist/i.test(S.url) ? "Reading playlist" : S.url.includes("\n") ? "Reading links" : "Reading this video"}<span class="wait-dots"></span></strong></span></div></div>` : ""}
+      </div>
+    </form>
+    <p class="input-help">One video, a playlist, or up to 20 links. Shift + Enter adds a line.</p>
+    ${!hasDock && !S.analyzing ? `<p class="hint">One link, a playlist, or a handful — the link decides.
+      <span class="tries">Try
+        <button type="button" class="try" data-act="try" data-v="video">a video</button>
+        <button type="button" class="try${hit("try-playlist")}" data-act="try" data-v="playlist">a playlist</button>
+        <button type="button" class="try" data-act="try" data-v="batch">several links</button>
+      </span></p>` : ""}
+    ${dock}
+  </section>`;
+}
+
+function followMenu(id) {
+  if (S.menu !== id) return "";
+  return `<div class="menu">
+    <button type="button" data-act="begin-edit" data-id="${id}">Edit download settings</button>
+    <button type="button" class="danger" data-act="confirm-unfollow" data-id="${id}">Unfollow playlist…</button>
+  </div>`;
+}
+
+function followingList() {
+  const n = S.follows.length;
+  const r = reviewCount();
+  if (!n) {
+    return `<section class="page following-page">
+      <header class="page-header follow-header"><div><h1>Following</h1><p>Keep track of new videos in your playlists.</p></div></header>
+      <div class="empty-follow">
+        <div class="mark">${ICONS.following}</div>
+        <h2>You are not following any playlists.</h2>
+        <p>Analyze a public YouTube playlist on Home, then choose Follow. Checks are manual, and you decide which new videos to download.</p>
+        <button type="button" class="app-btn primary" data-act="go" data-v="home">${ICONS.home}Go to Home</button>
+      </div>
+    </section>`;
+  }
+  return `<section class="page following-page">
+    <header class="page-header follow-header">
+      <div><h1>Following</h1><p>${word(n, "playlist", "playlists")} · ${word(r, "video", "videos")} to review · Checks are manual</p></div>
+      <button type="button" class="app-btn${hit("check-all")}" data-act="${S.checking ? "stop-check" : "check-all"}">${S.checking ? ICONS.pause : ICONS.retry}${S.checking ? "Stop checking" : "Check all"}</button>
+    </header>
+    <div class="follow-list">${S.follows.map(f => {
+      const check = f.checkState === "checking" ? "Checking…" : f.checkState === "waiting" ? "Waiting to check" : (f.lastChecked ? `Last checked ${esc(f.lastChecked)}` : "Not checked yet");
+      return `<article class="follow-row">
+        <button type="button" class="art" data-act="open-detail" data-id="${f.id}">${thumb(f.kind)}</button>
+        <div class="follow-copy">
+          <button type="button" class="title-button" data-act="open-detail" data-id="${f.id}">${esc(f.title)}</button>
+          <span>${esc(f.channel)} · ${f.count} videos</span>
+          <span>${f.pending.length ? `<b>${f.pending.length} to review</b> · ` : ""}${check}</span>
+          <span>${esc(summary(f.settings))}</span>
+          ${f.error ? `<span class="check-error">Couldn’t check for updates. Saved videos are still available to review.</span>` : ""}
+        </div>
+        <div class="row-actions">
+          ${f.pending.length ? `<button type="button" class="app-btn primary${hit("review-new")}" data-act="open-detail" data-id="${f.id}">${ICONS.review}Review ${f.pending.length} new</button>` : ""}
+          <button type="button" class="app-btn quiet${hit("check-now")}" data-act="check-one" data-id="${f.id}" ${S.checking ? "disabled" : ""}>${ICONS.retry}${f.error ? "Retry check" : "Check now"}</button>
+          <div class="menu-wrap">
+            <button type="button" class="app-btn quiet more" data-act="menu" data-id="${f.id}" aria-label="Manage ${esc(f.title)}">${ICONS.more}</button>
+            ${followMenu(f.id)}
+          </div>
+        </div>
+      </article>`;
+    }).join("")}</div>
+  </section>`;
+}
+
+function followingDetail() {
+  const f = detail();
+  if (!f) return followingList();
+  const pending = f.pending;
+  const selected = [...S.reviewSel].filter(id => pending.some(v => v.id === id));
+  const downloadable = pending.filter(v => S.reviewSel.has(v.id) && v.available).length;
+  return `<section class="page following-page">
+    <button type="button" class="back" data-act="close-detail">${ICONS.back}Back to Following</button>
+    <header class="detail-identity">
+      <div class="art large">${thumb(f.kind)}</div>
+      <div><h1>${esc(f.title)}</h1><p>${word(pending.length, "video", "videos")} to review · ${esc(f.channel)}</p></div>
+      <div class="menu-wrap identity-menu">
+        <button type="button" class="app-btn quiet more" data-act="menu" data-id="${f.id}" aria-label="Manage ${esc(f.title)}">${ICONS.more}</button>
+        ${followMenu(f.id)}
+      </div>
+    </header>
+    ${f.error ? `<div class="notice danger-notice"><span>The last check failed. These videos were found earlier and remain available to review.</span><button type="button" data-act="check-one" data-id="${f.id}">${ICONS.retry}Retry check</button></div>` : ""}
+    <section class="saved-settings ${S.editing ? "" : "summary"}">
+      ${S.editing && S.edit ? `
+        ${renderOptions("edit")}
+        <label class="folder-field">Download folder<input type="text" data-act="edit-folder" value="${esc(S.edit.folder)}" /></label>
+      <p>This applies to new downloads going forward, including the videos still waiting in review. Anything already in the queue keeps the settings it started with.</p>
+        <div class="edit-actions">
+          <button type="button" class="app-btn" data-act="cancel-edit">Cancel</button>
+          <button type="button" class="app-btn primary${hit("save-settings")}" data-act="save-settings">Save settings</button>
+        </div>` : `
+        <div><strong>${esc(summary(f.settings))}</strong><span class="path">${esc(f.folder)}</span></div>
+        <button type="button" class="app-btn" data-act="begin-edit" data-id="${f.id}">${ICONS.settings}Edit</button>`}
+    </section>
+    ${pending.length ? `
+      <div class="eplist">
+        <div class="ephead">
+          <span>${selected.length} of ${pending.length} selected</span>
+          <span class="rng">
+            <button type="button" data-act="rev-all">All available</button>
+            <button type="button" data-act="rev-none">None</button>
+          </span>
+        </div>
+        <div class="epscroll${hit("review-list")}" role="list" aria-label="New videos">
+          ${pending.map(v => `<label class="eprow ${S.reviewSel.has(v.id) ? "sel" : "unsel"} ${v.available ? "" : "unavailable"}" data-act="rev-toggle" data-v="${v.id}">
+            <input type="checkbox" class="visually-hidden" ${S.reviewSel.has(v.id) ? "checked" : ""} />
+            <span class="chk" aria-hidden="true"></span>
+            <span class="eptitle"><b>${esc(v.title)}</b>${v.available ? "" : `<span class="epnote">${esc(v.reason || "Unavailable for download")}</span>`}</span>
+            <span class="epd">${esc(v.duration)}</span>
+          </label>`).join("")}
+        </div>
+        <div class="epcommit">
+          <span>${selected.length} selected · ${esc(summary(f.settings))}</span>
+          <div class="epacts">
+            <button type="button" class="dbtn" data-act="skip" ${selected.length ? "" : "disabled"}>${ICONS.skip}Skip ${selected.length} selected</button>
+            <button type="button" class="dbtn pri${hit("download-sel")}" data-act="download-follow" ${downloadable ? "" : "disabled"}>${ICONS.dl}Download ${word(downloadable, "video", "videos")}</button>
+          </div>
+        </div>
+      </div>` : `<div class="review-empty"><h2>You’re caught up.</h2><p>Hit Check now whenever you want to hunt for new videos in this playlist.</p><button type="button" class="app-btn" data-act="check-one" data-id="${f.id}">${ICONS.retry}Check now</button></div>`}
+    ${S.undo ? `<div class="notice${hit("skipped")}"><span>Skipped ${S.undo.ids.length} ${S.undo.ids.length === 1 ? "video" : "videos"}.</span><button type="button" data-act="undo">${ICONS.undo}Undo</button></div>` : ""}
+    ${f.skipped.length ? `<section class="skipped-list${hit("skipped")}">
+      <button type="button" class="skipped-heading" data-act="toggle-skipped">${S.skippedOpen ? "▾" : "▸"} Skipped videos (${f.skipped.length})</button>
+      ${S.skippedOpen ? f.skipped.map(v => `<div class="skipped-row"><span>${esc(v.title)}</span><button type="button" data-act="restore" data-v="${v.id}">${ICONS.review}Return to review</button></div>`).join("") : ""}
+    </section>` : ""}
+  </section>`;
+}
+
+function queuePage() {
+  if (!S.queue.length) {
+    return `<section class="page queue-page">
+      <header class="qhead"><div class="qident"><h1>Queue</h1><p class="qslots">No active downloads</p></div></header>
+      <div class="page-empty">
+        <div class="mark-empty">${ICONS.queue}</div>
+        <h2>Nothing here yet</h2>
+        <p>Paste a link on Home.
+In-progress downloads show up here.</p>
+        <button type="button" class="cta" data-act="go" data-v="home">${ICONS.home}Go to Home</button>
+      </div>
+    </section>`;
+  }
+  const q = S.queue[0];
+  const live = q.children.filter(c => c.progress > 0 && c.progress < 1);
+  const waiting = q.children.filter(c => !c.progress);
+  const slots = live.length ? "1 of 2 slots in use" : "No active downloads";
+  const speed = q.children.find(c => c.speed)?.speed;
+  const tail = `${q.completed}/${q.total}${speed ? " · " + speed : ""}`;
+  return `<section class="page queue-page">
+    <div class="qwrap">
+      <div class="qmaster">
+        <header class="qhead">
+          <div class="qident"><h1>Queue</h1><p class="qslots">${slots}</p></div>
+          <button type="button" class="app-btn">${ICONS.pause} Pause all</button>
+        </header>
+        <div class="qlist">
+          <h2 class="section-title">${ICONS.download} In progress <span class="section-count">1</span></h2>
+          <button type="button" class="qrow sel${hit("queue-row")}">
+            <span class="qth">${thumb("llm")}</span>
+            <span class="qmid"><span class="qt"><span class="qtitle">${esc(q.title)}</span><em class="qkind">Playlist</em></span><span class="qbar"><i style="width:${Math.round(q.progress * 100)}%"></i></span></span>
+            <span class="qtail">${tail}</span>
+          </button>
+        </div>
+      </div>
+      <aside class="qinsp">
+        <h3>${esc(q.title)}</h3>
+        <img class="ibig" src="assets/llm-thumb.jpg" alt="" referrerpolicy="no-referrer" />
+        <div class="imeta">Playlist · ${q.completed}/${q.total} finished · ${live.length ? (speed || "working") : "working"}</div>
+        <div class="ibar"><i style="width:${Math.round(q.progress * 100)}%"></i></div>
+        <div class="kids">
+          ${live.map(c => `<div class="kid live"><span class="kth">${thumb("llm")}</span><span class="kt">${esc(c.title)}<span class="kbar"><i style="width:${Math.round(c.progress * 100)}%"></i></span></span><span class="kd">${esc(c.speed || "")}</span></div>`).join("")}
+          ${waiting.map(c => `<div class="kid"><span class="kth">${thumb("llm")}</span><span class="kt">${esc(c.title)}</span><span class="kd">${esc(c.eta || "waiting")}</span></div>`).join("")}
+        </div>
+        <div class="ibtns"><button type="button" class="app-btn">${ICONS.pause} Pause collection</button></div>
+      </aside>
+    </div>
+  </section>`;
+}
+
+function downloadsPage() {
+  return `<section class="page downloads-page">
+    <header class="dhead"><h1>Downloads</h1><input class="dsearch" type="search" placeholder="Search" aria-label="Search downloads" /></header>
+    <div class="page-empty">
+      <div class="mark-empty">${ICONS.downloads}</div>
+      <h2>Nothing here yet</h2>
+      <p>Paste a link on Home.\nFinished files show up here.</p>
+      <button type="button" class="cta" data-act="go" data-v="home">${ICONS.home}Go to Home</button>
+    </div>
+  </section>`;
+}
+
+function settingsPage() {
+  return `<section class="page settings-page">
+    <h1>Settings</h1>
+    <section class="sgroup">
+      <h2>General</h2>
+      <div class="srow"><div class="scopy"><strong>Default download folder</strong><span class="mono">${esc(FOLDER)}</span></div><div><button type="button" class="app-btn">Change Folder</button></div></div>
+      <div class="srow"><div class="scopy"><strong>Create a subfolder for each download</strong><span>Places all files for one video together.</span></div><button type="button" class="switch ${S.subfolder ? "on" : ""}" data-act="subfolder"><span></span></button></div>
+      <div class="srow"><div class="scopy"><strong>Interrupted jobs</strong><span>The download that was in progress continues when VidStow opens. Waiting stays waiting. Paused stays paused.</span></div><span class="sfixed">In progress continues</span></div>
+    </section>
+    <section class="sgroup">
+      <h2>Performance</h2>
+      <div class="srow"><div class="scopy"><strong>Maximum concurrent downloads</strong><span>Range: 1–8; Recommended: 2–4.</span></div><span class="sfixed">2</span></div>
+    </section>
+    <section class="sgroup">
+      <h2>Output defaults</h2>
+      <div class="srow"><div class="scopy"><strong>New downloads use these subtitle and file choices.</strong><span>Followed playlists keep their own download settings. Edit those from Following.</span></div></div>
+    </section>
+  </section>`;
+}
+
+function dialogs() {
+  let html = "";
+  if (S.followSetup) {
+    const busy = S.followBusy;
+    html += `<div class="overlay"><div class="dialog">
+      <header><h2>${busy ? "Preparing to follow…" : "Follow this playlist?"}</h2><button type="button" data-act="close-setup" aria-label="${busy ? "Cancel preparation" : "Close"}">×</button></header>
+      <strong>Building LLMs from scratch</strong>
+      <div class="callout">
+        <p><b>Future videos only.</b> Videos already in this playlist will not appear as new.</p>
+        <p><b>Manual checks.</b> Open Following and choose Check now when you want to look for additions.</p>
+      </div>
+      <dl>
+        <div><dt>Download settings</dt><dd>${esc(summary(S.opts))}</dd></div>
+        <div><dt>Destination</dt><dd class="path">${esc(pathFor("Building LLMs from scratch"))}</dd></div>
+      </dl>
+      <p class="note">Following will not start a download. Your current playlist selection stays ready on Home.</p>
+      ${busy ? `<div class="progress"><i></i>Reading the complete playlist before saving it…</div>` : ""}
+      <footer>
+        <button type="button" class="app-btn" data-act="close-setup">${busy ? "Cancel" : "Not now"}</button>
+        <button type="button" class="app-btn primary${hit("follow-confirm")}" data-act="confirm-follow" ${busy ? "disabled" : ""}>${ICONS.following}Follow playlist</button>
+      </footer>
+    </div></div>`;
+  }
+  if (S.modal) {
+    html += `<div class="overlay soft"><div class="dialog compact">
+      <header><h2>${esc(S.modal.title)}</h2><button type="button" data-act="close-modal" aria-label="Close">×</button></header>
+      <p class="lead">${esc(S.modal.message)}</p>
+      <footer>
+        <button type="button" class="app-btn" data-act="close-modal">${S.modal.kind === "unfollow" ? "Cancel" : "Close"}</button>
+        ${S.modal.kind === "unfollow" ? `<button type="button" class="app-btn primary${hit("unfollow-confirm")}" data-act="do-unfollow">Unfollow</button>` : ""}
+      </footer>
+    </div></div>`;
+  }
+  if (S.banner) {
+    html += `<div class="banner ${S.banner.kind}" role="status"><span class="dot"></span><span>${esc(S.banner.message)}</span></div>`;
+  }
+  return html;
+}
+
+function occupancy() {
+  const q = S.queue[0];
+  if (q && q.children.some(c => c.progress > 0 && c.progress < 1)) return `<span class="live">4.2 MB/s · 1/2 slots</span>`;
+  if (S.checking) return `<span class="live">Checking playlists</span>`;
+  return "Idle";
+}
+
+function renderApp() {
+  const n = reviewCount();
+  const qn = S.queue.reduce((sum, q) => sum + (q.total - q.completed), 0);
+  const nav = [
+    ["home", "Home", ICONS.home],
+    ["queue", "Queue", ICONS.queue],
+    ["following", "Following", ICONS.following],
+    ["downloads", "Downloads", ICONS.downloads],
+  ].map(([k, label, icon]) => {
+    const badge = k === "following" && n ? `<span class="nav-badge" aria-label="${n} videos to review">${n}</span>`
+      : k === "queue" && qn ? `<span class="nav-badge">${qn}</span>` : "";
+    return `<li><button type="button" class="nav-item ${S.route === k ? "active" : ""}" data-act="go" data-v="${k}">
+      <span class="nav-icon">${icon}</span><span class="nav-label">${label}</span>${badge}</button></li>`;
+  }).join("");
+  let page = "";
+  if (S.route === "home") page = homePage();
+  else if (S.route === "following") page = S.detail ? followingDetail() : followingList();
+  else if (S.route === "queue") page = queuePage();
+  else if (S.route === "downloads") page = downloadsPage();
+  else page = settingsPage();
+  document.getElementById("app").innerHTML = `
+    <div class="titlebar"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>VidStow</div>
+    <div class="workstation">
+      <aside class="sidebar">
+        <nav><ul>${nav}</ul></nav>
+        <nav class="utility"><ul><li><button type="button" class="nav-item ${S.route === "settings" ? "active" : ""}" data-act="go" data-v="settings">
+          <span class="nav-icon">${ICONS.settings}</span><span class="nav-label">Settings</span></button></li></ul></nav>
+      </aside>
+      <main class="main"><div class="scroll">${page}</div></main>
+    </div>
+    <footer class="status-bar"><strong>${esc(FOLDER)}</strong><div>${occupancy()}</div></footer>
+    ${dialogs()}`;
+  const ta = document.getElementById("video-url");
+  if (ta) {
+    ta.addEventListener("input", () => { S.url = ta.value; });
+    ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); analyze(); } });
+  }
+}
+
+function renderSteps() {
+  document.getElementById("steps").innerHTML = STEPS.map((s, i) =>
+    `<li><button type="button" class="${i === step ? "on" : ""}" data-step="${i}"><b>${esc(s.title)}</b><span>Step ${i + 1}</span></button></li>`
+  ).join("");
+  document.getElementById("caption").innerHTML = STEPS[step].copy;
+  document.getElementById("prev").disabled = step === 0;
+  document.getElementById("next").textContent = step === STEPS.length - 1 ? "Start over" : "Next";
+}
+
+function render() { renderApp(); renderSteps(); }
+
+function analyze() {
+  if (!S.url.trim()) return;
+  S.analyzing = true; S.playlist = false; S.video = false; S.batch = false; render();
+  later(() => {
+    S.analyzing = false;
+    const lines = S.url.trim().split(/\n/).map(s => s.trim()).filter(Boolean);
+    S.batch = lines.length > 1;
+    S.playlist = !S.batch && /playlist/i.test(S.url);
+    S.video = !S.batch && !S.playlist && lines.length === 1;
+    render();
+  }, 700);
+}
+
+function setOpts(patch) {
+  if (S.editing && S.edit) S.edit = { ...S.edit, ...patch };
+  else S.opts = { ...S.opts, ...patch };
+}
+
+document.getElementById("app").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (!b) {
+    if (!e.target.closest(".menu-wrap")) { if (S.menu) { S.menu = ""; render(); } }
+    if (!e.target.closest(".ddwrap")) { if (S.langOpen || S.fmtOpen) { S.langOpen = S.fmtOpen = false; render(); } }
+    return;
+  }
+  const act = b.dataset.act;
+  if (act === "go") { S.route = b.dataset.v; S.detail = b.dataset.v === "following" ? S.detail : null; S.menu = ""; render(); return; }
+  if (act === "try") {
+    S.url = b.dataset.v === "playlist" ? PLAYLIST_URL
+      : b.dataset.v === "video" ? "https://www.youtube.com/watch?v=kCc8FmEb1nY"
+      : "https://www.youtube.com/watch?v=kCc8FmEb1nY\nhttps://www.youtube.com/watch?v=jNQXAC9IVRw";
+    analyze(); return;
+  }
+  if (act === "analyze-form") { e.preventDefault(); analyze(); return; }
+  if (act === "stop") { S.analyzing = false; render(); return; }
+  if (act === "tab") { setOpts({ tab: b.dataset.v, subtitleMode: b.dataset.v === "audio" ? "" : (S.opts.subtitleMode || "sidecar") }); render(); return; }
+  if (act === "quality" || act === "audio") { setOpts({ [act]: b.dataset.v }); render(); return; }
+  if (act === "sub-mode") { setOpts({ subtitleMode: b.dataset.v, format: b.dataset.v === "sidecar" ? (S.opts.format || "srt") : S.opts.format }); S.langOpen = S.fmtOpen = false; render(); return; }
+  if (act === "lang-toggle") { S.langOpen = !S.langOpen; S.fmtOpen = false; render(); return; }
+  if (act === "fmt-toggle") { S.fmtOpen = !S.fmtOpen; S.langOpen = false; render(); return; }
+  if (act === "lang") { setOpts({ lang: b.dataset.v }); S.langOpen = false; render(); return; }
+  if (act === "fmt") { setOpts({ format: b.dataset.v }); S.fmtOpen = false; render(); return; }
+  if (act === "flag") { const k = b.dataset.v; setOpts({ [k]: !(S.editing && S.edit ? S.edit[k] : S.opts[k]) }); render(); return; }
+  if (act === "toggle-details") { S.detailsOpen = !S.detailsOpen; render(); return; }
+  if (act === "sel-all") { S.selected = new Set(LECTURES.map((_, i) => i + 1)); render(); return; }
+  if (act === "sel-none") { S.selected = new Set(); render(); return; }
+  if (act === "toggle-ep") {
+    const n = Number(b.dataset.v); const next = new Set(S.selected);
+    next.has(n) ? next.delete(n) : next.add(n); S.selected = next; render(); return;
+  }
+  if (act === "download-home") {
+    S.queue.unshift({ id: "qh", title: "Building LLMs from scratch", total: S.selected.size, completed: 0, progress: 0.05, children: [...S.selected].slice(0, 3).map((i, idx) => ({ id: "h"+idx, title: LECTURES[i-1] || "Episode", progress: idx ? 0 : 0.1, speed: idx ? "" : "2.8 MB/s", eta: "" })) });
+    S.playlist = false; S.url = ""; S.route = "queue";
+    S.banner = { kind: "success", message: `Added ${S.selected.size} videos to the queue.` };
+    render(); return;
+  }
+  if (act === "download-video") {
+    const title = S.batch ? "Batch of public videos" : "Let’s build GPT: from scratch, in code, spelled out.";
+    S.queue.unshift({ id: "qv", title, total: S.batch ? 2 : 1, completed: 0, progress: 0.12, children: [{ id: "v1", title, progress: 0.12, speed: "3.4 MB/s", eta: "40s" }] });
+    S.playlist = S.video = S.batch = false; S.url = ""; S.route = "queue";
+    S.banner = { kind: "success", message: S.batch ? "Added 2 videos to the queue." : "Added 1 video to the queue." };
+    render(); return;
+  }
+  if (act === "open-setup") { S.followSetup = true; S.followBusy = false; render(); return; }
+  if (act === "close-setup") { S.followSetup = false; S.followBusy = false; render(); return; }
+  if (act === "confirm-follow") {
+    S.followBusy = true; render();
+    later(() => {
+      S.followBusy = false; S.followSetup = false;
+      if (!savedFollow()) S.follows.push(llmFollow({ lastChecked: "Today, when followed" }));
+    S.banner = { kind: "success", message: "You are now following Building LLMs from scratch. Whenever you like, open Following and check for new videos." };
+      render();
+    }, 900);
+    return;
+  }
+  if (act === "open-follow") { S.route = "following"; S.detail = "llm"; render(); return; }
+  if (act === "open-detail") {
+    const f = S.follows.find(x => x.id === b.dataset.id);
+    S.detail = f.id; S.reviewSel = new Set(f.pending.filter(v => v.available).map(v => v.id));
+    S.editing = false; S.menu = ""; S.skippedOpen = false; render(); return;
+  }
+  if (act === "close-detail") { S.detail = null; S.editing = false; S.menu = ""; render(); return; }
+  if (act === "menu") { S.menu = S.menu === b.dataset.id ? "" : b.dataset.id; render(); return; }
+  if (act === "begin-edit") {
+    const f = S.follows.find(x => x.id === b.dataset.id) || detail();
+    S.detail = f.id; S.editing = true; S.edit = { ...f.settings, folder: f.folder }; S.menu = ""; render(); return;
+  }
+  if (act === "cancel-edit") { S.editing = false; render(); return; }
+  if (act === "edit-tab") { S.edit.tab = b.dataset.v; if (b.dataset.v === "audio") S.edit.subtitleMode = ""; render(); return; }
+  if (act === "save-settings") {
+    const f = detail(); f.settings = { ...S.edit }; f.folder = S.edit.folder; S.editing = false;
+    S.banner = { kind: "success", message: "Settings saved. Anything already in the queue keeps the settings it started with." };
+    render(); return;
+  }
+  if (act === "check-one" || act === "check-all") {
+    S.checking = true;
+    S.follows.forEach(f => { if (act === "check-all" || f.id === b.dataset.id) f.checkState = act === "check-all" && f.id !== (b.dataset.id || S.follows[0].id) ? "waiting" : "checking"; });
+    if (act === "check-one") S.follows.forEach(f => { if (f.id === b.dataset.id) f.checkState = "checking"; });
+    render();
+    later(() => {
+      S.checking = false;
+      S.follows.forEach(f => {
+        if (f.checkState === "checking" || f.checkState === "waiting") {
+          f.checkState = "idle"; f.error = false; f.lastChecked = "Just now";
+          if (f.id === "llm" && !f.pending.length && !f.skipped.some(v => v.id === "v44")) {
+            const known = new Set([...f.pending, ...f.skipped].map(v => v.id));
+            NEW_VIDEOS.forEach(v => { if (!known.has(v.id)) f.pending.push({ ...v }); });
+            f.count = 46;
+          }
+        }
+      });
+      S.banner = { kind: "info", message: "Checked your playlists — new videos are ready for you to review." };
+      render();
+    }, 1000);
+    return;
+  }
+  if (act === "stop-check") { S.checking = false; S.follows.forEach(f => f.checkState = "idle"); S.banner = { kind: "info", message: "Checks stopped. Anything already found is kept right where it was." }; render(); return; }
+  if (act === "rev-toggle") {
+    const next = new Set(S.reviewSel);
+    next.has(b.dataset.v) ? next.delete(b.dataset.v) : next.add(b.dataset.v);
+    S.reviewSel = next; render(); return;
+  }
+  if (act === "rev-all") { S.reviewSel = new Set(detail().pending.filter(v => v.available).map(v => v.id)); render(); return; }
+  if (act === "rev-none") { S.reviewSel = new Set(); render(); return; }
+  if (act === "skip") {
+    const f = detail();
+    const items = f.pending.filter(v => S.reviewSel.has(v.id));
+    f.pending = f.pending.filter(v => !S.reviewSel.has(v.id));
+    f.skipped.push(...items);
+    S.undo = { ids: items.map(v => v.id) }; S.reviewSel = new Set(); S.skippedOpen = true;
+    S.banner = { kind: "info", message: `Skipped ${items.length} ${items.length === 1 ? "video" : "videos"} — they are sitting under Skipped videos below if you change your mind.` };
+    render(); return;
+  }
+  if (act === "undo") {
+    const f = detail();
+    const items = f.skipped.filter(v => S.undo.ids.includes(v.id));
+    f.skipped = f.skipped.filter(v => !S.undo.ids.includes(v.id));
+    f.pending.push(...items); S.reviewSel = new Set(S.undo.ids); S.undo = null;
+    S.banner = { kind: "info", message: "They are back in your review list." }; render(); return;
+  }
+  if (act === "restore") {
+    const f = detail(); const item = f.skipped.find(v => v.id === b.dataset.v);
+    f.skipped = f.skipped.filter(v => v.id !== b.dataset.v); f.pending.push(item);
+    S.reviewSel = new Set([item.id]); S.undo = null;
+    S.banner = { kind: "info", message: "That one is back in your review list." }; render(); return;
+  }
+  if (act === "toggle-skipped") { S.skippedOpen = !S.skippedOpen; render(); return; }
+  if (act === "download-follow") {
+    const f = detail();
+    const items = f.pending.filter(v => S.reviewSel.has(v.id) && v.available);
+    f.pending = f.pending.filter(v => !items.some(x => x.id === v.id));
+    S.reviewSel = new Set();
+    S.queue.unshift({
+      id: "qf" + Date.now(), title: f.title, total: items.length, completed: 0, progress: 0.18,
+      children: items.map((v, i) => ({ id: v.id, title: v.title, progress: i ? 0 : 0.3, speed: i ? "" : "4.2 MB/s", eta: i ? "waiting" : "12s" })),
+    });
+    S.banner = { kind: "success", message: `Added ${items.length} ${items.length === 1 ? "video" : "videos"} to the queue.` };
+    render(); return;
+  }
+  if (act === "confirm-unfollow") {
+    const f = S.follows.find(x => x.id === b.dataset.id) || detail();
+    const pendingCopy = f.pending.length ? ` ${f.pending.length} ${f.pending.length === 1 ? "video" : "videos"} waiting in review will leave Following along with it.` : "";
+    S.modal = { kind: "unfollow", id: f.id, title: `Unfollow ${f.title}?`, message: `This removes the playlist and its saved settings.${pendingCopy} Your downloaded files and anything already queued stay right where they are.` };
+    S.menu = ""; render(); return;
+  }
+  if (act === "do-unfollow") {
+    S.follows = S.follows.filter(f => f.id !== (S.modal.id || S.detail));
+    S.detail = null; S.modal = null;
+    S.banner = { kind: "info", message: "Unfollowed. Your downloaded files and anything in the queue are right where you left them." };
+    render(); return;
+  }
+  if (act === "close-modal") { S.modal = null; render(); return; }
+  if (act === "subfolder") { S.subfolder = !S.subfolder; render(); return; }
+});
+
+document.getElementById("app").addEventListener("change", (e) => {
+  const t = e.target;
+  if (t.dataset.act === "edit-quality") { S.edit.quality = t.value; }
+  if (t.dataset.act === "edit-audio") { S.edit.audio = t.value; }
+  if (t.dataset.act === "edit-folder") { S.edit.folder = t.value; }
+});
+document.getElementById("app").addEventListener("submit", (e) => {
+  if (e.target.dataset.act === "range") {
+    e.preventDefault();
+    const [a, b] = [...e.target.querySelectorAll("input")].map(n => Number(n.value));
+    S.selected = new Set(LECTURES.map((_, i) => i + 1).filter(i => i >= a && i <= b));
+    render();
+  }
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (S.followSetup) { S.followSetup = false; S.followBusy = false; render(); }
+  else if (S.modal) { S.modal = null; render(); }
+  else if (S.menu) { S.menu = ""; render(); }
+});
+
+document.getElementById("steps").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-step]"); if (!b) return; applyStep(Number(b.dataset.step));
+});
+document.getElementById("prev").addEventListener("click", () => { if (step > 0) applyStep(step - 1); });
+document.getElementById("next").addEventListener("click", () => { applyStep(step === STEPS.length - 1 ? 0 : step + 1); });
+document.getElementById("reset").addEventListener("click", () => applyStep(0));
+
+applyStep(0);
+</script>
+<script>
+(() => {
+  const app = document.getElementById('demoApp');
+  const statusEl = document.getElementById('demoStatus');
+  const tabsEl = document.getElementById('demoTabs');
+  if (!app || !statusEl || !tabsEl) return;
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const word = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+  const FOLDER = '/Users/tejas/Downloads/vidstow';
+  const VIDEOS = [
+    { id: 'v44', title: 'Lecture 44: Evaluating a language model', duration: '32:18' },
+    { id: 'v45', title: 'Lecture 45: Training with preference data', duration: '46:02' },
+    { id: 'v46', title: 'Lecture 46: Building a retrieval system', duration: '28:41' }
+  ];
+  const ARCH = [];
+  for (let i = 1; i <= 40; i++) ARCH.push({ id: 'a' + i, title: 'Archive lecture ' + i + ': Studio session', duration: '24:10' });
+  const D = {
+    tab: 'home', setupOpen: false, menu: '', unfollowId: '', scope: 'future',
+    quality: '1080p', sub: 'sidecar',
+    follows: [
+      { id: 'lofi', title: 'Lo-fi beats to relax to', channel: 'College Tunes', count: 128, pending: [], skipped: [], checkState: 'idle', lastChecked: 'Yesterday at 18:02', error: true },
+      { id: 'arch', title: 'Course archive', channel: 'Vizuara', count: 210, pending: ARCH.map((v) => ({ ...v })), skipped: [], checkState: 'idle', lastChecked: 'Today at 09:15', error: false }
+    ],
+    checking: false, checkDone: 0, checkTotal: 0,
+    rid: 'llm', editing: false, bigEditing: false, reviewSel: new Set(),
+    bigSel: new Set(ARCH.slice(0, 10).map((v) => v.id)), confirmBig: false,
+    queued: 2, undo: null
+  };
+  let timers = [];
+  const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); };
+  const clearT = () => { timers.forEach(clearTimeout); timers = []; };
+  const findF = (id) => D.follows.find((f) => f.id === id);
+  const pendCount = () => D.follows.reduce((n, f) => n + f.pending.length, 0);
+  const TAB_HINT = {
+    home: 'You are looking at suggestions 1 and 6 here: Follow lives with the playlist identity, with a little hint underneath — and the editor below is the very same one you will find in Following.',
+    following: 'This is suggestions 3 and 7 in action: slim three-line rows with the error tucked inline, and a sidebar that says “to review” and “queued” instead of flashing bare numbers at you.',
+    checking: 'Suggestion 4 at work: the header counts you through the run while each row says exactly what it is doing — and stopping partway keeps everything found so far.',
+    review: 'Suggestions 6 and 7 here: the same editor you saw on Home, a Skip button that only touches what you selected, and one tidy status message with an Undo.',
+    big: 'Suggestion 5 doing its thing: forty new videos, ten on screen — Download and Skip only ever touch what is in front of you, with a confirmation before anything big hits the queue.'
+  };
+  function say(msg, withUndo) {
+    statusEl.innerHTML = esc(msg) + (withUndo ? ' <button type="button" data-dstat="undo">Undo</button>' : '');
+  }
+  function go(tab) {
+    D.tab = tab; D.menu = ''; say(TAB_HINT[tab]);
+    if (tab === 'checking' && !D.checking) {
+      render();
+      startCheck(D.follows.map((f) => f.id));
+      return;
+    }
+    render();
+  }
+  function dart(f) {
+    if (f.id === 'llm') return `<button type="button" class="art" data-dact="open-review" data-id="${f.id}" aria-label="${esc(f.title)}"><img src="assets/llm-thumb.jpg" alt="" /></button>`;
+    if (f.id === 'arch') return `<button type="button" class="art tone-arch" data-dact="open-review" data-id="${f.id}" aria-label="${esc(f.title)}"><img src="assets/video-thumb.jpg" alt="" /></button>`;
+    return `<button type="button" class="art tone-lofi" data-dact="open-review" data-id="${f.id}" aria-label="${esc(f.title)}"><span class="art-mark">${esc((f.channel || f.title).slice(0, 1))}</span></button>`;
+  }
+  function dsummary() {
+    if (D.sub === 'sidecar') return 'Up to ' + D.quality + ' · File · English · SRT';
+    if (D.sub === 'embed') return 'Up to ' + D.quality + ' · Embed · English';
+    return 'Up to ' + D.quality + ' · Subtitles off';
+  }
+  function deditor() {
+    const quals = ['1080p', '720p'].map((v) => `<button type="button" class="seg ${D.quality === v ? 'on' : ''}" data-dact="d-quality" data-v="${v}">${v}</button>`).join('');
+    const subs = [['', 'Off'], ['sidecar', 'File'], ['embed', 'Embed']].map(([v, l]) => `<button type="button" class="${D.sub === v ? 'on' + (v ? ' file' : '') : ''}" data-dact="d-sub" data-v="${v}">${l}</button>`).join('');
+    return `<div class="opt-sections">
+      <div class="erow"><span class="elab">Output</span><div class="ectl">
+        <div class="type-pills"><button type="button" class="active" tabindex="-1">Video</button></div>
+        <div class="chips">${quals}</div></div></div>
+      <div class="erow"><span class="elab">Subtitles</span><div class="ectl"><div class="triad">${subs}</div>
+        <span class="dhint" style="margin:0">English · SRT · same editor on Home and in Following</span></div></div>
+    </div>`;
+  }
+  function drail() {
+    const pend = pendCount();
+    const item = (id, label, icon, count, meta, aria) => {
+      const on = D.tab === id || ((D.tab === 'checking' || D.tab === 'review' || D.tab === 'big') && id === 'following');
+      const copy = meta
+        ? `<span class="nav-copy"><span class="nav-label">${label}</span><span class="nav-meta">${meta}</span></span>`
+        : `<span class="nav-label">${label}</span>`;
+      const badge = count ? `<span class="nav-badge" aria-label="${aria}">${count}</span>` : '';
+      return `<li><button type="button" class="nav-item ${on ? 'active' : ''} ${meta ? 'has-meta' : ''}" data-dact="d-nav" data-v="${id}"><span class="nav-icon">${icon}</span>${copy}${badge}</button></li>`;
+    };
+    return `<aside class="sidebar"><nav><ul>`
+      + item('home', 'Home', ICONS.home)
+      + item('queue', 'Queue', ICONS.queue, D.queued || '', D.queued ? 'queued' : '', D.queued ? D.queued + ' queued' : '')
+      + item('following', 'Following', ICONS.following, pend || '', pend ? 'to review' : '', pend ? pend + ' videos to review' : '')
+      + item('downloads', 'Downloads', ICONS.downloads)
+      + `</ul></nav><nav class="utility"><ul><li><button type="button" class="nav-item" data-dact="d-nav" data-v="settings"><span class="nav-icon">${ICONS.settings}</span><span class="nav-label">Settings</span></button></li></ul></nav></aside>`;
+  }
+  function dmenu(f) {
+    if (D.menu !== f.id) return '';
+    return `<div class="menu"><button type="button" data-dact="begin-edit" data-id="${f.id}">Edit download settings</button><button type="button" class="danger" data-dact="confirm-unfollow" data-id="${f.id}">Unfollow playlist…</button></div>`;
+  }
+  function drow(f) {
+    const state = f.checkState === 'checking' ? 'Checking…' : f.checkState === 'waiting' ? 'Waiting to check' : `Last checked ${f.lastChecked}`;
+    const line2 = (f.pending.length ? `<b>${word(f.pending.length, 'video', 'videos')} to review</b> · ` : '') + esc(state)
+      + (f.error && f.checkState === 'idle' ? ' <span class="dchip bad">Check failed</span>' : '');
+    return `<article class="follow-row">
+      ${dart(f)}
+      <div class="follow-copy">
+        <button type="button" class="title-button" data-dact="open-review" data-id="${f.id}">${esc(f.title)} <span class="tmeta">· ${esc(f.channel)} · ${f.count}</span></button>
+        <span>${line2}</span><span>${esc(dsummary())}</span>
+      </div>
+      <div class="row-actions">
+        ${f.pending.length ? `<button type="button" class="app-btn primary" data-dact="open-review" data-id="${f.id}">${ICONS.review}Review ${f.pending.length} new</button>` : ''}
+        <button type="button" class="app-btn quiet" data-dact="check-one" data-id="${f.id}" ${D.checking ? 'disabled' : ''}>${ICONS.retry}${f.error ? 'Retry check' : 'Check now'}</button>
+        <div class="menu-wrap"><button type="button" class="app-btn quiet more" data-dact="menu" data-id="${f.id}" aria-label="Manage ${esc(f.title)}">${ICONS.more}</button>${dmenu(f)}</div>
+      </div></article>`;
+  }
+  function vHome() {
+    const f = findF('llm');
+    const btn = f
+      ? `<button type="button" class="follow-btn active" data-dact="d-nav" data-v="following">Following</button>`
+      : `<button type="button" class="follow-btn" data-dact="open-setup">Follow</button>`;
+    return `<section class="page home fill" aria-label="Home"><div class="flow-review"><div class="playlist-pane">
+      <section class="dock" aria-label="Playlist"><div class="drow2"><div class="thumb">${thumb('llm')}</div>
+        <div class="dmain2"><div class="dtop"><b>Building LLMs from scratch</b></div>
+          <span class="dmeta">Playlist · 43 videos</span>${btn}
+          <span class="dhint">Saves future videos · Nothing downloads now</span></div></div>
+        ${deditor()}
+        <div class="ddisc"><span class="dlnk">43 episodes</span><span class="dp">Up to ${esc(D.quality)}</span></div>
+        <footer class="dfoot"><span class="dleft"><button type="button" class="dbtn" data-dact="d-note">Change</button><span class="dpath">${esc(FOLDER)}/Building LLMs from scratch</span></span>
+          <button type="button" class="dbtn pri" data-dact="download-home">Download 43 videos</button></footer>
+      </section></div></div></section>`;
+  }
+  function vFollowing() {
+    const n = D.follows.length, r = pendCount();
+    const body = n ? `<div class="follow-list">${D.follows.map(drow).join('')}</div>`
+      : `<div class="empty-follow"><h2>You are not following any playlists.</h2><p>Head to Home, analyze a public playlist, and choose Follow — checks are manual, and you decide which new videos actually download.</p><button type="button" class="app-btn primary" data-dact="d-nav" data-v="home">Go to Home</button></div>`;
+    return `<section class="page following-page"><header class="page-header follow-header">
+      <div><h1>Following</h1><p>${word(n, 'playlist', 'playlists')} · ${word(r, 'video', 'videos')} to review · Checks are manual</p></div>
+      <button type="button" class="app-btn" data-dact="check-all" ${D.checking ? 'disabled' : ''}>${D.checking ? 'Checking…' : 'Check all'}</button>
+    </header>${body}</section>`;
+  }
+  function vChecking() {
+    const head = D.checking
+      ? `<div><h1>Checking ${D.checkDone + 1} of ${D.checkTotal}</h1><p>Going through your playlists one at a time — anything found along the way is kept.</p></div><button type="button" class="app-btn" data-dact="stop-check">Stop checking</button>`
+      : `<div><h1>Checking</h1><p>Checks are manual and run one playlist at a time.</p></div><button type="button" class="app-btn" data-dact="check-all">Check all</button>`;
+    return `<section class="page following-page"><header class="page-header follow-header">${head}</header>
+      <div class="follow-list">${D.follows.map(drow).join('')}</div></section>`;
+  }
+  function dsettings(f, scope, editing) {
+    if (!editing) return `<section class="saved-settings summary"><div><strong>${esc(dsummary())}</strong><span class="path">${esc(FOLDER + '/' + f.title)}</span></div><button type="button" class="app-btn" data-dact="begin-edit" data-scope="${scope}" data-id="${f.id}">Edit</button></section>`;
+    return `<section class="saved-settings">${deditor()}
+      <label class="folder-field">Download folder<input type="text" value="${esc(FOLDER + '/' + f.title)}" readonly /></label>
+      <p>This applies to new downloads going forward, including the videos still waiting in review. Anything already in the queue keeps the settings it started with.</p>
+      <div class="edit-actions"><button type="button" class="app-btn" data-dact="cancel-edit" data-scope="${scope}">Cancel</button>
+      <button type="button" class="app-btn primary" data-dact="save-settings" data-scope="${scope}">Save settings</button></div></section>`;
+  }
+  function ddetail(f, paged) {
+    const scope = paged ? 'big' : 'review';
+    const list = paged ? f.pending.slice(0, 10) : f.pending;
+    const sel = paged ? D.bigSel : D.reviewSel;
+    const selIds = list.filter((v) => sel.has(v.id));
+    const editing = paged ? D.bigEditing : D.editing;
+    const rows = list.map((v) => `<label class="eprow ${sel.has(v.id) ? 'sel' : 'unsel'}" data-dact="rev-toggle" data-scope="${scope}" data-v="${v.id}">
+            <input type="checkbox" class="visually-hidden" ${sel.has(v.id) ? 'checked' : ''} tabindex="-1" />
+            <span class="chk" aria-hidden="true"></span>
+            <span class="eptitle"><b>${esc(v.title)}</b></span>
+            <span class="epd">${esc(v.duration)}</span>
+          </label>`).join('');
+    const confirm = (paged && D.confirmBig) ? `<div class="notice"><span>Queue these ${selIds.length} shown videos? The other ${f.pending.length - selIds.length} will stay put for later.</span><span class="notice-actions"><button type="button" class="confirm" data-dact="big-confirm">Confirm</button><button type="button" data-dact="big-cancel">Cancel</button></span></div>` : '';
+    const listBlock = f.pending.length ? `
+      ${paged ? `<div style="margin-bottom:10px"><span class="dchip good">${word(f.pending.length, 'video', 'videos')} to review · showing first ${list.length}</span></div>` : ''}
+      ${confirm}
+      <div class="eplist">
+        <div class="ephead">
+          <span>${selIds.length} of ${paged ? word(list.length, 'shown video', 'shown videos') : word(f.pending.length, 'video', 'videos')} selected</span>
+          <span class="rng"><button type="button" data-dact="rev-all" data-scope="${scope}">All available</button><button type="button" data-dact="rev-none" data-scope="${scope}">None</button></span>
+        </div>
+        <div class="epscroll" role="list" aria-label="New videos">${rows}</div>
+        <div class="epcommit">
+          <span>${selIds.length} selected · ${esc(dsummary())}</span>
+          <div class="epacts">
+            <button type="button" class="dbtn" data-dact="skip-sel" data-scope="${scope}" ${selIds.length ? '' : 'disabled'}>${ICONS.skip}Skip ${selIds.length} selected</button>
+            <button type="button" class="dbtn pri" data-dact="download-sel" data-scope="${scope}" ${selIds.length ? '' : 'disabled'}>${ICONS.dl}Download ${paged ? word(selIds.length, 'shown video', 'shown videos') : word(selIds.length, 'video', 'videos')}</button>
+          </div>
+        </div>
+      </div>`
+      : `<div class="review-empty"><h2>You’re caught up.</h2><p>Hit Check now whenever you want to hunt for new videos in this playlist.</p><button type="button" class="app-btn" data-dact="check-one" data-id="${f.id}">${ICONS.retry}Check now</button></div>`;
+    const skipped = f.skipped.length ? `<section class="skipped-list"><span class="skipped-heading">Skipped videos (${f.skipped.length}) — bring them back anytime</span>${f.skipped.map((v) => `<div class="skipped-row"><span>${esc(v.title)}</span><button type="button" data-dact="restore" data-scope="${scope}" data-v="${v.id}">Return to review</button></div>`).join('')}</section>` : '';
+    const cover = f.id === 'llm'
+      ? `<div class="art large"><img src="assets/llm-thumb.jpg" alt="" /></div>`
+      : f.id === 'arch'
+        ? `<div class="art large tone-arch"><img src="assets/video-thumb.jpg" alt="" /></div>`
+        : `<div class="art large tone-lofi"><span class="art-mark">${esc((f.channel || f.title).slice(0, 1))}</span></div>`;
+    return `<section class="page following-page"><button type="button" class="back" data-dact="d-nav" data-v="following">${ICONS.back}Back to Following</button>
+      <header class="detail-identity">${cover}
+        <div><h1>${esc(f.title)}</h1><p>${word(f.pending.length, 'video', 'videos')} to review · ${esc(f.channel)} · ${f.count} videos</p></div>
+        <div class="menu-wrap identity-menu"><button type="button" class="app-btn quiet more" data-dact="menu" data-id="${f.id}" aria-label="Manage ${esc(f.title)}">${ICONS.more}</button>${dmenu(f)}</div></header>
+      ${dsettings(f, scope, editing)}${listBlock}${skipped}</section>`;
+  }
+  function vReview() {
+    const f = findF(D.rid);
+    if (!f) return `<section class="page following-page"><div class="dempty"><h2>Nothing here yet.</h2><p>Start on the Home tab and follow the playlist first — then come back and check for new videos.</p><button type="button" class="app-btn primary" data-dact="d-nav" data-v="home">Go to Home</button></div></section>`;
+    return ddetail(f, false);
+  }
+  function vBig() {
+    const f = findF('arch');
+    if (!f) return `<section class="page following-page"><div class="dempty"><h2>Nothing here yet.</h2><p>The archive follow was removed. Its downloaded files and queued items are right where you left them.</p><button type="button" class="app-btn primary" data-dact="d-nav" data-v="following">Back to Following</button></div></section>`;
+    return ddetail(f, true);
+  }
+  function ddialogs() {
+    let html = '';
+    if (D.setupOpen) {
+      html += `<div class="overlay"><div class="dialog"><header><h2>Follow this playlist?</h2><button type="button" data-dact="close-setup" aria-label="Close">×</button></header>
+        <strong>Building LLMs from scratch</strong>
+        <div class="callout"><p><b>Manual checks.</b> We’ll only look for new videos when you hit Check now.</p></div>
+        <div class="dscope">
+          <button type="button" class="dscope-opt ${D.scope === 'future' ? 'on' : ''}" data-dact="d-scope" data-v="future"><b>Future videos only</b><span>The 43 already here won’t show up as new.</span></button>
+          <button type="button" class="dscope-opt secondary ${D.scope === 'all' ? 'on' : ''}" data-dact="d-scope" data-v="all"><b>Download all 43 now</b><span>Start those downloads, then keep following for new ones.</span></button>
+        </div>
+        <dl><div><dt>Download settings</dt><dd>${esc(dsummary())}</dd></div>
+        <div><dt>Destination</dt><dd class="path">${esc(FOLDER)}/Building LLMs from scratch</dd></div></dl>
+        <p class="note">${D.scope === 'all' ? 'We’ll follow the playlist, then download all 43.' : 'Nothing downloads yet. Home stays as you left it.'}</p>
+        <footer><button type="button" class="app-btn" data-dact="close-setup">Not now</button>
+        <button type="button" class="app-btn primary" data-dact="confirm-follow">${D.scope === 'all' ? 'Follow and download 43' : 'Follow playlist'}</button></footer></div></div>`;
+    }
+    if (D.unfollowId) {
+      const f = findF(D.unfollowId);
+      if (f) html += `<div class="overlay soft"><div class="dialog compact"><header><h2>Unfollow ${esc(f.title)}?</h2><button type="button" data-dact="close-unfollow" aria-label="Close">×</button></header>
+        <p class="lead">This removes the playlist and its saved settings.${f.pending.length ? ` ${word(f.pending.length, 'video', 'videos')} waiting in review will leave Following along with it.` : ''} Your downloaded files and anything already queued stay right where they are.</p>
+        <footer><button type="button" class="app-btn" data-dact="close-unfollow">Cancel</button>
+        <button type="button" class="app-btn primary" data-dact="do-unfollow">Unfollow</button></footer></div></div>`;
+    }
+    return html;
+  }
+  function render() {
+    tabsEl.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.dtab === D.tab));
+    const page = D.tab === 'home' ? vHome() : D.tab === 'following' ? vFollowing() : D.tab === 'checking' ? vChecking() : D.tab === 'review' ? vReview() : vBig();
+    const occ = D.checking ? `<span class="live">Checking ${D.checkDone + 1} of ${D.checkTotal}</span>` : 'Idle';
+    app.innerHTML = `<div class="titlebar"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>VidStow · recommended</div>
+      <div class="workstation">${drail()}<main class="main"><div class="scroll">${page}</div></main></div>
+      <footer class="status-bar"><strong>${esc(FOLDER)}</strong><div>${occ}</div></footer>${ddialogs()}`;
+  }
+  function startCheck(ids) {
+    if (D.checking) { say('Hang on — a check is already running.'); return; }
+    const targets = D.follows.filter((f) => ids.includes(f.id));
+    if (!targets.length) return;
+    clearT();
+    D.checking = true; D.checkDone = 0; D.checkTotal = targets.length;
+    targets.forEach((f) => { f.checkState = 'waiting'; });
+    let added = 0;
+    const finish = () => {
+      D.checking = false;
+      targets.forEach((f) => { if (f.checkState !== 'idle') f.checkState = 'idle'; });
+      if (targets.length === 1) {
+        const f = targets[0];
+        say(f.id === 'llm' && added ? `Checked ${f.title} and found ${word(added, 'new video', 'new videos')} ready for you to review.` : `Checked ${f.title} — nothing new since last time.`);
+      } else say(`Checked ${D.checkTotal} of ${D.checkTotal} — ${added ? word(added, 'new video is', 'new videos are') + ' ready for you to review.' : 'nothing new.'}`);
+      render();
+    };
+    const run = (i) => {
+      if (i >= targets.length) { finish(); return; }
+      const f = targets[i];
+      f.checkState = 'checking'; render();
+      later(() => {
+        f.checkState = 'idle'; f.error = false; f.lastChecked = 'Just now'; D.checkDone++;
+        if (f.id === 'llm' && !f.pending.length) {
+          f.pending = VIDEOS.map((v) => ({ ...v })); f.count = 46;
+          D.reviewSel = new Set(f.pending.map((v) => v.id)); added += f.pending.length;
+        }
+        render(); run(i + 1);
+      }, 900);
+    };
+    run(0); render();
+  }
+  function stopChecks() {
+    clearT(); D.checking = false;
+    D.follows.forEach((f) => { if (f.checkState !== 'idle') f.checkState = 'idle'; });
+    say('Checks stopped. Anything already found is kept right where it was.'); render();
+  }
+  function commitDownload(f, items, scope) {
+    const ids = new Set(items.map((v) => v.id));
+    f.pending = f.pending.filter((v) => !ids.has(v.id));
+    (scope === 'big' ? D.bigSel : D.reviewSel).clear();
+    D.queued += items.length; D.confirmBig = false;
+    if (scope === 'big') D.bigSel = new Set(f.pending.slice(0, 10).map((v) => v.id));
+    say(`Added ${word(items.length, 'video', 'videos')} to the queue.${scope === 'big' && f.pending.length ? ` ${f.pending.length} more are staying put for later.` : ''}`);
+    render();
+  }
+  function skipItems(f, items, scope) {
+    const ids = new Set(items.map((v) => v.id));
+    f.pending = f.pending.filter((v) => !ids.has(v.id));
+    f.skipped.unshift(...items);
+    (scope === 'big' ? D.bigSel : D.reviewSel).clear();
+    D.undo = { fid: f.id, ids: items.map((v) => v.id) };
+    say(`Skipped ${word(items.length, 'video', 'videos')} — they are sitting under Skipped videos below if you change your mind.`, true);
+    render();
+  }
+  function doUndo() {
+    if (!D.undo) return;
+    const f = findF(D.undo.fid);
+    if (f) {
+      const ids = new Set(D.undo.ids);
+      const items = f.skipped.filter((v) => ids.has(v.id));
+      f.skipped = f.skipped.filter((v) => !ids.has(v.id));
+      f.pending.unshift(...items);
+      const sel = f.id === 'arch' ? D.bigSel : D.reviewSel;
+      items.forEach((v) => sel.add(v.id));
+    }
+    D.undo = null; say('They are back in your review list.'); render();
+  }
+  app.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dact]');
+    if (!b) { if (!e.target.closest('.menu-wrap') && D.menu) { D.menu = ''; render(); } return; }
+    const act = b.dataset.dact, v = b.dataset.v, id = b.dataset.id, scope = b.dataset.scope || 'review';
+    if (act === 'd-nav') {
+      if (v === 'home' || v === 'following') { go(v); return; }
+      say('Queue, Downloads and Settings are not part of this demo — it is just Home and Following in here.'); return;
+    }
+    if (act === 'd-note') { say('The folder picker is not wired up in this demo.'); return; }
+    if (act === 'd-quality') { D.quality = v; render(); return; }
+    if (act === 'd-sub') { D.sub = v; render(); return; }
+    if (act === 'open-setup') { D.setupOpen = true; render(); return; }
+    if (act === 'close-setup') { D.setupOpen = false; render(); return; }
+    if (act === 'd-scope') { D.scope = v; render(); return; }
+    if (act === 'confirm-follow') {
+      D.setupOpen = false;
+      if (!findF('llm')) D.follows.unshift({ id: 'llm', title: 'Building LLMs from scratch', channel: 'Vizuara', count: 43, pending: [], skipped: [], checkState: 'idle', lastChecked: 'Today, just followed', error: false });
+      D.rid = 'llm'; D.tab = 'following';
+      if (D.scope === 'all') {
+        D.queued += 43;
+        say('You are following Building LLMs from scratch, and all 43 videos are on their way to the queue. Anything uploaded from here on will wait for you in Following.');
+      } else say('You are now following Building LLMs from scratch. Whenever you like, open Following and check for new videos.');
+      render(); return;
+    }
+    if (act === 'download-home') { say('That button works exactly as before — it queues whatever you have selected right now, and leaves the follow alone.'); return; }
+    if (act === 'check-all') { D.tab = 'checking'; startCheck(D.follows.map((f) => f.id)); return; }
+    if (act === 'check-one') { startCheck([id]); return; }
+    if (act === 'stop-check') { stopChecks(); return; }
+    if (act === 'open-review') {
+      if (id === 'arch') { go('big'); return; }
+      const f = findF(id);
+      if (f && !f.pending.length && !f.error) { D.rid = id; D.editing = false; go('review'); return; }
+      if (f && !f.pending.length) { startCheck([id]); return; }
+      if (f) { D.rid = id; D.editing = false; go('review'); }
+      return;
+    }
+    if (act === 'menu') { D.menu = D.menu === id ? '' : id; render(); return; }
+    if (act === 'begin-edit') {
+      D.menu = '';
+      if (id === 'arch') { D.bigEditing = true; D.tab = 'big'; say(TAB_HINT.big); }
+      else { D.rid = id || D.rid; D.editing = true; D.tab = 'review'; say(TAB_HINT.review); }
+      render(); return;
+    }
+    if (act === 'cancel-edit') { D.editing = false; D.bigEditing = false; render(); return; }
+    if (act === 'save-settings') {
+      D.editing = false; D.bigEditing = false;
+      say('Download settings saved. Anything already in the queue keeps the settings it started with.'); render(); return;
+    }
+    if (act === 'confirm-unfollow') { D.unfollowId = id; D.menu = ''; render(); return; }
+    if (act === 'close-unfollow') { D.unfollowId = ''; render(); return; }
+    if (act === 'do-unfollow') {
+      D.follows = D.follows.filter((f) => f.id !== D.unfollowId);
+      D.unfollowId = ''; D.editing = false; D.bigEditing = false; D.confirmBig = false;
+      say('Unfollowed. Your downloaded files and anything in the queue are right where you left them.'); render(); return;
+    }
+    const f = scope === 'big' ? findF('arch') : findF(D.rid);
+    if (!f) return;
+    const list = scope === 'big' ? f.pending.slice(0, 10) : f.pending;
+    const sel = scope === 'big' ? D.bigSel : D.reviewSel;
+    if (act === 'rev-toggle') { if (sel.has(v)) sel.delete(v); else sel.add(v); render(); return; }
+    if (act === 'rev-all') { list.forEach((x) => sel.add(x.id)); render(); return; }
+    if (act === 'rev-none') { sel.clear(); render(); return; }
+    if (act === 'download-sel') {
+      const items = list.filter((x) => sel.has(x.id));
+      if (!items.length) return;
+      if (scope === 'big' && !D.confirmBig) { D.confirmBig = true; render(); return; }
+      commitDownload(f, items, scope); return;
+    }
+    if (act === 'big-confirm') {
+      const items = list.filter((x) => sel.has(x.id));
+      if (items.length) commitDownload(f, items, 'big');
+      else { D.confirmBig = false; render(); }
+      return;
+    }
+    if (act === 'big-cancel') { D.confirmBig = false; render(); return; }
+    if (act === 'skip-sel') {
+      const items = list.filter((x) => sel.has(x.id));
+      if (items.length) skipItems(f, items, scope);
+      return;
+    }
+    if (act === 'restore') {
+      const item = f.skipped.find((x) => x.id === v);
+      if (item) {
+        f.skipped = f.skipped.filter((x) => x.id !== v);
+        f.pending.unshift(item); sel.add(item.id);
+        say('That one is back in your review list.');
+      }
+      render(); return;
+    }
+  });
+  statusEl.addEventListener('click', (e) => {
+    if (e.target.closest('[data-dstat="undo"]')) doUndo();
+  });
+  tabsEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dtab]');
+    if (b) go(b.dataset.dtab);
+  });
+  say(TAB_HINT.home); render();
+})();
+</script>
+</body>
+</html>
