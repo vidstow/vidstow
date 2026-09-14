@@ -469,9 +469,9 @@
 
   <h2 id="tour-signin">1 · The walkthrough: one link end to end</h2>
   <div class="card tight">
-    <p><strong>Picture this: you paste a members-only teaser that your account is allowed to watch.</strong> Analyze tries anonymously first, the way it always has. When YouTube answers "sign-in, please" and you've already picked a browser, VidStow spends your session on one automatic retry before you've lifted a finger — and the dock just appears. No card, no extra click. You only ever meet the error card when there's nothing configured, or when your session genuinely couldn't open the video.</p>
+    <p><strong>Picture this: you paste a members-only teaser that your account is allowed to watch.</strong> Since you've already picked a browser in Settings, Analyze simply goes with your session — no anonymous attempt first, no error-card dance, no extra click. The dock just appears. You only ever meet the error card when there's nothing configured at all, or when your session genuinely couldn't open the video.</p>
     <p><strong>You sign in exactly where you always sign in.</strong> Open Safari or Chrome, sign in to YouTube there like normal, then come back to VidStow's Settings and pick that browser from a single dropdown. There's deliberately no test button — the next signed-in lookup is the test. On a Mac, Chrome might pop up its usual Keychain prompt at that moment — that's expected, just approve it.</p>
-    <p><strong>From there, it's the VidStow you already know.</strong> The dock shows up with the same Output and Subtitles rows, Download queues the file, Queue shows it moving live, and Downloads keeps the finished row. A small session line under the link field notes it ran signed in via Chrome, just for that check — and the status bar at the bottom keeps showing only your folder and speed, exactly like today.</p>
+    <p><strong>From there, it's the VidStow you already know.</strong> The dock shows up with the same Output and Subtitles rows, Download queues the file, Queue shows it moving live, and Downloads keeps the finished row. A small session line under the link field notes it ran signed in — and the status bar at the bottom keeps showing only your folder and speed, exactly like today.</p>
   </div>
   <figure>
     <img src="vidstow_cookie_assets/current-home.png" alt="Current VidStow Home showing the Building LLMs from scratch playlist dock">
@@ -497,7 +497,7 @@
   <p>What follows is the whole change, surface by surface. Every window below reuses the shipping markup, styles, icons, and type — the only new things are the proposed rows, labels, and buttons. Each diff puts today's app on the left and the feature on the right, and everything here follows the recommended answers from section 10.</p>
 
   <h3 id="journey">Journey · from Analyze to downloading</h3>
-  <p>One link, end to end, in the order a newcomer meets it. Frames 1–3 and 7 are today's windows unchanged; frames 4–6 carry the feature. Artwork boxes stay dark here — in the app they fill with the video's own thumbnail from YouTube.</p>
+  <p>One link, end to end, in the order a newcomer meets it. Frames 1 and 2 are today's windows untouched; 3 through 6 carry the feature, and 7 is today's Queue with a single extra word in the file line. Artwork boxes stay dark here — in the app they fill with the video's own thumbnail from YouTube.</p>
 
   <div class="jhead"><span class="jn">1</span><div><b>Paste a link</b><span>It starts with a pasted link — notice Analyze stays dimmed until there's actually something to look up. Not sure what to try? The little Try chips fill the field with a video, a playlist, or a handful of links.</span></div></div>
   <div class="vwin" aria-label="Journey step 1, empty Home">
@@ -582,7 +582,7 @@
     <footer class="status-bar" aria-label="Application status"><button type="button" class="path" title="/Users/tejas/Downloads/vidstow" aria-label="Open download folder /Users/tejas/Downloads/vidstow"><strong>/Users/tejas/Downloads/vidstow</strong></button><div class="occupancy">Idle</div></footer>
   </div>
 
-  <div class="jhead"><span class="jn">4</span><div><b>Pick the browser</b><span>Over in Settings: one dropdown in the new group, picked after signing in to YouTube in that browser, naturally. The status line just echoes your pick — the next signed-in lookup is the real test, and you'll still never glimpse an actual cookie value anywhere.</span></div></div>
+  <div class="jhead"><span class="jn">4</span><div><b>Pick the browser</b><span>Over in Settings: one dropdown in the new group, picked after signing in to YouTube in that browser, naturally. The status line just echoes your pick — the next lookup is the real test, and you'll still never glimpse an actual cookie value anywhere.</span></div></div>
   <div class="vwin" aria-label="Journey step 4, Settings group excerpt">
     <div class="sgroup" style="margin:14px" aria-labelledby="j4-signin-title">
       <h2 id="j4-signin-title"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>Signed-in downloads</span></h2>
@@ -600,7 +600,7 @@
     </div>
   </div>
 
-  <div class="jhead"><span class="jn">5</span><div><b>Choose and Download</b><span>Between the lookup and this dock, one quiet beat passed on "trying your browser session" — that's the automatic retry doing its job. What comes back is the plain ordinary dock — output pills, the subtitle triad, the file toggles — plus one extra line naming the session, so a signed-in check never passes itself off as anonymous.</span></div></div>
+  <div class="jhead"><span class="jn">5</span><div><b>Choose and Download</b><span>The lookup went with your session and came straight back with the plain ordinary dock — output pills, the subtitle triad, the file toggles — plus one extra line naming the session, so a signed-in check never passes itself off as anonymous.</span></div></div>
   <div class="vwin" aria-label="Journey step 5, signed-in dock">
     <div class="workstation">
       <aside class="sidebar" aria-label="Primary">
@@ -621,7 +621,7 @@
             <button class="dbtn query" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20.5 20.5-3.8-3.8"/></svg>Analyze</button>
           </div></div></form>
           <p class="input-help">One video, a playlist, or up to 20 links. Shift + Enter adds a line.</p>
-          <p class="sessline"><span class="sdot" aria-hidden="true"></span><span>Signed in via Chrome · Default — only for this check.</span><button type="button">Open Settings</button></p>
+          <p class="sessline"><span class="sdot" aria-hidden="true"></span><span>Signed in via Chrome · Default.</span><button type="button">Open Settings</button></p>
           <fieldset class="flow-review" aria-label="Download review">
             <section class="dock" aria-label="Video">
               <div class="drow drow2 v2 nofmt">
@@ -886,7 +886,7 @@
         </div>
         <footer class="status-bar" aria-label="Application status"><button type="button" class="path" title="/Users/tejas/Downloads/vidstow" aria-label="Open download folder /Users/tejas/Downloads/vidstow"><strong>/Users/tejas/Downloads/vidstow</strong></button><div class="occupancy">Idle</div></footer>
       </div>
-      <p class="note" style="margin:8px 2px 0">Interactive — press Try again to watch it try anonymously, borrow the session, and still come up short. (When the session works, this card never appears — the dock does.) Open Settings jumps to the group above.</p>
+      <p class="note" style="margin:8px 2px 0">Interactive — press Try again to watch one signed-in check fail honestly. (When the session works, this card never appears — the dock does.) Open Settings jumps to the group above.</p>
     </div>
   </div>
 
@@ -1055,6 +1055,7 @@
       <tr><td><b>Home card message</b><br><span class="mono">keyed sign-in error</span></td><td>That video requires sign-in and is not available in this version.</td><td>Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only videos your account can already watch.</td></tr>
       <tr><td><b>Home card, session failed</b><br><span class="mono">keyed sign-in error</span></td><td><span class="mono">— new —</span></td><td>This video isn't available to your account.</td></tr>
       <tr><td><b>Home message, session failed</b></td><td><span class="mono">— new —</span></td><td>Your browser session tried, and YouTube still said no. Double-check the link, or sign in somewhere else and update Settings.</td></tr>
+      <tr><td><b>Session line</b></td><td><span class="mono">— new —</span></td><td>Signed in via Chrome · Default.</td></tr>
       <tr><td><b>Queue card heading</b><br><span class="mono">queue.failure.authentication_required</span></td><td>Download was refused</td><td>This download needs sign-in.</td></tr>
       <tr><td><b>Queue card message</b></td><td>The page may still play in a browser. Try again.</td><td>Sign in to YouTube in your browser, pick that browser in Settings, then retry this item.</td></tr>
       <tr><td><b>Queue recommended action</b></td><td>Retry this item.</td><td>Retry reuses the same browser session.</td></tr>
@@ -1065,8 +1066,8 @@
   </table></div>
 
   <h2>4 · How the pieces connect</h2>
-  <div class="flowbox" role="img" aria-label="Flow: sign in to YouTube in a browser, pick that browser in Settings, Analyze tries signed out first, on a sign-in failure it retries once with the session, Download runs with the same session. The session never touches state.json or logs.">
-    <svg class="flow-svg" viewBox="0 0 680 424" width="100%" aria-hidden="true">
+  <div class="flowbox" role="img" aria-label="Flow: sign in to YouTube in a browser, pick that browser in Settings, every check uses the session when one is set, an unreadable session falls back to one anonymous retry, downloads run with the same session, and nothing is ever stored.">
+    <svg class="flow-svg" viewBox="0 0 680 506" width="100%" aria-hidden="true">
       <defs>
         <marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0 0L10 5L0 10" fill="none" stroke="#3F3F46" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1082,33 +1083,37 @@
         <text x="280" y="137" text-anchor="middle" font-size="11.5" fill="#A1A1AA">in VidStow Settings</text>
         <line x1="280" y1="152" x2="280" y2="178" stroke="#3F3F46" stroke-width="1.6" marker-end="url(#flow-arrow)"/>
         <rect x="130" y="182" width="300" height="56" rx="10" fill="#18181B" stroke="#3B82F6"/>
-        <text x="280" y="205" text-anchor="middle" font-size="12.5" font-weight="600" fill="#FAFAFA">Analyze tries</text>
-        <text x="280" y="223" text-anchor="middle" font-size="11.5" fill="#A1A1AA">signed-out first</text>
+        <text x="280" y="205" text-anchor="middle" font-size="12.5" font-weight="600" fill="#FAFAFA">Every check uses</text>
+        <text x="280" y="223" text-anchor="middle" font-size="11.5" fill="#A1A1AA">the session when set</text>
         <line x1="280" y1="238" x2="280" y2="264" stroke="#3F3F46" stroke-width="1.6" marker-end="url(#flow-arrow)"/>
         <rect x="130" y="268" width="300" height="56" rx="10" fill="#18181B" stroke="#27272A"/>
-        <text x="280" y="291" text-anchor="middle" font-size="12.5" font-weight="600" fill="#FAFAFA">Asked for sign-in?</text>
-        <text x="280" y="309" text-anchor="middle" font-size="11.5" fill="#A1A1AA">one automatic retry, then download</text>
+        <text x="280" y="291" text-anchor="middle" font-size="12.5" font-weight="600" fill="#FAFAFA">Session unreadable?</text>
+        <text x="280" y="309" text-anchor="middle" font-size="11.5" fill="#A1A1AA">one anonymous retry, then say so</text>
         <line x1="280" y1="324" x2="280" y2="350" stroke="#3F3F46" stroke-width="1.6" marker-end="url(#flow-arrow)"/>
         <rect x="130" y="354" width="300" height="56" rx="10" fill="#18181B" stroke="#27272A"/>
         <text x="280" y="377" text-anchor="middle" font-size="12.5" font-weight="600" fill="#FAFAFA">Download runs</text>
         <text x="280" y="395" text-anchor="middle" font-size="11.5" fill="#A1A1AA">with the same session</text>
-        <line x1="430" y1="296" x2="452" y2="296" stroke="#3F3F46" stroke-width="1.4" stroke-dasharray="5 4"/>
-        <rect x="456" y="268" width="212" height="56" rx="10" fill="none" stroke="#3F3F46" stroke-dasharray="5 4"/>
-        <text x="562" y="291" text-anchor="middle" font-size="12" font-weight="600" fill="#FAFAFA">Session never touches</text>
-        <text x="562" y="309" text-anchor="middle" font-size="11.5" fill="#A1A1AA">state.json or logs</text>
+        <line x1="280" y1="410" x2="280" y2="436" stroke="#3F3F46" stroke-width="1.6" marker-end="url(#flow-arrow)"/>
+        <rect x="130" y="440" width="300" height="56" rx="10" fill="#18181B" stroke="#27272A"/>
+        <text x="280" y="463" text-anchor="middle" font-size="12.5" font-weight="600" fill="#FAFAFA">Nothing is stored</text>
+        <text x="280" y="481" text-anchor="middle" font-size="11.5" fill="#A1A1AA">choice and path only</text>
+        <line x1="430" y1="210" x2="452" y2="210" stroke="#3F3F46" stroke-width="1.4" stroke-dasharray="5 4"/>
+        <rect x="456" y="182" width="212" height="56" rx="10" fill="none" stroke="#3F3F46" stroke-dasharray="5 4"/>
+        <text x="562" y="205" text-anchor="middle" font-size="12" font-weight="600" fill="#FAFAFA">Nothing configured?</text>
+        <text x="562" y="223" text-anchor="middle" font-size="11.5" fill="#A1A1AA">checks stay public</text>
       </g>
     </svg>
   </div>
   <div class="card tight">
     <p><strong>Nothing lingers — that's the whole point.</strong> A single-video lookup, a playlist lookup, the per-link checks inside a batch, and the download run itself each get the same two engine values, good for that one attempt only. And if a stale plan forces Download to re-run its lookup first, that refresh quietly reuses the same choice rather than flipping you back to signed-out mid-flight. Settings remembers just the browser's name and the cookie file's path — neither of which is a secret — while the cookies themselves live and die inside that single engine call.</p>
-    <p><strong>Retry plays fair, too.</strong> With the recommended Retry answer in place, each Queue row writes down which browser choice its attempt used, so retrying with sign-in repeats the same session instead of silently going public on you. Leave Settings on Off and every check stays public until you say otherwise — and the status bar down below keeps showing nothing but your folder and your speed.</p>
+    <p><strong>Retry plays fair, too.</strong> If the per-job memory answer wins, each Queue row writes down which browser choice its attempt used, so a signed-in retry repeats the same session instead of quietly falling back to anonymous. Leave Settings on Off and every check stays public until you say otherwise — and the status bar down below keeps showing nothing but your folder and your speed.</p>
   </div>
 
   <h2>5 · Borrow or host</h2>
   <div class="optgrid">
     <div class="opt sel"><div class="tag rec">Recommended · borrow</div><h4>Read the real browser</h4>
       <p>No passwords ever touch VidStow, there's no session vault to guard, and the engine's importer already handles the careful snapshot-and-redact dance.</p>
-      <ul><li>By far the smallest build, sitting on fields that already ship</li><li>Keychain quirks and odd profiles fail loudly with explicit messages</li><li>Cookie rotation stays visible instead of rotting silently somewhere</li></ul>
+      <ul><li>By far the smallest build, sitting on fields that already ship</li><li>Keychain quirks and odd profiles fail loudly with explicit messages</li><li>Cookie rotation stays out in the open instead of failing quietly somewhere</li></ul>
     </div>
     <div class="opt"><div class="tag risk">Deferred · host like 4K</div><h4>Log in inside VidStow</h4>
       <p>An embedded Google window plus a stored session — and with it, logout screens to design and background refresh rules to argue about.</p>
@@ -1144,19 +1149,19 @@
     <thead><tr><th>File</th><th>Area</th><th>Change</th></tr></thead>
     <tbody>
       <tr><td class="mono">internal/store/store.go</td><td>Settings</td><td>Add the browser choice and cookie file path with the same text validation as the download folder</td></tr>
-      <tr><td class="mono">app.go</td><td>AnalyzeURL · AnalyzePlaylist · batch admission</td><td>Return a keyed sign-in error instead of a flat string — including the stale-plan refresh path — so Home, batch, and Queue each render their own copy</td></tr>
+      <tr><td class="mono">app.go</td><td>AnalyzeURL · AnalyzePlaylist · batch admission</td><td>Return a keyed sign-in error instead of a flat string — including the stale-plan refresh path — so Home, batch, and Queue each render their own copy. Attach the configured session to every attempt; on a session-unreadable failure, retry once signed out before reporting.</td></tr>
       <tr><td class="mono">batch.go</td><td>Per-line admission</td><td>Translate the keyed error into each line's reason string; statuses and counts untouched</td></tr>
       <tr><td class="mono">internal/jobs/jobs.go</td><td>Analyze + Download run · Queue copy</td><td>Thread the choice into every <span class="mono">engine.Request</span>; new Heading, Message, and RecommendedAction for <span class="mono">authentication_required</span>; under the recommended Retry answer, record the choice on the row</td></tr>
       <tr><td class="mono">frontend/src/lib/types.ts</td><td>Settings shape</td><td>Mirror the new fields so the UI and the Go side cannot drift</td></tr>
       <tr><td class="mono">frontend/src/pages/Settings.svelte</td><td>Signed-in downloads group</td><td>Status echo, browser picker, profile, cookie file — new group, existing row idiom, no Check button in v1</td></tr>
-      <tr><td class="mono">frontend/src/pages/Home.svelte</td><td>Error card + session line + batch reason</td><td>Map the keyed sign-in error to its own title and two buttons; render the session line only when a session is picked; batch reason copy</td></tr>
+      <tr><td class="mono">frontend/src/pages/Home.svelte</td><td>Error card + session line + batch reason</td><td>Map the keyed sign-in error to its own title and two buttons; render the session line whenever a session is configured; batch reason copy</td></tr>
       <tr><td class="mono">frontend/src/lib/lifecycle-ui/QueueOverview.svelte</td><td>Failed-row recovery + inspector</td><td><span class="mono">recoveryAction</span> returns retry for sign-in failures; new Open Settings button on those rows navigates via the page dispatch</td></tr>
       <tr><td class="mono">PRODUCT.md</td><td>Scope</td><td>Move bounded sign-in from out of scope to supported, with the DRM and no-storage lines kept</td></tr>
     </tbody>
   </table></div>
 
   <h3>Settings shape, excerpted diff</h3>
-  <p>Excerpt only, so don't go looking for the other seven fields — the real struct keeps all nine of its current fields and simply gains two persisted strings. The names below are illustrative; at call time the browser value maps onto the engine's <span class="mono">CookiesFromBrowser</span> field. And to be clear: only the browser choice and the file path ever get persisted.</p>
+  <p>This is an excerpt to keep things readable — the real struct keeps all nine of its current fields and simply gains two persisted strings. The names below are illustrative; at call time the browser value maps onto the engine's <span class="mono">CookiesFromBrowser</span> field. And to be clear: only the browser choice and the file path ever get persisted.</p>
   <div id="file"><pre class="code-static"><span class="cf">internal/store/store.go — excerpt, after</span>
 type Settings struct {
   DownloadFolder string `json:"downloadFolder"`
@@ -1175,7 +1180,7 @@ type Settings struct {
 +// BrowserSession maps onto engine CookiesFromBrowser at call time.</pre></div>
 
   <h3>Contracts — everything a build needs</h3>
-  <p>Below is the part of the proposal an implementer works from directly: final names, wire formats, and who calls whom. Anything still waiting on section 10 wears its question tag openly — <span class="mono">needs Q1</span> and friends — so nothing looks decided that isn't.</p>
+  <p>Below is the part of the proposal an implementer works from directly: final names, wire formats, and who calls whom. Anything still waiting on section 10 is tagged outright — you'll spot little <span class="mono">needs Q1</span>-style markers — so nothing reads as decided before it is.</p>
 
   <h3>C1 · The two Settings fields</h3>
   <p>Two plain strings join the Settings document, validated and persisted exactly like the download folder. The names below are final, not illustrative.</p>
@@ -1186,7 +1191,7 @@ type Settings struct {
       <tr><td><b>CookieFile</b></td><td class="mono">cookieFile</td><td>No fallback file</td><td>Path text only, same length rules as the folder. Existence is deliberately <em>not</em> required at save time — the file might live on a disk that isn't plugged in, and the engine reports that at use time. <span class="mono">Needs Q1</span>: hidden entirely if the answer is browser-only.</td></tr>
     </tbody>
   </table></div>
-  <p class="note">No migration needed: absent keys decode to empty, which already means signed out, and older builds ignore keys they don't know. Writes travel the usual settings path under the settings lock.</p>
+  <p class="note">No migration needed: absent keys decode to empty, which already means signed out, and older builds ignore keys they don't know. Saves go through the same locked settings path as everything else.</p>
 
   <h3>C2 · The keyed error between Go and the UI</h3>
   <p>Here's a wrinkle worth knowing: Wails hands the frontend nothing but an error string, so "this failed for sign-in reasons" needs a machine-readable shape smuggled inside it. A new error type carries a stable JSON envelope — reason, browser, message — and a small parser reads it back. Anything malformed falls through to today's generic fallback, so old and unexpected errors behave exactly as now.</p>
@@ -1197,14 +1202,14 @@ type Settings struct {
       <tr><td class="mono"><b>session-unreadable</b></td><td>A signed-in check couldn't read the session at all — closed browser, renamed profile, denied Keychain prompt, bad file</td><td>Could not read the browser session. Check the browser choice in Settings, then try again — with Open Settings and Try again beside it</td><td>Session unreadable. Check the browser choice in Settings, then review again.</td></tr>
     </tbody>
   </table></div>
-  <p class="note">Classification stays on the typed Go error, never on message text, so the diagnostics rulebook needs no changes. The frontend helper lives next to errorMessage and every Analyze call site branches through it.</p>
+  <p class="note">Classification stays on the typed Go error, never on message text, so the diagnostics rulebook needs no changes. The frontend helper lives next to errorMessage, and every Analyze call site checks with it first.</p>
 
   <h3>C3 · How the choice reaches the engine</h3>
-  <p>The Manager grows a setter that mirrors the FFmpeg one line for line: mutex-held, future attempts only, in-flight work keeps its snapshot. The app calls it once at startup and again on every settings save. And here's the rule that makes the whole feature feel invisible — every Analyze first tries exactly as today, signed out. Only if the engine comes back with an authentication failure, a session is configured, and this attempt hasn't spent one yet, does it go again with the snapshot attached. Exactly once, same URL, sign-in failures only: never timeouts, never rate limits, never challenge pages. The frontend learns about the second attempt through a tiny progress event so the waiting card can honestly say it's trying the browser session.</p>
-  <p class="note">Downloads need no new request fields: starting one simply attaches whatever Settings currently holds, which is harmless on public videos and required on private ones. Playlist lookups, batch review-agains, and the stale-plan refresh all follow the same try-anonymous-first rule — per child where children are resolved one by one. One caveat to file away: on macOS each of those attempts can raise its own Keychain prompt until the user approves with Always Allow. <span class="mono">Needs Q3</span>: the manual mode, if it wins, keeps an explicit per-check button instead of the automatic retry.</p>
+  <p>The Manager grows a setter that mirrors the FFmpeg one line for line: mutex-held, future attempts only, in-flight work keeps its snapshot. The app calls it once at startup and again on every settings save. And the rule couldn't be simpler — if a session is configured, every Analyze and every Download run attaches the snapshot, full stop. No anonymous first attempt, no mode flag, no retry dance. The one exception keeps public videos safe: when the failure is the session itself being unreadable — closed browser, renamed profile, denied Keychain prompt, bad file — the attempt goes once more, signed out. Public content still sails through; anything truly gated lands on the session-unreadable card, since that was the actual root cause.</p>
+  <p class="note">Downloads need no new request fields: starting one simply attaches whatever Settings currently holds, which is harmless on public videos and required on private ones. Playlist lookups, batch children, and the stale-plan refresh all follow the same rule. One caveat to file away: on macOS each fresh browser read can raise its own Keychain prompt until the user approves with Always Allow — the price of spending the session everywhere.</p>
 
   <h3>C4 · Queue specifics</h3>
-  <p>Two failure flavors, deliberately different faces. A video that needs sign-in says so and offers Retry plus the new Open Settings button. A session the app couldn't even read says <em>that</em> instead — the failure is on this Mac, not on YouTube — and skips the Open source and Copy link buttons, since the page is probably fine and they'd only add noise. The lead button follows suit in both the inspector and the little recovery button beside the row, and the evidence details stay exactly as they are.</p>
+  <p>The two failures get deliberately different faces. A video that needs sign-in says so, offering Retry plus the new Open Settings button. A session the app couldn't even read says <em>that</em> instead — the problem is on this Mac, not on YouTube — and leaves out the Open source and Copy link buttons, since the page itself is probably fine and they'd just add clutter. The lead button follows suit both in the inspector and in the little recovery button beside the row, and the evidence details stay exactly as they are.</p>
 
   <h3>C5 · Why there's no Check button in v1</h3>
   <p>This one stung a little: the cookie readers live in the engine's internal packages with no public "just verify, don't download" call, so a Check button cannot be built against the public API — anything pretending otherwise would be theater. Version one drops it; the Status line echoes your pick and the next signed-in lookup is the real test. If the engine ever exports a dry-run import, Check comes back as a one-row addition.</p>
@@ -1213,17 +1218,18 @@ type Settings struct {
   <p>Supported gains one line: bounded signed-in YouTube downloads through your own browser session — age-restricted clips and private items your account can already watch. The out-of-scope list loses authenticated downloads and trades its cookies-and-login line for password vaulting, in-app login screens, and access-control circumvention. And the principles gain a sibling for the diagnostics rule: borrowed sessions, never stored — VidStow reads your browser's session per check and keeps nothing but the browser's name. One honest footnote: that scope is enforced by promise and copy, not by pre-filtering, because nothing can reliably tell an age gate from a private video before trying.</p>
 
   <h3>C7 · How it gets tested</h3>
-  <p>Settings validation gets table-driven cases including traversal-shaped profiles; the keyed errors get round-trip tests plus malformed-input fallbacks; the classifier gets Op-based cases built from engine error values, never text; Queue gets copy and capability matrices for both failure flavors; the frontend gets its type check plus the helper's unit tests. Then the human matrix: each desktop OS against Chrome, Firefox, and Safari or Edge, each in signed-out, healthy, missing-profile, denied-prompt, and bad-file states.</p>
+  <p>Automated tests cover Settings validation (including genuinely sneaky profile strings), keyed-error round trips plus malformed input, classifier cases built from engine error values rather than text, and Queue copy and capability checks for both failure faces — with the frontend's type check and helper unit tests alongside. Then the human pass: every desktop OS against Chrome, Firefox, and Safari or Edge, each tried signed-out, healthy, missing-profile, denied-prompt, and bad-file.</p>
 
   <h2>9 · Risks kept visible</h2>
   <div class="card tight">
     <p><strong>Heads up on shared machines: history shows titles.</strong> A private video that downloads just fine will still sit in Downloads and Queue under its private title — worth knowing if anyone else sees your screen. The row keeps its collection label, but never, ever its cookies.</p>
     <p><strong>And treat a cookie file like a house key.</strong> It holds sessions for every site, not just YouTube, so the picker warns you before accepting one — and clearing the row forgets the path entirely. Diagnostics, Copy diagnostics, and the failure evidence stay redacted exactly as today, gaining no new fields whatsoever.</p>
     <p><strong>Signing in buys you no immunity from rate limits.</strong> It won't excuse a 43-video admit or a concurrency past 4, and the familiar slow-down wording stays word for word.</p>
+    <p><strong>And signing in everywhere has two prices worth knowing.</strong> Your cookies accompany public checks too — not just the gated ones — and on macOS, Chrome sessions can raise a Keychain prompt per fresh read until you approve with Always Allow. Neither leaks anything anywhere; both are about prompts and principle, and both are why Settings stays one click from Off.</p>
   </div>
 
   <h2>10 · Decisions to lock</h2>
-  <p>Four open questions stand between this page and a build. Take them one at a time — pick an option, queue the answer, and only what you queued travels back. Flip a radio before pressing the button and all you've changed is your local pick.</p>
+  <p>Three open questions stand between this page and a build — the fourth, when to spend the session, is already locked above. Take them one at a time — pick an option, queue the answer, and only what you queued travels back. Flip a radio before pressing the button and all you've changed is your local pick.</p>
 
   <form class="q" data-lavish-question="auth-method" onsubmit="event.preventDefault(); const c = new FormData(event.currentTarget).get('method'); if (c) { const msg = 'Cookie auth method: ' + c; if (window.lavish) window.lavish.queuePrompt(msg, { tag: 'choice', text: msg, element: event.currentTarget, data: { question: 'auth-method', answer: String(c) } }); const s = event.currentTarget.querySelector('.qstate'); if (s) s.innerHTML = 'Queued: <b>' + String(c) + '</b> — press Send to Agent when ready.'; }">
     <h4>Which import path should ship?</h4>
@@ -1244,15 +1250,9 @@ type Settings struct {
     <div class="qstate">Not queued yet.</div>
   </form>
 
-  <form class="q" data-lavish-question="auth-default" onsubmit="event.preventDefault(); const c = new FormData(event.currentTarget).get('def'); if (c) { const msg = 'Cookie auth default: ' + c; if (window.lavish) window.lavish.queuePrompt(msg, { tag: 'choice', text: msg, element: event.currentTarget, data: { question: 'auth-default', answer: String(c) } }); const s = event.currentTarget.querySelector('.qstate'); if (s) s.innerHTML = 'Queued: <b>' + String(c) + '</b> — press Send to Agent when ready.'; }">
-    <h4>When should a check spend your session?</h4>
-    <p>Public lookups stay anonymous either way — no cookies sent, no Keychain prompt on a casual paste. The question is only what happens the moment YouTube demands sign-in.</p>
-    <label><input type="radio" name="def" value="Signed-out first, automatic one-time retry (recommended)" checked> <span><strong>Signed-out first, automatic one-time retry.</strong> On a sign-in failure with a session configured, Analyze tries once more with it before showing any error. Exactly once, same link, sign-in failures only.</span></label>
-    <label><input type="radio" name="def" value="Ask every time (manual)"> <span><strong>Ask every time.</strong> No automatic retry — the error card keeps an explicit per-check button that spends the session for one lookup.</span></label>
-    <label><input type="radio" name="def" value="Always attach session"> <span><strong>Always attach.</strong> Every Analyze sends the session up front. Fewest moving parts; most Keychain prompts.</span></label>
-    <button class="pbtn sm pri" type="submit">Queue this answer</button>
-    <div class="qstate">Not queued yet.</div>
-  </form>
+  <div class="card tight">
+    <p><strong>Locked: always attach. ✅</strong> Every check spends the session when one is configured; nothing configured, nothing spent. The other two options lost out, for two plain reasons: they keep the feature invisible until something breaks, and they make every gated video pay for two round trips — twice the waiting, twice the chances to fail — on exactly the videos that need the session most. The accepted prices, stated plainly: cookies ride along on public checks too, and macOS may raise Keychain prompts until approved with Always Allow.</p>
+  </div>
 
   <form class="q" data-lavish-question="auth-retry" onsubmit="event.preventDefault(); const c = new FormData(event.currentTarget).get('retry'); if (c) { const msg = 'Cookie auth retry: ' + c; if (window.lavish) window.lavish.queuePrompt(msg, { tag: 'choice', text: msg, element: event.currentTarget, data: { question: 'auth-retry', answer: String(c) } }); const s = event.currentTarget.querySelector('.qstate'); if (s) s.innerHTML = 'Queued: <b>' + String(c) + '</b> — press Send to Agent when ready.'; }">
     <h4>What should Retry remember?</h4>
@@ -1322,18 +1322,15 @@ type Settings struct {
     const stage = hud.querySelector('strong');
     retry.disabled = true;
     retry.textContent = 'Checking…';
-    stage.textContent = 'Reading video details';
+    stage.textContent = 'Reading video details with your session';
     hud.hidden = false;
     setTimeout(() => {
-      stage.textContent = 'Trying with your browser session';
-      setTimeout(() => {
-        hud.hidden = true;
-        retry.disabled = false;
-        retry.textContent = 'Try again';
-        err.querySelector('b').textContent = "This video isn't available to your account.";
-        err.querySelector('span').textContent = 'Your browser session tried, and YouTube still said no. Double-check the link, or sign in somewhere else and update Settings.';
-      }, 900);
-    }, 900);
+      hud.hidden = true;
+      retry.disabled = false;
+      retry.textContent = 'Try again';
+      err.querySelector('b').textContent = "This video isn't available to your account.";
+      err.querySelector('span').textContent = 'Your browser session tried, and YouTube still said no. Double-check the link, or sign in somewhere else and update Settings.';
+    }, 1200);
   });
 </script>
 
