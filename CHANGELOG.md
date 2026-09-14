@@ -18,7 +18,8 @@ does not exist yet.
   cookie-file path) from Settings for age-restricted and account-gated videos.
   Cookie values are never stored. When a session is configured it is attached
   on every analyze and download; if the session cannot be read, the attempt
-  retries once signed out so public videos still work.
+  retries once signed out so public videos still work. Chrome profiles that
+  contain a few unusable cookie names still import the rest (engine v0.3.1).
 
 ### Changed
 
