@@ -92,10 +92,10 @@ func (a *App) StartPlaylistDownload(req StartPlaylistRequest) (PlaylistStartResu
 	children, err := analyzePlaylistChildren(ctx, a.jobs, entries, req.Quality, req.AudioBitrate)
 	if err != nil {
 		logAppErrorf(a.ctx, "desktop: analyze playlist children: %v", err)
-		return PlaylistStartResult{}, errors.New(friendlyPlaylistStartError(err))
+		return PlaylistStartResult{}, playlistStartErrorForFrontend(err)
 	}
 	if len(children) == 0 {
-		return PlaylistStartResult{}, errors.New(friendlyPlaylistStartError(nil))
+		return PlaylistStartResult{}, playlistStartErrorForFrontend(nil)
 	}
 	for _, child := range children {
 		if child.plan.RequiresFFmpeg && !a.ffmpegStatus().Available {

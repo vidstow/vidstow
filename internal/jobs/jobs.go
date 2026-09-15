@@ -5329,7 +5329,7 @@ func (m *Manager) AnalyzePlaylist(ctx context.Context, rawURL string) (PlaylistS
 		Filesystem: engine.FilesystemOptions{FfmpegLocation: ffmpegLocation},
 	}, runner)
 	if err != nil {
-		return PlaylistSummary{}, err
+		return PlaylistSummary{}, playlistAuthFailure(err)
 	}
 	summary, err := summarizePlaylist(result, rawURL)
 	if err != nil {

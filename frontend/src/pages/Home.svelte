@@ -46,7 +46,7 @@
   let analysisGeneration = 0;
   let busy = false;
   let admitting: 'video' | 'playlist' | 'batch' | null = null;
-  let admissionError: { title: string; message: string } | null = null;
+  let admissionError: { title: string; message: string; openSettings?: boolean } | null = null;
   let analysisStage = 'Checking link…';
   let analysisStartedAt = 0;
   let operationNow = Date.now();
@@ -80,6 +80,9 @@
   let scopePlaylist: PlaylistSummary | null = null;
   let scopePlaylistTask: Promise<PlaylistSummary | null> | null = null;
   let scopePlaylistFailed = false;
+  let scopePlaylistError: unknown = null;
+  let scopeVideoFailed = false;
+  let scopeVideoPending = false;
   let scopeFocus: 'video' | 'playlist' = 'playlist';
   let analyzeError: { title: string; message: string; retry?: boolean; openSettings?: boolean } | null = null;
   let detailsOpen = false;
@@ -294,6 +297,9 @@
     scopePlaylistTask = null;
     scopeFocus = 'playlist';
     scopePlaylistFailed = false;
+    scopePlaylistError = null;
+    scopeVideoFailed = false;
+    scopeVideoPending = false;
   }
 
   function clearAnalysis() {
@@ -438,7 +444,7 @@
       batchText = '';
       if (!$pendingUrl) dispatch('goto', 'queue');
     } catch (err) {
-      if (requestGeneration === batchGeneration) admissionError = { title: 'Batch could not start', message: errorMessage(err, 'Could not add this batch to the queue.') };
+      if (requestGeneration === batchGeneration) presentAdmissionError('Batch could not start', err, 'Could not add this batch to the queue.');
     } finally {
       admitting = null;
     }
@@ -485,14 +491,43 @@
     }
   }
 
-  function prefetchLinkedPlaylist(accepted: UrlCheckResult, requestGeneration: number) {
-    if (!accepted.playlistUrl) return;
+  function playlistIncludesVideo(summary: PlaylistSummary, videoId: string): boolean {
+    const id = videoId.trim();
+    if (!id) return false;
+    return summary.entries.some((entry) => entry.videoId === id);
+  }
+
+  function prefetchLinkedPlaylist(accepted: UrlCheckResult, requestGeneration: number): Promise<PlaylistSummary | null> {
+    if (!accepted.playlistUrl) return Promise.resolve(null);
     scopePlaylistFailed = false;
+    scopePlaylistError = null;
     scopePlaylistTask = api.analyse.playlist(accepted.playlistUrl).then((summary) => {
       if (requestGeneration === analysisGeneration) scopePlaylist = summary;
       return summary;
+    }).catch((err) => {
+      if (requestGeneration === analysisGeneration) {
+        scopePlaylist = null;
+        scopePlaylistFailed = true;
+        scopePlaylistError = err;
+      }
+      return null;
+    });
+    return scopePlaylistTask;
+  }
+
+  function loadScopeVideo(videoUrl: string, requestGeneration: number): Promise<InfoSummary | null> {
+    scopeVideoPending = true;
+    return api.analyse.url(videoUrl).then((summary) => {
+      if (requestGeneration !== analysisGeneration) return null;
+      scopeVideo = summary;
+      scopeVideoFailed = false;
+      scopeVideoPending = false;
+      return summary;
     }).catch(() => {
-      if (requestGeneration === analysisGeneration) scopePlaylistFailed = true;
+      if (requestGeneration !== analysisGeneration) return null;
+      scopeVideo = null;
+      scopeVideoFailed = true;
+      scopeVideoPending = false;
       return null;
     });
   }
@@ -548,6 +583,10 @@
     scopeVideo = null;
     scopePlaylist = null;
     scopePlaylistTask = null;
+    scopePlaylistFailed = false;
+    scopePlaylistError = null;
+    scopeVideoFailed = false;
+    scopeVideoPending = false;
     linkedPlaylist = null;
     scopeFocus = 'playlist';
   }
@@ -596,14 +635,59 @@
       if (requestGeneration !== analysisGeneration) return;
       validated = true;
       if (accepted.kind === 'video_playlist') {
+        // Only offer the playlist when this watch URL's video is actually in
+        // that list. A stale list= (common with LL) should download as a video.
         linkedPlaylist = accepted;
-        analysisStage = 'Reading video details…';
-        const summary = await api.analyse.url(accepted.videoUrl!);
-        if (requestGeneration !== analysisGeneration) return;
-        scopeVideo = summary;
-        scopeChoice = accepted;
+        scopeChoice = null;
         scopeFocus = 'playlist';
-        prefetchLinkedPlaylist(accepted, requestGeneration);
+        scopeVideo = null;
+        scopeVideoFailed = false;
+        scopePlaylist = null;
+        scopePlaylistFailed = false;
+        scopePlaylistError = null;
+        analysisStage = 'Reading playlist…';
+        const videoTask = loadScopeVideo(accepted.videoUrl!, requestGeneration);
+        const playlistSummary = await prefetchLinkedPlaylist(accepted, requestGeneration);
+        if (requestGeneration !== analysisGeneration) return;
+        const videoId = accepted.videoId?.trim() || '';
+        if (playlistSummary && videoId && playlistIncludesVideo(playlistSummary, videoId)) {
+          scopePlaylist = playlistSummary;
+          scopeChoice = accepted;
+          return;
+        }
+        if (parseAuthFailure(scopePlaylistError)) {
+          linkedPlaylist = null;
+          scopePlaylist = null;
+          scopePlaylistTask = null;
+          scopePlaylistFailed = false;
+          presentCaughtAnalyzeError(
+            scopePlaylistError,
+            'Could not read the playlist',
+            'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.',
+            true,
+          );
+          return;
+        }
+        linkedPlaylist = null;
+        scopePlaylist = null;
+        scopePlaylistTask = null;
+        scopePlaylistFailed = false;
+        scopePlaylistError = null;
+        analysisStage = 'Reading video details…';
+        const videoSummary = (await videoTask) ?? scopeVideo;
+        if (requestGeneration !== analysisGeneration) return;
+        if (videoSummary) {
+          scopeVideo = null;
+          scopeVideoPending = false;
+          applyVideoDock(videoSummary);
+          return;
+        }
+        presentCaughtAnalyzeError(
+          new Error('We could not read this YouTube link. It may be unavailable or unsupported.'),
+          'Could not read this link',
+          'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.',
+          true,
+        );
       } else {
         await analyzeTarget(accepted, requestGeneration);
       }
@@ -783,6 +867,19 @@
     return message;
   }
 
+  function presentAdmissionError(title: string, err: unknown, fallback: string) {
+    const auth = parseAuthFailure(err);
+    if (auth) {
+      admissionError = {
+        title: auth.title || title,
+        message: auth.message || fallback,
+        openSettings: true,
+      };
+      return;
+    }
+    admissionError = { title, message: startFailureMessage(err, fallback) };
+  }
+
   async function enqueueVideo() {
     if (admitting || busy || batchBusy || folderBusy || !preview || !selectedPlan?.available || !folder) return;
     if (selectedPlan.requiresFfmpeg && !$ffmpeg.available) {
@@ -810,9 +907,7 @@
         if (!$pendingUrl) dispatch('goto', 'queue');
       }
     } catch (err) {
-      if (requestGeneration === analysisGeneration) admissionError = {
-        title: 'Download could not start', message: startFailureMessage(err, 'Could not start this download.'),
-      };
+      if (requestGeneration === analysisGeneration) presentAdmissionError('Download could not start', err, 'Could not start this download.');
     } finally {
       admitting = null;
     }
@@ -854,9 +949,7 @@
           if (!$pendingUrl) dispatch('goto', 'queue');
         }
       } catch (err) {
-        if (requestGeneration === analysisGeneration) admissionError = {
-          title: 'Playlist could not start', message: errorMessage(err, 'Could not add this playlist to the queue.'),
-        };
+        if (requestGeneration === analysisGeneration) presentAdmissionError('Playlist could not start', err, 'Could not add this playlist to the queue.');
       } finally {
         admitting = null;
       }
@@ -1006,6 +1099,7 @@
     <div class="admission-error" role="alert">
       <div><strong>{admissionError.title}</strong><span>{admissionError.message}</span></div>
       <div class="flow-actions">
+        {#if admissionError.openSettings}<button type="button" class="dbtn" on:click={() => dispatch('goto', 'settings')}>Open Settings</button>{/if}
         <button type="button" class="dbtn" on:click={pickFolder} disabled={folderBusy || !!admitting}>Change folder</button>
         <button type="button" class="dbtn" on:click={() => submitPaste()} disabled={!!admitting}>Analyze again</button>
         <button type="button" class="dbtn" on:click={() => dispatch('goto', 'queue')}>View queue</button>
@@ -1018,7 +1112,7 @@
 
   {#if hasDock}
   <fieldset class="flow-review" disabled={!!admitting} aria-label="Download review">
-  {#if scopeChoice && scopeVideo}
+  {#if scopeChoice}
     <div class="sdialog" role="group" aria-labelledby="scope-title">
       <b id="scope-title">This link includes a playlist</b>
       <span class="dsub">Choose what to download.</span>
@@ -1027,18 +1121,21 @@
         class="scard"
         class:focus={scopeFocus === 'video'}
         aria-pressed={scopeFocus === 'video'}
+        disabled={!scopeVideo}
         on:click={chooseScopeVideo}
         on:focus={() => (scopeFocus = 'video')}
       >
-        {#if scopeVideo.thumbnail}
+        {#if scopeVideo?.thumbnail}
           <img src={scopeVideo.thumbnail} alt="" referrerpolicy="no-referrer" on:error={hideBrokenImage} />
         {:else}
           <span class="sthumb"></span>
         {/if}
         <span>
           <span class="sc-k">Video</span>
-          <span class="sc-t">{scopeVideo.title}</span>
-          {#if scopeVideoMeta}<span class="sc-m">{scopeVideoMeta}</span>{/if}
+          <span class="sc-t">{scopeVideo ? scopeVideo.title : scopeVideoFailed ? 'This video could not be read' : 'Reading this video…'}</span>
+          {#if scopeVideoMeta}<span class="sc-m">{scopeVideoMeta}</span>
+          {:else if scopeVideoFailed}<span class="sc-m">You can still open the playlist.</span>
+          {:else if scopeVideoPending}<span class="sc-m">Checking the pasted video.</span>{/if}
         </span>
       </button>
       <button

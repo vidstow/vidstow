@@ -233,6 +233,25 @@ func authFailureFor(err error, session browserSession, attempted bool) error {
 	}
 }
 
+// playlistAuthFailure keeps session-unreadable copy as-is and rewrites
+// sign-in-required titles so playlist Analyze talks about the playlist,
+// not a single video. Child AnalyzeForAdmission still uses video copy.
+func playlistAuthFailure(err error) error {
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonSigninRequired {
+		return err
+	}
+	rewritten := *failure
+	if failure.SessionAttempted {
+		rewritten.Title = "This playlist isn't available to your account."
+		rewritten.Message = "Your browser session tried, and YouTube still said no. Double-check the link, or sign in somewhere else and update Settings."
+	} else {
+		rewritten.Title = "This playlist needs your YouTube sign-in."
+		rewritten.Message = "Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only playlists your account can already open."
+	}
+	return &rewritten
+}
+
 // SetBrowserSession updates the per-request cookie snapshot for future
 // analyze/download attempts. In-flight work keeps the snapshot it already took.
 func (m *Manager) SetBrowserSession(cookiesFromBrowser, cookieFile string) {

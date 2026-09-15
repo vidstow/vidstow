@@ -1743,7 +1743,6 @@ func isTerminal(s jobs.Status) bool {
 	return s == jobs.StatusComplete || s == jobs.StatusFailed || s == jobs.StatusCanceled
 }
 
-
 func (a *App) applyBrowserSession(settings store.Settings) {
 	if a == nil || a.jobs == nil {
 		return
@@ -1935,6 +1934,13 @@ func friendlyAnalyzeError(err error) string {
 	return "We could not read that video. Try again in a moment."
 }
 
+func playlistStartErrorForFrontend(err error) error {
+	if failure, ok := jobs.AsAuthFailure(err); ok {
+		return failure
+	}
+	return errors.New(friendlyPlaylistStartError(err))
+}
+
 func friendlyPlaylistStartError(err error) string {
 	if err == nil {
 		return "None of the selected videos could be downloaded."
@@ -1946,7 +1952,7 @@ func friendlyPlaylistStartError(err error) string {
 		return "Playlist analysis was canceled."
 	}
 	if isMembersOnlyMedia(err) {
-		return "A selected video requires a channel membership and is not available in this version."
+		return "A selected video needs a channel membership your account doesn't have."
 	}
 	if failure, ok := jobs.AsAuthFailure(err); ok {
 		if failure.Reason == jobs.ReasonSessionUnreadable {

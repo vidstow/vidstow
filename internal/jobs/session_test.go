@@ -97,6 +97,91 @@ func TestAnalyzeAlwaysAttachesConfiguredSession(t *testing.T) {
 	}
 }
 
+func TestAnalyzePlaylistAlwaysAttachesConfiguredSession(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome:Default", "/tmp/cookies.txt")
+	var seen engine.Request
+	manager.runAnalyze = func(_ context.Context, req engine.Request) (engine.Result, error) {
+		seen = req
+		return engine.Result{
+			InfoJSON: []byte(`{"id":"PLfixture","title":"Course"}`),
+			Entries: []engine.Result{
+				{InfoJSON: json.RawMessage(`{"id":"aaaaaaaaaaa","title":"One","url":"https://www.youtube.com/watch?v=aaaaaaaaaaa","playlist_index":1}`)},
+			},
+		}, nil
+	}
+	summary, err := manager.AnalyzePlaylist(context.Background(), "https://www.youtube.com/playlist?list=PLfixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seen.CookiesFromBrowser != "chrome:Default" || seen.CookieFile != "/tmp/cookies.txt" {
+		t.Fatalf("attached session = %#v", seen)
+	}
+	if !seen.Playlist.Flat || seen.Playlist.End != MaxPlaylistEntries {
+		t.Fatalf("playlist options = %#v", seen.Playlist)
+	}
+	if summary.SessionLabel != "Chrome · Default" {
+		t.Fatalf("session label = %q", summary.SessionLabel)
+	}
+}
+
+func TestAnalyzePlaylistSigninRequiredUsesPlaylistCopy(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.runAnalyze = func(_ context.Context, _ engine.Request) (engine.Result, error) {
+		return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "youtube extraction", Err: errors.New("login required")}
+	}
+	_, err := manager.AnalyzePlaylist(context.Background(), "https://www.youtube.com/playlist?list=PLfixture")
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonSigninRequired {
+		t.Fatalf("err = %#v", err)
+	}
+	if failure.Title != "This playlist needs your YouTube sign-in." {
+		t.Fatalf("title = %q", failure.Title)
+	}
+	if !strings.Contains(failure.Message, "playlists your account can already open") {
+		t.Fatalf("message = %q", failure.Message)
+	}
+}
+
+func TestAnalyzePlaylistDeniedAfterSessionUsesUnavailableCopy(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "")
+	manager.runAnalyze = func(_ context.Context, _ engine.Request) (engine.Result, error) {
+		return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "youtube extraction", Err: errors.New("private playlist")}
+	}
+	_, err := manager.AnalyzePlaylist(context.Background(), "https://www.youtube.com/playlist?list=PLfixture")
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonSigninRequired || !failure.SessionAttempted {
+		t.Fatalf("err = %#v", err)
+	}
+	if failure.Title != "This playlist isn't available to your account." {
+		t.Fatalf("title = %q", failure.Title)
+	}
+}
+
+func TestAnalyzePlaylistSessionUnreadableKeepsSessionCopy(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "")
+	manager.runAnalyze = func(_ context.Context, req engine.Request) (engine.Result, error) {
+		if req.CookiesFromBrowser != "" {
+			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "import browser cookies", Err: errors.New("keychain denied")}
+		}
+		return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "youtube extraction", Err: errors.New("login required")}
+	}
+	_, err := manager.AnalyzePlaylist(context.Background(), "https://www.youtube.com/playlist?list=PLfixture")
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonSessionUnreadable {
+		t.Fatalf("err = %#v", err)
+	}
+	if failure.Title != "Could not read the browser session." {
+		t.Fatalf("title = %q", failure.Title)
+	}
+}
+
 func TestAnalyzeSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
 	manager := New(nil, nil)
 	t.Cleanup(func() { _ = manager.Close() })
@@ -279,7 +364,7 @@ func TestAnalyzePlaylistAuthenticationReturnsEnvelope(t *testing.T) {
 	if seen.CookiesFromBrowser != "chrome" || seen.CookieFile != "" {
 		t.Fatalf("attached session = %#v", seen)
 	}
-	if !failure.SessionAttempted || failure.Title != "This video isn't available to your account." {
+	if !failure.SessionAttempted || failure.Title != "This playlist isn't available to your account." {
 		t.Fatalf("failure = %#v", failure)
 	}
 }
@@ -299,7 +384,7 @@ func TestAnalyzePlaylistAuthenticationUnsignedReturnsEnvelope(t *testing.T) {
 	if !ok || failure.Reason != ReasonSigninRequired {
 		t.Fatalf("err = %#v", err)
 	}
-	if failure.SessionAttempted || failure.Title != "This video needs your YouTube sign-in." {
+	if failure.SessionAttempted || failure.Title != "This playlist needs your YouTube sign-in." {
 		t.Fatalf("failure = %#v", failure)
 	}
 }

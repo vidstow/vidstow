@@ -34,7 +34,7 @@ test('page titles and controls match the approved redesign', async () => {
   assert.doesNotMatch(home, /Starting…/);
   assert.match(home, /downloadVideosLabel\(selectedItems\.size\)/);
   assert.match(home, /await api\.jobs\.startPlaylist/);
-  assert.match(home, /title: 'Playlist could not start'/);
+  assert.match(home, /presentAdmissionError\('Playlist could not start'/);
   assert.doesNotMatch(home, /That link is not a supported single YouTube video/);
   assert.match(home, /downloadVideosLabel\(batchReadyCount\)/);
   assert.match(home, /<small>\{item\.message\}<\/small>/);
