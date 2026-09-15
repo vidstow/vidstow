@@ -934,7 +934,7 @@
           spellcheck="false"
           rows="1"
           disabled={!!admitting}
-          aria-describedby="input-help"
+          aria-describedby={pasteItems(url).length > 1 ? 'input-help' : undefined}
         ></textarea>
         {#if isWaiting}
           <button class="dbtn query stop-slot" type="button" on:click={stopWaiting}>
@@ -961,7 +961,9 @@
       {/if}
     </div>
   </form>
-  <p class="input-help" id="input-help">One video, a playlist, or up to 20 links. Shift + Enter adds a line.</p>
+  {#if pasteItems(url).length > 1}
+    <p class="input-help" id="input-help">Up to 20 links. Shift + Enter adds another line.</p>
+  {/if}
 
   {#if !hasDock && !analyzeError && !isWaiting}
     <p class="hint">
@@ -1043,7 +1045,7 @@
           <span class="sc-m">{scopePlaylistMeta}</span>
         </span>
       </button>
-      <div class="sdlg-foot"><button type="button" class="dbtn" on:click={cancelScope}>Cancel</button><span>Esc to cancel</span></div>
+      <div class="sdlg-foot"><button type="button" class="dbtn" on:click={cancelScope}>Cancel</button></div>
     </div>
   {:else if playlist}
     {@const policy = playlistPolicyCopy()}
@@ -1078,12 +1080,6 @@
         </svelte:fragment>
       </OutputOptionsEditor>
       {#if !availableCount}<p class="review-hint" role="status">This playlist has no available videos to download. Try another playlist or check its availability on YouTube.</p>{:else if !selectedItems.size}<p class="review-hint" role="status">Select at least one video from the list below.</p>{/if}
-      <button type="button" class="ddisc has" aria-expanded={detailsOpen} on:click={() => detailsOpen = !detailsOpen}>
-        <span class="chev">▸</span>
-        <span class="dlnk">{policy.link}</span>
-        <span class="dp">{policy.detail}</span>
-        {#if playlistAtCap}<span class="cov part">VidStow can review up to {PLAYLIST_ADMIT_CAP} videos from a playlist.</span>{/if}
-      </button>
       {#if !folder}<p class="review-hint">Choose a folder to enable Download. Your format and subtitle choices will stay selected.</p>{/if}
       <footer class="dfoot">
         <span class="dleft">
@@ -1098,10 +1094,15 @@
       </footer>
     </section>
 
-    {#if detailsOpen}
-      <div class="eplist">
+      <div class="eplist" class:collapsed={!detailsOpen}>
         <div class="ephead">
-          <span>{selectedItems.size} of {availableCount} selected</span>
+          <button type="button" class="epdisclosure" aria-label={`Videos · ${selectedItems.size} selected`} aria-expanded={detailsOpen} aria-controls="playlist-videos" on:click={() => detailsOpen = !detailsOpen}>
+            <svg class="epchevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+            <span class="eplabel">Videos</span> <span>· {selectedItems.size} selected</span>
+            <span>· {policy.detail}</span>
+            {#if playlistAtCap}<span class="cov part">VidStow can review up to {PLAYLIST_ADMIT_CAP} videos from a playlist.</span>{/if}
+          </button>
+          {#if detailsOpen}
           <span class="rng">
             <button type="button" on:click={selectAll}>All</button>
             <button type="button" on:click={clearSelection}>None</button>
@@ -1114,8 +1115,10 @@
               {#if rangeWarn}<span class="rwarn">Enter positions from {playlistFirstIndex} to {playlistLastIndex}</span>{/if}
             </form>
           </span>
+          {/if}
         </div>
-        <div class="epscroll" role="list">
+        <div id="playlist-videos" class="epscroll" role="list" hidden={!detailsOpen}>
+          {#if detailsOpen}
           {#each playlist.entries as entry (entry.index)}
             <button
               type="button"
@@ -1135,15 +1138,17 @@
           {:else}
             <div class="empty-list">No videos in this playlist.</div>
           {/each}
+          {/if}
         </div>
-        <div class="epcommit">
-          <span>{selectedItems.size} selected · {policy.detail}</span>
-          <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || !!admitting || folderBusy}>
-            {#if admitting === 'playlist'}Adding…{:else if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Select videos{/if}
-          </button>
-        </div>
+        {#if detailsOpen}
+          <div class="epcommit">
+            <span>{selectedItems.size} selected · {policy.detail}</span>
+            <button type="button" class="dbtn pri" on:click={enqueuePlaylist} disabled={!selectedItems.size || !folder || !!admitting || folderBusy}>
+              {#if admitting === 'playlist'}Adding…{:else if selectedItems.size}{@render downloadMark()}{downloadVideosLabel(selectedItems.size)}{:else}Select videos{/if}
+            </button>
+          </div>
+        {/if}
       </div>
-    {/if}
     </div>
   {:else if preview}
     <section class="dock" aria-label="Video">
@@ -1776,31 +1781,6 @@
   }
   .dmeta em { font-style: normal; font-weight: 650; }
   .dmeta.expired { color: var(--status-danger); }
-  .ddisc {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    width: auto;
-    margin: 2px 16px 0;
-    padding: 5px 8px;
-    border-radius: 6px;
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    text-align: left;
-  }
-  .ddisc.has { cursor: pointer; }
-  .ddisc.has:hover { background: var(--surface-base); }
-  .ddisc.has:hover .dlnk { text-decoration: underline; }
-  .ddisc .dlnk { color: #93C5FD; white-space: nowrap; }
-  .ddisc .cov { color: var(--text-secondary); }
-  .ddisc .cov.part { color: #FBBF24; }
-  .ddisc .chev {
-    font-size: 9px;
-    align-self: center;
-    transition: transform 120ms ease;
-  }
-  .ddisc.has[aria-expanded='true'] .chev { transform: rotate(90deg); }
   .dfoot {
     display: flex;
     align-items: center;
@@ -1900,6 +1880,28 @@
     border-radius: 10px;
     background: var(--surface-base);
   }
+  .eplist.collapsed { flex: 0 0 auto; }
+  .epscroll[hidden] { display: none; }
+  .epdisclosure {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    margin: -2px 0 -2px -4px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+  }
+  .epdisclosure:hover { background: var(--surface-hover); }
+  .eplabel { color: var(--text-primary); font-weight: 500; }
+  .epdisclosure .cov { color: var(--text-secondary); }
+  .epdisclosure .cov.part { color: #FBBF24; }
+  .epchevron { flex-shrink: 0; transition: transform 120ms ease; }
+  .epdisclosure[aria-expanded='true'] .epchevron { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) { .epchevron { transition: none; } }
   .ephead {
     display: flex;
     flex-wrap: wrap;
