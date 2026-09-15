@@ -488,7 +488,7 @@ describe('backend-authored capabilities', () => {
             failure: {
               category: 'authentication_required', messageKey: 'queue.failure.authentication_required',
               heading: 'This download needs sign-in.',
-              message: 'Sign in to YouTube in your browser, pick that browser in Settings, then retry this item.', recommendedAction: 'Retry reuses the same browser session.',
+              message: 'This item uses the YouTube sign-in from when you queued it. To use a different browser, set it in Settings and start over from Home.', recommendedAction: 'Retry uses that same session.',
               retryable: true, partialOutput: false,
             },
             capabilities: { retry: true, remove: true, openSource: true, copyLink: true }, commandToken: 'auth-token',

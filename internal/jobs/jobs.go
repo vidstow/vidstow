@@ -2213,8 +2213,8 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		}
 		failure.MessageKey = "queue.failure.authentication_required"
 		failure.Heading = "This download needs sign-in."
-		failure.Message = "Sign in to YouTube in your browser, pick that browser in Settings, then retry this item."
-		failure.RecommendedAction = "Retry reuses the same browser session."
+		failure.Message = "This item uses the YouTube sign-in from when you queued it. To use a different browser, set it in Settings and start over from Home."
+		failure.RecommendedAction = "Retry uses that same session."
 		failure.Retryable = true
 	case "could_not_start":
 		failure.MessageKey = "queue.failure.could_not_start"
@@ -4662,7 +4662,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		return nil
 	}
 
-	result, err := m.runDownloadWithSession(ctx, req, handler, runner)
+	result, err := m.runDownloadWithSession(ctx, req, handler, runner, m.sessionForDownload(state))
 	diagnostic := terminalDownloadDiagnostic(err, sawDownload, sawPostprocess, time.Since(started))
 	if processingHeld {
 		<-m.processing

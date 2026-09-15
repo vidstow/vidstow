@@ -354,10 +354,13 @@ type PersistedRequest struct {
 	Quality   string `json:"quality"`
 	PlanID    string `json:"planId"`
 	Duration  string `json:"duration"`
-	// BrowserSession remembers which browser choice this job used (Q4).
+	// BrowserSession remembers which browser choice this job used.
 	// Path/profile name only — never cookie values.
-	BrowserSession string        `json:"browserSession,omitempty"`
-	OutputOptions  OutputOptions `json:"outputOptions,omitempty"`
+	BrowserSession string `json:"browserSession,omitempty"`
+	// CookieFile is the Netscape cookie-file path this job used, if any.
+	// Path only — never cookie bytes.
+	CookieFile    string        `json:"cookieFile,omitempty"`
+	OutputOptions OutputOptions `json:"outputOptions,omitempty"`
 }
 
 type PersistedPlan struct {

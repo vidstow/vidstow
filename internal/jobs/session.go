@@ -59,12 +59,27 @@ func (s browserSession) configured() bool {
 	return strings.TrimSpace(s.cookiesFromBrowser) != "" || strings.TrimSpace(s.cookieFile) != ""
 }
 
-func (s browserSession) apply(req *engine.Request) {
-	if req == nil || !s.configured() {
+func (s browserSession) signedInAttempts() []browserSession {
+	browser := strings.TrimSpace(s.cookiesFromBrowser)
+	file := strings.TrimSpace(s.cookieFile)
+	switch {
+	case browser != "" && file != "":
+		return []browserSession{{cookiesFromBrowser: browser}, {cookieFile: file}}
+	case browser != "":
+		return []browserSession{{cookiesFromBrowser: browser}}
+	case file != "":
+		return []browserSession{{cookieFile: file}}
+	default:
+		return nil
+	}
+}
+
+func applyBrowserSession(req *engine.Request, session browserSession) {
+	if req == nil {
 		return
 	}
-	req.CookiesFromBrowser = strings.TrimSpace(s.cookiesFromBrowser)
-	req.CookieFile = strings.TrimSpace(s.cookieFile)
+	req.CookiesFromBrowser = strings.TrimSpace(session.cookiesFromBrowser)
+	req.CookieFile = strings.TrimSpace(session.cookieFile)
 }
 
 func (s browserSession) label() string {
@@ -252,8 +267,9 @@ func playlistAuthFailure(err error) error {
 	return &rewritten
 }
 
-// SetBrowserSession updates the per-request cookie snapshot for future
-// analyze/download attempts. In-flight work keeps the snapshot it already took.
+// SetBrowserSession updates the cookie snapshot for future Analyze attempts
+// and for in-memory downloads that are not State v2 jobs. Admitted downloads
+// reuse the browser/cookie-file choice stored on the job.
 func (m *Manager) SetBrowserSession(cookiesFromBrowser, cookieFile string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -272,50 +288,91 @@ func (m *Manager) browserSessionSnapshot() browserSession {
 	return m.session
 }
 
-// runAnalyzeWithSession always attaches a configured session. If the failure
-// is session-unreadable, it retries once signed out so public videos still work.
+func (m *Manager) sessionForDownload(state *jobState) browserSession {
+	if state != nil && state.fromStateV2 {
+		return browserSession{
+			cookiesFromBrowser: strings.TrimSpace(state.durable.Request.BrowserSession),
+			cookieFile:         strings.TrimSpace(state.durable.Request.CookieFile),
+		}
+	}
+	return m.browserSessionSnapshot()
+}
+
+// runAnalyzeWithSession attaches a configured session. Browser import runs
+// first; a cookie file is a fallback only when the browser store cannot be
+// read. If every signed-in source is unreadable, it retries once signed out
+// so public videos still work.
 func (m *Manager) runAnalyzeWithSession(ctx context.Context, req engine.Request, runner analyzeRunner) (engine.Result, browserSession, error) {
 	session := m.browserSessionSnapshot()
-	session.apply(&req)
-	result, err := runner(ctx, req)
-	if err == nil {
-		return result, session, nil
+	var lastUnreadable error
+	for _, attempt := range session.signedInAttempts() {
+		next := req
+		applyBrowserSession(&next, attempt)
+		result, err := runner(ctx, next)
+		if err == nil {
+			return result, attempt, nil
+		}
+		if isSessionUnreadableError(err) {
+			lastUnreadable = err
+			continue
+		}
+		if isSigninRequiredError(err) {
+			return engine.Result{}, session, authFailureFor(err, attempt, true)
+		}
+		return engine.Result{}, session, err
 	}
-	if session.configured() && isSessionUnreadableError(err) {
-		signedOut := req
-		signedOut.CookiesFromBrowser = ""
-		signedOut.CookieFile = ""
-		retry, retryErr := runner(ctx, signedOut)
+	unsigned := req
+	applyBrowserSession(&unsigned, browserSession{})
+	if lastUnreadable != nil {
+		retry, retryErr := runner(ctx, unsigned)
 		if retryErr == nil {
 			return retry, browserSession{}, nil
 		}
-		return engine.Result{}, session, authFailureFor(err, session, true)
+		return engine.Result{}, session, authFailureFor(lastUnreadable, session, true)
+	}
+	result, err := runner(ctx, unsigned)
+	if err == nil {
+		return result, session, nil
 	}
 	if isSigninRequiredError(err) || isSessionUnreadableError(err) {
-		return engine.Result{}, session, authFailureFor(err, session, session.configured())
+		return engine.Result{}, session, authFailureFor(err, session, false)
 	}
 	return engine.Result{}, session, err
 }
 
-// runDownloadWithSession always attaches a configured session on download. If
-// the failure is session-unreadable, it retries once signed out so public
-// videos still finish; gated content surfaces as AuthFailure.
-func (m *Manager) runDownloadWithSession(ctx context.Context, req engine.Request, handler engine.EventHandler, runner downloadRunner) (engine.Result, error) {
-	session := m.browserSessionSnapshot()
-	session.apply(&req)
-	result, err := runner(ctx, req, handler)
-	if err == nil {
-		return result, nil
+// runDownloadWithSession attaches the job's stored session (or the live
+// Settings snapshot for in-memory jobs). Cookie-file fallback and one
+// signed-out retry match Analyze.
+func (m *Manager) runDownloadWithSession(ctx context.Context, req engine.Request, handler engine.EventHandler, runner downloadRunner, session browserSession) (engine.Result, error) {
+	var lastUnreadable error
+	for _, attempt := range session.signedInAttempts() {
+		next := req
+		applyBrowserSession(&next, attempt)
+		result, err := runner(ctx, next, handler)
+		if err == nil {
+			return result, nil
+		}
+		if isSessionUnreadableError(err) {
+			lastUnreadable = err
+			continue
+		}
+		if isSigninRequiredError(err) {
+			return engine.Result{}, authFailureFor(err, attempt, true)
+		}
+		return engine.Result{}, err
 	}
-	if session.configured() && isSessionUnreadableError(err) {
-		signedOut := req
-		signedOut.CookiesFromBrowser = ""
-		signedOut.CookieFile = ""
-		retry, retryErr := runner(ctx, signedOut, handler)
+	unsigned := req
+	applyBrowserSession(&unsigned, browserSession{})
+	if lastUnreadable != nil {
+		retry, retryErr := runner(ctx, unsigned, handler)
 		if retryErr == nil {
 			return retry, nil
 		}
-		return engine.Result{}, authFailureFor(err, session, true)
+		return engine.Result{}, authFailureFor(lastUnreadable, session, true)
+	}
+	result, err := runner(ctx, unsigned, handler)
+	if err == nil {
+		return result, nil
 	}
 	if isSigninRequiredError(err) || isSessionUnreadableError(err) {
 		return engine.Result{}, authFailureFor(err, session, session.configured())

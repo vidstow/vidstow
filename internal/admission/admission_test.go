@@ -453,6 +453,7 @@ func TestAdmitCopiesBrowserSessionFromSettings(t *testing.T) {
 	coordinator, root, state, request, _ := admissionFixture(t, plan)
 	settings := state.Settings()
 	settings.BrowserSession = "chrome:Default"
+	settings.CookieFile = "/tmp/private/cookies.txt"
 	if err := state.SetSettings(settings); err != nil {
 		t.Fatal(err)
 	}
@@ -462,5 +463,8 @@ func TestAdmitCopiesBrowserSessionFromSettings(t *testing.T) {
 	}
 	if result.Job.Request.BrowserSession != "chrome:Default" {
 		t.Fatalf("persisted browser session = %q", result.Job.Request.BrowserSession)
+	}
+	if result.Job.Request.CookieFile != "/tmp/private/cookies.txt" {
+		t.Fatalf("persisted cookie file = %q", result.Job.Request.CookieFile)
 	}
 }

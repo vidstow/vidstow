@@ -145,3 +145,22 @@ func TestCoordinatorRejectsCollectionBeforeAnyDurableMutation(t *testing.T) {
 		t.Fatalf("state mutated after rejection: %#v", snapshot)
 	}
 }
+
+func TestAdmitCollectionCopiesSessionFromSettings(t *testing.T) {
+	coordinator, root, state, _, request := collectionFixture(t)
+	settings := state.Settings()
+	settings.BrowserSession = "chrome:Default"
+	settings.CookieFile = "/tmp/private/cookies.txt"
+	if err := state.SetSettings(settings); err != nil {
+		t.Fatal(err)
+	}
+	result, err := coordinator.AdmitCollection(context.Background(), root, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, child := range result.Children {
+		if child.Job.Request.BrowserSession != "chrome:Default" || child.Job.Request.CookieFile != "/tmp/private/cookies.txt" {
+			t.Fatalf("child session = %#v", child.Job.Request)
+		}
+	}
+}

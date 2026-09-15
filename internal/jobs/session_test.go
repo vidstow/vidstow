@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tejasa97/vidstow/internal/jobmodel"
 	"github.com/tejasa97/ytdlp-go/engine"
 )
 
@@ -89,7 +90,7 @@ func TestAnalyzeAlwaysAttachesConfiguredSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seen.CookiesFromBrowser != "chrome:Default" || seen.CookieFile != "/tmp/cookies.txt" {
+	if seen.CookiesFromBrowser != "chrome:Default" || seen.CookieFile != "" {
 		t.Fatalf("attached session = %#v", seen)
 	}
 	if summary.SessionLabel != "Chrome · Default" {
@@ -115,7 +116,7 @@ func TestAnalyzePlaylistAlwaysAttachesConfiguredSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seen.CookiesFromBrowser != "chrome:Default" || seen.CookieFile != "/tmp/cookies.txt" {
+	if seen.CookiesFromBrowser != "chrome:Default" || seen.CookieFile != "" {
 		t.Fatalf("attached session = %#v", seen)
 	}
 	if !seen.Playlist.Flat || seen.Playlist.End != MaxPlaylistEntries {
@@ -206,6 +207,103 @@ func TestAnalyzeSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
 	}
 	if summary.SessionLabel != "" {
 		t.Fatalf("signed-out success still labeled %q", summary.SessionLabel)
+	}
+}
+
+func TestAnalyzeBrowserUnreadableFallsBackToCookieFile(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "/tmp/cookies.txt")
+	var calls []engine.Request
+	manager.runAnalyze = func(_ context.Context, req engine.Request) (engine.Result, error) {
+		calls = append(calls, req)
+		if req.CookiesFromBrowser != "" {
+			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "import browser cookies", Err: errors.New("keychain denied")}
+		}
+		if req.CookieFile != "/tmp/cookies.txt" {
+			t.Fatalf("cookie-file attempt = %#v", req)
+		}
+		return engine.Result{InfoJSON: []byte(`{"id":"fixture0001","title":"Signed in","formats":[{"format_id":"v1","ext":"mp4","vcodec":"avc1","acodec":"none","height":1080,"width":1920},{"format_id":"a1","ext":"m4a","vcodec":"none","acodec":"mp4a","abr":128}]}`)}, nil
+	}
+	summary, _, err := manager.AnalyzeForAdmission(context.Background(), "https://www.youtube.com/watch?v=fixture0001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("calls = %d; want browser then cookie file", len(calls))
+	}
+	if calls[0].CookiesFromBrowser != "chrome" || calls[0].CookieFile != "" {
+		t.Fatalf("browser attempt = %#v", calls[0])
+	}
+	if calls[1].CookiesFromBrowser != "" || calls[1].CookieFile != "/tmp/cookies.txt" {
+		t.Fatalf("cookie-file attempt = %#v", calls[1])
+	}
+	if summary.SessionLabel != "Cookie file" {
+		t.Fatalf("session label = %q", summary.SessionLabel)
+	}
+}
+
+func TestDownloadBrowserUnreadableFallsBackToCookieFile(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "/tmp/cookies.txt")
+	var calls []engine.Request
+	manager.runDownload = func(_ context.Context, req engine.Request, _ engine.EventHandler) (engine.Result, error) {
+		calls = append(calls, req)
+		if req.CookiesFromBrowser != "" {
+			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "import browser cookies", Err: errors.New("keychain denied")}
+		}
+		if req.CookieFile != "/tmp/cookies.txt" {
+			t.Fatalf("cookie-file attempt = %#v", req)
+		}
+		return engine.Result{Filename: filepath.Join(t.TempDir(), "ok.mp4")}, nil
+	}
+	id, err := manager.Submit(Request{URL: "https://example.invalid/video", OutputDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snap, ok := manager.Find(id)
+		if ok && snap.Status == StatusComplete {
+			break
+		}
+		if ok && snap.Status == StatusFailed {
+			t.Fatalf("download failed: %#v", snap)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	snap, ok := manager.Find(id)
+	if !ok || snap.Status != StatusComplete {
+		t.Fatalf("snap = %#v ok=%v calls=%d", snap, ok, len(calls))
+	}
+	if len(calls) != 2 {
+		t.Fatalf("calls = %d; want browser then cookie file", len(calls))
+	}
+	if calls[0].CookieFile != "" || calls[1].CookiesFromBrowser != "" || calls[1].CookieFile != "/tmp/cookies.txt" {
+		t.Fatalf("retry sequence = %#v", calls)
+	}
+}
+
+func TestSessionForDownloadUsesPersistedJobNotLiveSettings(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("firefox", "/tmp/now.txt")
+	state := &jobState{
+		fromStateV2: true,
+		durable: jobmodel.DurableJob{Request: jobmodel.PersistedRequest{
+			BrowserSession: "chrome:Default",
+			CookieFile:     "/tmp/then.txt",
+		}},
+	}
+	got := manager.sessionForDownload(state)
+	if got.cookiesFromBrowser != "chrome:Default" || got.cookieFile != "/tmp/then.txt" {
+		t.Fatalf("persisted session = %#v", got)
+	}
+	signedOut := &jobState{fromStateV2: true, durable: jobmodel.DurableJob{}}
+	empty := manager.sessionForDownload(signedOut)
+	if empty.configured() {
+		t.Fatalf("signed-out job picked up live settings: %#v", empty)
 	}
 }
 

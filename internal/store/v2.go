@@ -1189,7 +1189,8 @@ func validRequest(r jobmodel.PersistedRequest) bool {
 		validText(r.Quality, maxShortText, true) &&
 		validIDBounded(r.PlanID, maxIDBytes, false) &&
 		validText(r.Duration, maxShortText, false) &&
-		validText(r.BrowserSession, maxShortText, false)
+		validText(r.BrowserSession, maxShortText, false) &&
+		validText(r.CookieFile, maxPathBytes, false)
 }
 func validPlan(p jobmodel.PersistedPlan) bool {
 	return (p.ID == "" || validID(p.ID)) && validText(p.Kind, maxShortText, false) && validText(p.Label, maxText, false) && validText(p.Container, maxShortText, false) && validText(p.VideoCodec, maxShortText, false) && validText(p.AudioCodec, maxShortText, false) && validPrivateSelector(p.PrivateSelector)

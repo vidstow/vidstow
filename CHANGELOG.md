@@ -19,10 +19,10 @@ does not exist yet.
   and for Liked, Watch Later, and other playlists that account can already
   open. Cookie values are never stored. When a session is configured it is
   attached on every analyze and download, including Full playlist /
-  AnalyzePlaylist; if the session cannot be read, the attempt retries once
-  signed out so public videos still work. Chrome profiles that contain a few
-  unusable cookie names still import the rest (engine v0.3.1). Engine v0.3.2
-  fetches Liked, Watch Later, and other library playlists through signed-in
+  AnalyzePlaylist. If the browser store cannot be read, VidStow tries the
+  cookie file when one is set, then retries once signed out so public videos
+  still work. Chrome profiles that contain a few unusable cookie names still
+  import the rest (engine v0.3.1). Engine v0.3.2 fetches Liked, Watch Later, and other library playlists through signed-in
   Innertube browse, and signed-in watch Analyze recovers formats without
   treating ERROR stubs as a dead session or requiring the n-sig solver first.
 
@@ -32,6 +32,11 @@ does not exist yet.
 
 ### Fixed
 
+- Cookie file fallback actually runs after a failed browser import, instead of
+  skipping straight to a signed-out retry.
+- Queued downloads reuse the browser and cookie-file choice from when they
+  were admitted, including retries after Settings changes. Queue says so, and
+  tells you to start over from Home to pick a different browser.
 - Playlist Analyze now returns the same sign-in envelope (Open Settings) when
   the engine reports authentication — Liked, Watch Later, and other lists that
   need a session — instead of the generic “Could not read the playlist” /
