@@ -244,7 +244,7 @@ describe('Home analysis authority', () => {
     expect(screen.queryByRole('button', { name: 'All' })).not.toBeInTheDocument();
   });
 
-  test('keeps playlist episodes behind the disclosure and shows Range without Search', async () => {
+  test('keeps playlist videos behind the disclosure and shows Range without Search', async () => {
     const user = userEvent.setup();
     const playlistURL = 'https://www.youtube.com/playlist?list=PLfixture';
     (window as any).go.main.App.ValidateURL = vi.fn(async () => ({
@@ -260,12 +260,17 @@ describe('Home analysis authority', () => {
     expect(screen.getByRole('button', { name: 'Download 2 videos' }).querySelector('svg')).toBeTruthy();
     expect(screen.queryByText('First video')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /2 episodes/ }));
+    await user.click(screen.getByRole('button', { name: /Videos · 2 selected/ }));
     expect(await screen.findByText('First video')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
     expect(screen.getByLabelText('Range start')).toBeInTheDocument();
     expect(screen.queryByLabelText('Search playlist')).not.toBeInTheDocument();
     expect(screen.getByText('2 selected · up to 1080p')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Videos · 2 selected/ }));
+    expect(screen.queryByText('First video')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'All' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Videos · 2 selected/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Download 2 videos' }).closest('.dfoot')).toBeTruthy();
   });
 
   test('playlist Download starts the collection path, not a single video', async () => {
@@ -284,7 +289,7 @@ describe('Home analysis authority', () => {
 
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    await user.click(await screen.findByRole('button', { name: /2 episodes/ }));
+    await user.click(await screen.findByRole('button', { name: /Videos · 2 selected/ }));
     await user.click(screen.getByRole('button', { name: /First video/ }));
     expect(await screen.findByRole('button', { name: 'Download 1 video' })).toBeEnabled();
     await user.click(screen.getByRole('button', { name: 'Download 1 video' }));
@@ -340,7 +345,7 @@ describe('Home analysis authority', () => {
 
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), playlistURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
-    await user.click(await screen.findByRole('button', { name: /4 episodes/ }));
+    await user.click(await screen.findByRole('button', { name: /Videos · 4 selected/ }));
 
     const start = screen.getByLabelText('Range start');
     const end = screen.getByLabelText('Range end');
@@ -350,18 +355,18 @@ describe('Home analysis authority', () => {
     await user.clear(end);
     await user.type(end, '2');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(screen.getByText('2 of 4 selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Videos · 2 selected' })).toBeInTheDocument();
     expect(end).toHaveValue(2);
 
     await user.click(screen.getByRole('button', { name: 'All' }));
     expect(start).toHaveValue(1);
     expect(end).toHaveValue(4);
-    expect(screen.getByText('4 of 4 selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Videos · 4 selected' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'None' }));
     expect(start).toHaveValue(null);
     expect(end).toHaveValue(null);
-    expect(screen.getByText('0 of 4 selected')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Videos · 0 selected' })).toBeInTheDocument();
   });
 
   test('badges a Short from extracted media type, not the submitted URL', async () => {
@@ -407,7 +412,9 @@ describe('Home analysis authority', () => {
     });
     render(Home);
     expect(screen.queryByRole('button', { name: 'Batch URLs' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Up to 20 links. Shift + Enter adds another line.')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), 'one\ntwo');
+    expect(screen.getByText('Up to 20 links. Shift + Enter adds another line.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     await waitFor(() => expect(AnalyzeBatchURLs).toHaveBeenCalledWith('one\ntwo'));
     expect(ValidateURL).not.toHaveBeenCalled();
@@ -820,7 +827,7 @@ describe('Home analysis authority', () => {
     expect(await screen.findByRole('button', { name: 'Stop' })).toBeInTheDocument();
     expect(await screen.findByText(/Reading video details/)).toBeInTheDocument();
     expect(document.querySelector('.hud-strip')).toBeTruthy();
-    expect(screen.getByText(/One video, a playlist, or up to 20 links/)).toBeInTheDocument();
+    expect(screen.queryByText(/Up to 20 links/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing is downloaded yet/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Stop waiting' })).not.toBeInTheDocument();
