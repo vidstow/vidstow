@@ -7,7 +7,7 @@ and versions follow semantic versioning where practical for a desktop
 application.
 
 `v0.1.0-beta.1` is the first public VidStow prerelease. The current packaged
-preview is `v0.1.0-beta.6` for macOS Apple Silicon; a later stable `0.1.0`
+preview is `v0.1.0-beta.7` for macOS Apple Silicon; a later stable `0.1.0`
 does not exist yet.
 
 ## [Unreleased]
@@ -23,6 +23,16 @@ does not exist yet.
 ### Fixed
 
 - No entries yet.
+
+## [0.1.0-beta.7] - 2026-09-12
+
+### Changed
+
+- The packaged application version is `0.1.0-beta.7`.
+- The desktop engine pin is `github.com/tejasa97/ytdlp-go v0.3.1`, which adds
+  opt-in resumable sessions for bounded YouTube post-live / live-from-start
+  sequence tracks and attributes YouTube HTTP 429 extraction failures as
+  `ErrRateLimited` (without echoing sorry-page or player-script URLs).
 
 ## [0.1.0-beta.6] - 2026-09-12
 
@@ -257,7 +267,8 @@ does not exist yet.
 - Release automation creates a draft prerelease and cannot publish it.
 - The desktop engine pin is `github.com/tejasa97/youtube_dlp v0.2.1`.
 
-[Unreleased]: https://github.com/vidstow/vidstow/compare/v0.1.0-beta.6...HEAD
+[Unreleased]: https://github.com/vidstow/vidstow/compare/v0.1.0-beta.7...HEAD
+[0.1.0-beta.7]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.7
 [0.1.0-beta.6]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.6
 [0.1.0-beta.5]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.5
 [0.1.0-beta.4]: https://github.com/vidstow/vidstow/releases/tag/v0.1.0-beta.4
