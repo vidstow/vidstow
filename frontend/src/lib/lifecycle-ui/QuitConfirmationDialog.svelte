@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { trapModalFocus } from './modal.js';
+  import { MOTION_CLOSE, MOTION_OPEN, fadeOverlay, scaleDialog } from '../motion.js';
   import type { QuitConfirmationViewModel } from './types.js';
 
   export interface QuitConfirmationEvents {
@@ -61,7 +62,13 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if open}
-  <div class="overlay" role="presentation" onclick={onOverlayClick}>
+  <div
+    class="overlay"
+    role="presentation"
+    onclick={onOverlayClick}
+    in:fadeOverlay={{ duration: MOTION_OPEN }}
+    out:fadeOverlay={{ duration: MOTION_CLOSE }}
+  >
     <div
       class="dialog"
       role="dialog"
@@ -70,6 +77,8 @@
       aria-describedby="lifecycle-quit-description"
       tabindex="-1"
       use:trapModalFocus
+      in:scaleDialog={{ duration: MOTION_OPEN }}
+      out:scaleDialog={{ duration: MOTION_CLOSE }}
     >
       <header class="dialog-header">
         <h2 id="lifecycle-quit-title">Quit VidStow?</h2>
@@ -106,7 +115,7 @@
 
 <style>
   .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: var(--sp-5); background: rgba(24, 25, 28, 0.45); backdrop-filter: blur(2px); }
-  .dialog { width: min(548px, 94vw); overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); }
+  .dialog { width: min(548px, 94vw); overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); transform-origin: center; }
   .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-5) var(--sp-6) var(--sp-3); }
   h2 { margin: 0; font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.02em; }
   .close-button { width: 32px; height: 32px; border-radius: var(--r-sm); color: var(--text-secondary); font-size: var(--fs-2xl); line-height: 1; }

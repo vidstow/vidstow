@@ -1,20 +1,34 @@
 <script lang="ts">
+  import { fly } from 'svelte/transition';
   import { banner } from '../stores.js';
+  import { MOTION_CLOSE, MOTION_OPEN, motionMs } from '../motion.js';
 </script>
 
 {#if $banner}
-  <div class="banner {$banner.kind}" role="status" aria-live="polite">
-    <span class="dot" aria-hidden="true"></span>
-    <span class="msg">{$banner.message}</span>
+  <div class="banner-anchor">
+    <div
+      class="banner {$banner.kind}"
+      role="status"
+      aria-live="polite"
+      in:fly={{ y: 16, duration: motionMs(MOTION_OPEN) }}
+      out:fly={{ y: 16, duration: motionMs(MOTION_CLOSE) }}
+    >
+      <span class="dot" aria-hidden="true"></span>
+      <span class="msg">{$banner.message}</span>
+    </div>
   </div>
 {/if}
 
 <style>
-  .banner {
+  .banner-anchor {
     position: fixed;
     bottom: calc(var(--statusbar-h) + var(--sp-3));
     left: 50%;
     transform: translateX(-50%);
+    z-index: 80;
+    max-width: min(560px, 92vw);
+  }
+  .banner {
     background: var(--surface-raised);
     border: 1px solid var(--border-default);
     border-radius: var(--r-full);
@@ -25,8 +39,6 @@
     box-shadow: var(--shadow-card);
     font-size: var(--fs-sm);
     color: var(--text-primary);
-    z-index: 80;
-    max-width: min(560px, 92vw);
   }
   .dot {
     width: 8px; height: 8px; border-radius: 50%;

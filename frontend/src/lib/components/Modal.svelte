@@ -1,6 +1,7 @@
 <script lang="ts">
   import { modal } from '../stores.js';
   import { trapModalFocus } from '../lifecycle-ui/modal.js';
+  import { MOTION_CLOSE, MOTION_OPEN, fadeOverlay, scaleDialog } from '../motion.js';
   function close() { modal.set(null); }
   async function runAction(action: () => void) {
     close();
@@ -18,12 +19,20 @@
 <svelte:window on:keydown={(event) => event.key === 'Escape' && close()} />
 
 {#if current}
-  <div class="overlay" role="presentation" on:click|self={close}>
+  <div
+    class="overlay"
+    role="presentation"
+    on:click|self={close}
+    in:fadeOverlay={{ duration: MOTION_OPEN }}
+    out:fadeOverlay={{ duration: MOTION_CLOSE }}
+  >
     <div
       class:ffmpeg={current.kind === 'ffmpeg-missing'}
       class:confirm={choice}
       class:compact
       class="dialog"
+      in:scaleDialog={{ duration: MOTION_OPEN }}
+      out:scaleDialog={{ duration: MOTION_CLOSE }}
       use:trapModalFocus
       tabindex="-1"
       role="dialog"
@@ -66,6 +75,7 @@
     border: 1px solid var(--border-default);
     border-radius: var(--r-lg);
     box-shadow: var(--shadow-modal);
+    transform-origin: center;
   }
   .dialog.compact {
     width: min(320px, 94vw);
