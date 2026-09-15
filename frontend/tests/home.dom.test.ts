@@ -1147,23 +1147,47 @@ describe('Home analysis authority', () => {
     expect(screen.queryByText('Preview unavailable. Choose playlist to try again.')).not.toBeInTheDocument();
   });
 
-  test('mixed-link playlist sign-in failure shows Open Settings, not unsupported copy', async () => {
+  test('mixed-link playlist sign-in failure still offers the video', async () => {
     const user = userEvent.setup();
-    const { ValidateURL, AnalyzePlaylist } = installBindings();
+    const { ValidateURL, AnalyzeURL, AnalyzePlaylist } = installBindings();
     ValidateURL.mockResolvedValue({
       kind: 'video_playlist', url: firstURL, videoUrl: firstURL,
       playlistUrl: 'https://www.youtube.com/playlist?list=LL', videoId: 'fixture0001', playlistId: 'LL',
     });
     AnalyzePlaylist.mockRejectedValue(new Error('vidstow:auth:' + JSON.stringify({
       reason: 'signin-required',
-      title: 'This video needs your YouTube sign-in.',
-      message: 'Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only videos your account can already watch.',
+      title: 'This playlist needs your YouTube sign-in.',
+      message: 'Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only playlists your account can already open.',
+    })));
+    render(Home);
+    await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
+    await user.click(screen.getByRole('button', { name: 'Analyze' }));
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeEnabled();
+    expect(screen.getByText('Fixture video')).toBeInTheDocument();
+    expect(AnalyzeURL).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Settings' })).not.toBeInTheDocument();
+    expect(screen.queryByText('This link includes a playlist')).not.toBeInTheDocument();
+  });
+
+  test('mixed-link playlist sign-in failure still asks for Settings when the video also fails', async () => {
+    const user = userEvent.setup();
+    const { ValidateURL, AnalyzeURL, AnalyzePlaylist } = installBindings();
+    ValidateURL.mockResolvedValue({
+      kind: 'video_playlist', url: firstURL, videoUrl: firstURL,
+      playlistUrl: 'https://www.youtube.com/playlist?list=LL', videoId: 'fixture0001', playlistId: 'LL',
+    });
+    AnalyzeURL.mockRejectedValue(new Error('We could not read this YouTube link. It may be unavailable or unsupported.'));
+    AnalyzePlaylist.mockRejectedValue(new Error('vidstow:auth:' + JSON.stringify({
+      reason: 'signin-required',
+      title: 'This playlist needs your YouTube sign-in.',
+      message: 'Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only playlists your account can already open.',
     })));
     render(Home);
     await user.type(screen.getByLabelText('YouTube video, Short, or playlist URL'), firstURL);
     await user.click(screen.getByRole('button', { name: 'Analyze' }));
     const alert = await screen.findByRole('alert');
-    expect(alert).toHaveTextContent('This video needs your YouTube sign-in.');
+    expect(alert).toHaveTextContent('This playlist needs your YouTube sign-in.');
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
     expect(screen.queryByText('Could not read the playlist')).not.toBeInTheDocument();
     expect(screen.queryByText('This link includes a playlist')).not.toBeInTheDocument();

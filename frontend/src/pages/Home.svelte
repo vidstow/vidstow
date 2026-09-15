@@ -655,35 +655,22 @@
           scopeChoice = accepted;
           return;
         }
-        if (parseAuthFailure(scopePlaylistError)) {
-          linkedPlaylist = null;
-          scopePlaylist = null;
-          scopePlaylistTask = null;
-          scopePlaylistFailed = false;
-          presentCaughtAnalyzeError(
-            scopePlaylistError,
-            'Could not read the playlist',
-            'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.',
-            true,
-          );
-          return;
-        }
         linkedPlaylist = null;
         scopePlaylist = null;
         scopePlaylistTask = null;
         scopePlaylistFailed = false;
-        scopePlaylistError = null;
         analysisStage = 'Reading video details…';
         const videoSummary = (await videoTask) ?? scopeVideo;
         if (requestGeneration !== analysisGeneration) return;
         if (videoSummary) {
           scopeVideo = null;
           scopeVideoPending = false;
+          scopePlaylistError = null;
           applyVideoDock(videoSummary);
           return;
         }
         presentCaughtAnalyzeError(
-          new Error('We could not read this YouTube link. It may be unavailable or unsupported.'),
+          scopePlaylistError ?? new Error('We could not read this YouTube link. It may be unavailable or unsupported.'),
           'Could not read this link',
           'VidStow could not extract information from this URL. Make sure it is a valid, publicly accessible YouTube video, Short, or playlist.',
           true,

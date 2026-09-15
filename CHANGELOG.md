@@ -30,15 +30,18 @@ does not exist yet.
 
 - When Queue cannot read the browser used to sign in, it says so in one line
   and offers **Use a cookie file**, which opens that Settings row. Retry still
-  uses the same browser.
+  uses the same browser, and will use a cookie file you pick there.
 
 ### Fixed
 
 - Cookie file fallback actually runs after a failed browser import, instead of
   skipping straight to a signed-out retry.
-- Queued downloads reuse the browser and cookie-file choice from when they
-  were admitted, including retries after Settings changes. Queue says so, and
-  tells you to start over from Home to pick a different browser.
+- Queued downloads reuse the browser from when they were admitted. Retry does
+  not switch browsers after a Settings change; start over from Home for that.
+  A cookie file chosen later in Settings is used on the next Retry.
+- A watch URL with a leftover playlist (often `list=LL`) still opens the video
+  when that video can be read, even if the playlist needs sign-in. A playlist
+  URL by itself still asks for Settings.
 - Playlist Analyze now returns the same sign-in envelope (Open Settings) when
   the engine reports authentication — Liked, Watch Later, and other lists that
   need a session — instead of the generic “Could not read the playlist” /

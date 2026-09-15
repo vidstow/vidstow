@@ -297,13 +297,34 @@ func TestSessionForDownloadUsesPersistedJobNotLiveSettings(t *testing.T) {
 		}},
 	}
 	got := manager.sessionForDownload(state)
+	if got.cookiesFromBrowser != "chrome:Default" || got.cookieFile != "/tmp/now.txt" {
+		t.Fatalf("frozen browser with live cookie file = %#v", got)
+	}
+	manager.SetBrowserSession("firefox", "")
+	got = manager.sessionForDownload(state)
 	if got.cookiesFromBrowser != "chrome:Default" || got.cookieFile != "/tmp/then.txt" {
-		t.Fatalf("persisted session = %#v", got)
+		t.Fatalf("stored cookie file = %#v", got)
 	}
 	signedOut := &jobState{fromStateV2: true, durable: jobmodel.DurableJob{}}
 	empty := manager.sessionForDownload(signedOut)
 	if empty.configured() {
 		t.Fatalf("signed-out job picked up live settings: %#v", empty)
+	}
+}
+
+func TestSessionForDownloadPicksUpCookieFileChosenLater(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("safari", "/tmp/later.txt")
+	state := &jobState{
+		fromStateV2: true,
+		durable: jobmodel.DurableJob{Request: jobmodel.PersistedRequest{
+			BrowserSession: "chrome:Default",
+		}},
+	}
+	got := manager.sessionForDownload(state)
+	if got.cookiesFromBrowser != "chrome:Default" || got.cookieFile != "/tmp/later.txt" {
+		t.Fatalf("later cookie file = %#v", got)
 	}
 }
 

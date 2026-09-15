@@ -303,7 +303,8 @@ func playlistAuthFailure(err error) error {
 
 // SetBrowserSession updates the cookie snapshot for future Analyze attempts
 // and for in-memory downloads that are not State v2 jobs. Admitted downloads
-// reuse the browser/cookie-file choice stored on the job.
+// keep the browser choice stored on the job. A cookie file chosen later in
+// Settings is used on Retry when that job already had a session.
 func (m *Manager) SetBrowserSession(cookiesFromBrowser, cookieFile string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -323,13 +324,21 @@ func (m *Manager) browserSessionSnapshot() browserSession {
 }
 
 func (m *Manager) sessionForDownload(state *jobState) browserSession {
-	if state != nil && state.fromStateV2 {
-		return browserSession{
-			cookiesFromBrowser: strings.TrimSpace(state.durable.Request.BrowserSession),
-			cookieFile:         strings.TrimSpace(state.durable.Request.CookieFile),
-		}
+	live := m.browserSessionSnapshot()
+	if state == nil || !state.fromStateV2 {
+		return live
 	}
-	return m.browserSessionSnapshot()
+	session := browserSession{
+		cookiesFromBrowser: strings.TrimSpace(state.durable.Request.BrowserSession),
+		cookieFile:         strings.TrimSpace(state.durable.Request.CookieFile),
+	}
+	if !session.configured() {
+		return session
+	}
+	if file := strings.TrimSpace(live.cookieFile); file != "" {
+		session.cookieFile = file
+	}
+	return session
 }
 
 // runAnalyzeWithSession attaches a configured session. Browser import runs
