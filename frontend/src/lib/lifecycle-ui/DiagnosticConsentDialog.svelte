@@ -1,5 +1,6 @@
 <script lang="ts">
   import { trapModalFocus } from './modal.js';
+  import { MOTION_CLOSE, MOTION_OPEN, fadeOverlay, scaleDialog } from '../motion.js';
 
   interface Props {
     open: boolean;
@@ -20,8 +21,24 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if open}
-  <div class="overlay" role="presentation" onclick={(event) => event.target === event.currentTarget && onClose?.()}>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="diagnostic-consent-title" aria-describedby="diagnostic-consent-description" tabindex="-1" use:trapModalFocus>
+  <div
+    class="overlay"
+    role="presentation"
+    onclick={(event) => event.target === event.currentTarget && onClose?.()}
+    in:fadeOverlay={{ duration: MOTION_OPEN }}
+    out:fadeOverlay={{ duration: MOTION_CLOSE }}
+  >
+    <div
+      class="dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="diagnostic-consent-title"
+      aria-describedby="diagnostic-consent-description"
+      tabindex="-1"
+      use:trapModalFocus
+      in:scaleDialog={{ duration: MOTION_OPEN }}
+      out:scaleDialog={{ duration: MOTION_CLOSE }}
+    >
       <header>
         <h2 id="diagnostic-consent-title">Help improve VidStow?</h2>
         <button type="button" class="close" aria-label="Close without sending diagnostics" onclick={() => onClose?.()}>×</button>
@@ -64,6 +81,7 @@
     border-radius: 10px;
     background: var(--surface-base);
     box-shadow: var(--shadow-modal);
+    transform-origin: center;
   }
   header {
     display: flex;

@@ -277,7 +277,7 @@
     height: 100%;
     border-radius: inherit;
     background: var(--accent-500);
-    transition: width 180ms ease;
+    transition: width var(--motion-progress) ease;
   }
 
   .progress-label,

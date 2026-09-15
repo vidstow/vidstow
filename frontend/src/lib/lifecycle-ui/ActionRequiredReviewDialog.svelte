@@ -1,5 +1,6 @@
 <script lang="ts">
   import { trapModalFocus } from './modal.js';
+  import { MOTION_CLOSE, MOTION_OPEN, fadeOverlay, scaleDialog } from '../motion.js';
   import type { ActionRequiredReviewViewModel } from './types.js';
 
   interface Props {
@@ -43,7 +44,14 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if open && review}
-  <div class="overlay" class:compact={compactRetry} role="presentation" onclick={onOverlayClick}>
+  <div
+    class="overlay"
+    class:compact={compactRetry}
+    role="presentation"
+    onclick={onOverlayClick}
+    in:fadeOverlay={{ duration: MOTION_OPEN }}
+    out:fadeOverlay={{ duration: MOTION_CLOSE }}
+  >
     <div
       class="dialog"
       class:compact={compactRetry}
@@ -52,6 +60,8 @@
       aria-labelledby="action-required-title"
       tabindex="-1"
       use:trapModalFocus
+      in:scaleDialog={{ duration: MOTION_OPEN }}
+      out:scaleDialog={{ duration: MOTION_CLOSE }}
     >
       <header class="dialog-header">
         <h2 id="action-required-title">{review.heading}</h2>
@@ -111,7 +121,7 @@
 <style>
   .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; background: rgba(17, 24, 39, 0.32); }
   .overlay:not(.compact) { padding: var(--sp-5); background: rgba(24, 25, 28, 0.45); backdrop-filter: blur(2px); }
-  .dialog { width: min(548px, 94vw); overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); }
+  .dialog { width: min(548px, 94vw); overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); transform-origin: center; }
   .dialog.compact { width: min(320px, 94vw); }
   .dialog-header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-5) var(--sp-6) var(--sp-3); }
   .dialog.compact .dialog-header { padding: 14px 16px 0; }

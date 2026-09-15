@@ -6,6 +6,7 @@
   import OutputOptionsEditor from '../lib/components/OutputOptionsEditor.svelte';
   import { subtitleLanguageOffered } from '../lib/subtitle-languages.js';
   import type { BatchAnalysisView, InfoSummary, OutputOptions, OutputPlan, PlaylistSummary, Quality, SubtitleLanguage, UrlCheckResult } from '../lib/types.js';
+  import { MOTION_CLOSE, MOTION_OPEN, panelSlide, slidingPill } from '../lib/motion.js';
 
   const dispatch = createEventDispatcher<{ goto: 'home' | 'queue' | 'downloads' | 'settings' | 'about' }>();
 
@@ -878,7 +879,7 @@
 {#snippet outputBlock(kind: string, kinds: Array<{ id: string; label: string }>, plans: Array<{ id: string; label: string; title?: string }>, planValue: string, onKind: (id: string) => void, onPlan: (id: string) => void, disableConvertedAudio: boolean, emptyCopy: string, mp3Hint: boolean)}
   <div class="output-controls">
     {#if kinds.length}
-      <div class="type-pills" role="group" aria-label="Media format type">
+      <div class="type-pills" role="group" aria-label="Media format type" use:slidingPill={kind}>
         {#each kinds as option (option.id)}
           <button
             type="button"
@@ -936,17 +937,18 @@
           disabled={!!admitting}
           aria-describedby={pasteItems(url).length > 1 ? 'input-help' : undefined}
         ></textarea>
-        {#if isWaiting}
-          <button class="dbtn query stop-slot" type="button" on:click={stopWaiting}>
-            <span class="stop-mark" aria-hidden="true"></span>
-            Stop
-          </button>
-        {:else}
-          <button class="dbtn query" type="submit" disabled={!!admitting || !url.trim() || !!scopeChoice}>
-            {@render searchMark()}
-            Analyze
-          </button>
-        {/if}
+        <button
+          class="dbtn query"
+          class:stop-slot={isWaiting}
+          type="submit"
+          disabled={!!admitting || (!isWaiting && (!url.trim() || !!scopeChoice))}
+          aria-label={isWaiting ? 'Stop' : 'Analyze'}
+        >
+          <span class="chip-face" class:wait={isWaiting}>
+            <span class="chip-idle" aria-hidden={isWaiting}>{@render searchMark()}Analyze</span>
+            <span class="chip-wait" aria-hidden={!isWaiting}><span class="stop-mark" aria-hidden="true"></span>Stop</span>
+          </span>
+        </button>
       </div>
       {#if isWaiting}
         <div class="hud-strip" role="status" aria-live="polite">
@@ -1050,7 +1052,12 @@
   {:else if playlist}
     {@const policy = playlistPolicyCopy()}
     <div class="playlist-pane">
-    <section class="dock" aria-label="Playlist">
+    <section
+      class="dock"
+      aria-label="Playlist"
+      in:panelSlide={{ duration: MOTION_OPEN }}
+      out:panelSlide={{ duration: MOTION_CLOSE }}
+    >
       <div class="drow drow2 nofmt">
         <div class="thumb">
           {#if playlist.thumbnail}<img src={playlist.thumbnail} alt="" referrerpolicy="no-referrer" on:error={hideBrokenImage} />{/if}
@@ -1151,7 +1158,12 @@
       </div>
     </div>
   {:else if preview}
-    <section class="dock" aria-label="Video">
+    <section
+      class="dock"
+      aria-label="Video"
+      in:panelSlide={{ duration: MOTION_OPEN }}
+      out:panelSlide={{ duration: MOTION_CLOSE }}
+    >
       <div class="drow drow2 v2 nofmt">
         <div class="thumb thumbnail">
           {#if preview.thumbnail}<img src={preview.thumbnail} alt="" referrerpolicy="no-referrer" />{/if}
@@ -1202,7 +1214,12 @@
       </footer>
     </section>
   {:else if batchReview}
-    <section class="dock" aria-label="Batch">
+    <section
+      class="dock"
+      aria-label="Batch"
+      in:panelSlide={{ duration: MOTION_OPEN }}
+      out:panelSlide={{ duration: MOTION_CLOSE }}
+    >
       <div class="drow drow2 v2 nofmt">
         <div class="thumb count">{batchReview.counts.pasted}</div>
         <div class="dmain dmain2">
@@ -1388,6 +1405,25 @@
     background: currentColor;
     flex-shrink: 0;
   }
+  .chip-face {
+    display: grid;
+    place-items: center;
+  }
+  .chip-idle,
+  .chip-wait {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: opacity var(--motion-hover) ease;
+  }
+  .chip-wait {
+    gap: 6px;
+    opacity: 0;
+  }
+  .chip-face.wait .chip-idle { opacity: 0; }
+  .chip-face.wait .chip-wait { opacity: 1; }
   .hud-strip {
     border-top: 1px solid var(--border-default);
     background: var(--surface-subtle);
@@ -1688,6 +1724,9 @@
     border-radius: 6px;
     gap: 2px;
   }
+  .type-pills :global(.sliding-pill) {
+    border-radius: 4px;
+  }
   .type-pills button {
     min-height: 22px;
     padding: 0 8px;
@@ -1697,9 +1736,9 @@
     color: var(--text-secondary);
   }
   .type-pills button.active {
-    background: var(--surface-base);
+    background: transparent;
     color: var(--text-primary);
-    box-shadow: var(--shadow-card);
+    box-shadow: none;
   }
   .output-controls .note,
   .output-controls .hint {
