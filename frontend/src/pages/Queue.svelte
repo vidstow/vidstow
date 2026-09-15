@@ -338,11 +338,10 @@
   onPauseAll={() => withPending('Pausing all…', pauseAll)}
   onResumeAll={resumeAll}
   onGoHome={() => route.set('home')}
-  onOpenSettings={async (section) => {
+  onOpenSettings={async () => {
     route.set('settings');
     await tick();
-    const id = section === 'cookie-file' ? 'cookie-file-fallback' : 'signin-settings-title';
-    document.getElementById(id)?.scrollIntoView({ block: 'start' });
+    document.getElementById('signin-settings-title')?.scrollIntoView({ block: 'start' });
   }}
   onClearCompleted={clearCompleted}
   onCollectionAction={collectionAction}

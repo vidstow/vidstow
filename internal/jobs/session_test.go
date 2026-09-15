@@ -183,7 +183,7 @@ func TestAnalyzePlaylistSessionUnreadableKeepsSessionCopy(t *testing.T) {
 	}
 }
 
-func TestAnalyzeSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
+func TestAnalyzeSessionUnreadableDoesNotRetrySignedOut(t *testing.T) {
 	manager := New(nil, nil)
 	t.Cleanup(func() { _ = manager.Close() })
 	manager.SetBrowserSession("chrome", "")
@@ -193,20 +193,19 @@ func TestAnalyzeSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
 		if req.CookiesFromBrowser != "" {
 			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "import browser cookies", Err: errors.New("keychain denied")}
 		}
-		return engine.Result{InfoJSON: []byte(`{"id":"fixture0001","title":"Public","formats":[{"format_id":"v1","ext":"mp4","vcodec":"avc1","acodec":"none","height":1080,"width":1920},{"format_id":"a1","ext":"m4a","vcodec":"none","acodec":"mp4a","abr":128}]}`)}, nil
+		t.Fatal("signed-out retry should not run after an unreadable browser")
+		return engine.Result{}, nil
 	}
-	summary, _, err := manager.AnalyzeForAdmission(context.Background(), "https://www.youtube.com/watch?v=fixture0001")
-	if err != nil {
-		t.Fatal(err)
+	_, _, err := manager.AnalyzeForAdmission(context.Background(), "https://www.youtube.com/watch?v=fixture0001")
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonSessionUnreadable {
+		t.Fatalf("err = %#v", err)
 	}
-	if len(calls) != 2 {
-		t.Fatalf("calls = %d; want signed-in then signed-out", len(calls))
+	if len(calls) != 1 || calls[0].CookiesFromBrowser != "chrome" {
+		t.Fatalf("calls = %#v", calls)
 	}
-	if calls[0].CookiesFromBrowser != "chrome" || calls[1].CookiesFromBrowser != "" || calls[1].CookieFile != "" {
-		t.Fatalf("retry sequence = %#v", calls)
-	}
-	if summary.SessionLabel != "" {
-		t.Fatalf("signed-out success still labeled %q", summary.SessionLabel)
+	if failure.Title != "Couldn't use Chrome." {
+		t.Fatalf("copy = %#v", failure)
 	}
 }
 
@@ -328,6 +327,35 @@ func TestSessionForDownloadPicksUpCookieFileChosenLater(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCookieFileUnreadableKeepsCookieFileCopy(t *testing.T) {
+	manager := New(nil, nil)
+	t.Cleanup(func() { _ = manager.Close() })
+	manager.SetBrowserSession("chrome", "/tmp/cookies.txt")
+	var calls []engine.Request
+	manager.runAnalyze = func(_ context.Context, req engine.Request) (engine.Result, error) {
+		calls = append(calls, req)
+		if req.CookiesFromBrowser != "" {
+			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "import browser cookies", Err: errors.New("keychain denied")}
+		}
+		if req.CookieFile != "" {
+			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "load cookie file", Err: errors.New("no such file")}
+		}
+		t.Fatal("signed-out retry should not run after cookie-file failure")
+		return engine.Result{}, nil
+	}
+	_, _, err := manager.AnalyzeForAdmission(context.Background(), "https://www.youtube.com/watch?v=fixture0001")
+	failure, ok := AsAuthFailure(err)
+	if !ok || failure.Reason != ReasonCookieFileUnreadable {
+		t.Fatalf("err = %#v", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("calls = %d; want browser then cookie file", len(calls))
+	}
+	if failure.Title != "Couldn't use the cookie file." || failure.Message != "Choose another file, then retry." {
+		t.Fatalf("copy = %#v", failure)
+	}
+}
+
 func TestAnalyzeSessionUnreadableStillDeniedReturnsEnvelope(t *testing.T) {
 	manager := New(nil, nil)
 	t.Cleanup(func() { _ = manager.Close() })
@@ -392,7 +420,7 @@ func TestSigninRequiredDoesNotRetrySignedOut(t *testing.T) {
 	}
 }
 
-func TestDownloadSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
+func TestDownloadSessionUnreadableDoesNotRetrySignedOut(t *testing.T) {
 	manager := New(nil, nil)
 	t.Cleanup(func() { _ = manager.Close() })
 	manager.SetBrowserSession("chrome", "")
@@ -402,7 +430,8 @@ func TestDownloadSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
 		if req.CookiesFromBrowser != "" {
 			return engine.Result{}, &engine.Error{Category: engine.ErrorAuthentication, Op: "import browser cookies", Err: errors.New("keychain denied")}
 		}
-		return engine.Result{Filename: filepath.Join(t.TempDir(), "ok.mp4")}, nil
+		t.Fatal("signed-out retry should not run after an unreadable browser")
+		return engine.Result{}, nil
 	}
 	id, err := manager.Submit(Request{URL: "https://example.invalid/video", OutputDir: t.TempDir()})
 	if err != nil {
@@ -411,23 +440,20 @@ func TestDownloadSessionUnreadableRetriesOnceSignedOut(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		snap, ok := manager.Find(id)
-		if ok && snap.Status == StatusComplete {
+		if ok && (snap.Status == StatusFailed || snap.Status == StatusComplete) {
 			break
-		}
-		if ok && snap.Status == StatusFailed {
-			t.Fatalf("download failed: %#v", snap)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	snap, ok := manager.Find(id)
-	if !ok || snap.Status != StatusComplete {
+	if !ok || snap.Status != StatusFailed {
 		t.Fatalf("snap = %#v ok=%v calls=%d", snap, ok, len(calls))
 	}
-	if len(calls) != 2 {
-		t.Fatalf("calls = %d; want signed-in then signed-out", len(calls))
+	if snap.ErrorReason != ReasonSessionUnreadable {
+		t.Fatalf("ErrorReason = %q; want %s", snap.ErrorReason, ReasonSessionUnreadable)
 	}
-	if calls[0].CookiesFromBrowser == "" || calls[1].CookiesFromBrowser != "" || calls[1].CookieFile != "" {
-		t.Fatalf("retry sequence = %#v", calls)
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d; want browser only", len(calls))
 	}
 }
 

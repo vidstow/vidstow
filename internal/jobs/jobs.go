@@ -2149,7 +2149,7 @@ func queueCapabilitiesFor(state *jobState, snap JobSnapshot) QueueJobCapabilitie
 		caps.ChangeFolder = failure.Category == "folder_unavailable" || failure.Category == "disk_full" || failure.Category == "permission_denied"
 		caps.OpenSource = snap.URL != "" && (failure.Category == "authentication_required" || failure.Category == "resource_unavailable")
 		// Session-unreadable is a local Settings problem; Open source / Copy link add clutter.
-		if failureErrorCode(state, snap) == ReasonSessionUnreadable {
+		if isUnreadableReason(failureErrorCode(state, snap)) {
 			caps.OpenSource = false
 		}
 		caps.CopyLink = caps.OpenSource
@@ -2203,8 +2203,15 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		failure.Retryable = true
 	case "authentication_required":
 		code := failureErrorCode(state, snap)
-		if code == ReasonSessionUnreadable {
-			title, message := sessionUnreadableCopy(sessionFromJob(state))
+		if isUnreadableReason(code) {
+			copySession := sessionFromJob(state)
+			if code == ReasonCookieFileUnreadable {
+				copySession = browserSession{cookieFile: strings.TrimSpace(copySession.cookieFile)}
+				if copySession.cookieFile == "" {
+					copySession.cookieFile = "cookie-file"
+				}
+			}
+			title, message := sessionUnreadableCopy(copySession)
 			failure.MessageKey = "queue.failure.session_unreadable"
 			failure.Heading = title
 			failure.Message = message
@@ -2213,8 +2220,7 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		}
 		failure.MessageKey = "queue.failure.authentication_required"
 		failure.Heading = "This download needs sign-in."
-		failure.Message = "This item uses the YouTube sign-in from when you queued it. To use a different browser, set it in Settings and start over from Home."
-		failure.RecommendedAction = "Retry uses that same session."
+		failure.Message = "Retry uses the same browser, and a cookie file from Settings if the browser can't be read. To change browsers, start over from Home."
 		failure.Retryable = true
 	case "could_not_start":
 		failure.MessageKey = "queue.failure.could_not_start"
@@ -2292,7 +2298,7 @@ func failureCategoryForCode(code string) string {
 	switch strings.TrimSpace(code) {
 	case "network", retryCodeMediaLinkExpired, retryCodeYouTubeChallengePreTransfer:
 		return "network_interrupted"
-	case "authentication", ReasonSigninRequired, ReasonSessionUnreadable:
+	case "authentication", ReasonSigninRequired, ReasonSessionUnreadable, ReasonCookieFileUnreadable:
 		return "authentication_required"
 	case "unsupported":
 		return "resource_unavailable"

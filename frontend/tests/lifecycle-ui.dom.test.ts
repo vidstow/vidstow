@@ -488,7 +488,7 @@ describe('backend-authored capabilities', () => {
             failure: {
               category: 'authentication_required', messageKey: 'queue.failure.authentication_required',
               heading: 'This download needs sign-in.',
-              message: 'This item uses the YouTube sign-in from when you queued it. To use a different browser, set it in Settings and start over from Home.', recommendedAction: 'Retry uses that same session.',
+              message: 'Retry uses the same browser, and a cookie file from Settings if the browser can\'t be read. To change browsers, start over from Home.', recommendedAction: '',
               retryable: true, partialOutput: false,
             },
             capabilities: { retry: true, remove: true, openSource: true, copyLink: true }, commandToken: 'auth-token',
@@ -506,8 +506,8 @@ describe('backend-authored capabilities', () => {
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 
-  test('session-unreadable inspector offers Use a cookie file instead of Open Settings', async () => {
-    const onOpenSettings = vi.fn<(section?: 'signin' | 'cookie-file') => void>();
+  test('session-unreadable inspector offers Retry and Open Settings', async () => {
+    const onOpenSettings = vi.fn<() => void>();
     const user = userEvent.setup();
     render(QueueOverview, {
       props: {
@@ -529,9 +529,9 @@ describe('backend-authored capabilities', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
     expect(screen.getByText("Couldn't use Chrome.")).toBeInTheDocument();
     expect(screen.getByText('Close Chrome, then retry.')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open Settings' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Use a cookie file' }));
-    expect(onOpenSettings).toHaveBeenCalledWith('cookie-file');
+    expect(screen.queryByRole('button', { name: 'Use a cookie file' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalled();
   });
 
   test('unusable leftover paused rows offer Resume and Discard', async () => {

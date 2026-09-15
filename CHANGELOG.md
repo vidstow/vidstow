@@ -20,25 +20,27 @@ does not exist yet.
   open. Cookie values are never stored. When a session is configured it is
   attached on every analyze and download, including Full playlist /
   AnalyzePlaylist. If the browser store cannot be read, VidStow tries the
-  cookie file when one is set, then retries once signed out so public videos
-  still work. Chrome profiles that contain a few unusable cookie names still
+  cookie file when one is set. If neither can be read, it stops. With no
+  sign-in method configured, Analyze and download run signed out. Chrome
+  profiles that contain a few unusable cookie names still
   import the rest (engine v0.3.1). Engine v0.3.2 fetches Liked, Watch Later, and other library playlists through signed-in
   Innertube browse, and signed-in watch Analyze recovers formats without
   treating ERROR stubs as a dead session or requiring the n-sig solver first.
 
 ### Changed
 
-- When Queue cannot read the browser used to sign in, it says so in one line
-  and offers **Use a cookie file**, which opens that Settings row. Retry still
-  uses the same browser, and will use a cookie file you pick there.
+- When Queue cannot read the browser or cookie file used to sign in, it says
+  so in one line and offers **Open Settings** next to Retry.
 
 ### Fixed
 
-- Cookie file fallback actually runs after a failed browser import, instead of
-  skipping straight to a signed-out retry.
+- Cookie file fallback actually runs after a failed browser import. If that
+  file also cannot be read, VidStow stops instead of retrying signed out, and
+  the message names the cookie file.
 - Queued downloads reuse the browser from when they were admitted. Retry does
   not switch browsers after a Settings change; start over from Home for that.
-  A cookie file chosen later in Settings is used on the next Retry.
+  A cookie file chosen later in Settings is used on the next Retry. Queue says
+  so when a download still needs sign-in.
 - A watch URL with a leftover playlist (often `list=LL`) still opens the video
   when that video can be read, even if the playlist needs sign-in. A playlist
   URL by itself still asks for Settings.

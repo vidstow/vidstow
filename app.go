@@ -1906,7 +1906,7 @@ func friendlyAnalyzeError(err error) string {
 		return "Video analysis timed out — retry"
 	}
 	if failure, ok := jobs.AsAuthFailure(err); ok {
-		if failure.Reason == jobs.ReasonSessionUnreadable {
+		if failure.Reason == jobs.ReasonSessionUnreadable || failure.Reason == jobs.ReasonCookieFileUnreadable {
 			return friendlyAuthFailureLine(failure, "Couldn't use the browser. Close it, then retry.")
 		}
 		return "Needs sign-in. Pick a browser in Settings, then review again."
@@ -1955,7 +1955,7 @@ func friendlyPlaylistStartError(err error) string {
 		return "A selected video needs a channel membership your account doesn't have."
 	}
 	if failure, ok := jobs.AsAuthFailure(err); ok {
-		if failure.Reason == jobs.ReasonSessionUnreadable {
+		if failure.Reason == jobs.ReasonSessionUnreadable || failure.Reason == jobs.ReasonCookieFileUnreadable {
 			return friendlyAuthFailureLine(failure, "Couldn't use the browser. Close it, then retry.")
 		}
 		return "Needs sign-in. Pick a browser in Settings, then review again."

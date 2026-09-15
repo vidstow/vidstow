@@ -13,9 +13,10 @@ import (
 // Auth failure reason keys returned across the Wails boundary. The frontend
 // maps these onto proposal copy; it must not classify from free-text messages.
 const (
-	ReasonSigninRequired    = "signin-required"
-	ReasonSessionUnreadable = "session-unreadable"
-	AuthFailurePrefix       = "vidstow:auth:"
+	ReasonSigninRequired       = "signin-required"
+	ReasonSessionUnreadable    = "session-unreadable"
+	ReasonCookieFileUnreadable = "cookie-file-unreadable"
+	AuthFailurePrefix          = "vidstow:auth:"
 )
 
 // AuthFailure is the keyed sign-in error envelope. Cookie values never appear
@@ -250,12 +251,28 @@ func isSigninRequiredError(err error) bool {
 	return typed.Category == engine.ErrorAuthentication && !isSessionUnreadableError(err)
 }
 
+func unreadableReason(session browserSession) string {
+	if strings.TrimSpace(session.cookiesFromBrowser) == "" && strings.TrimSpace(session.cookieFile) != "" {
+		return ReasonCookieFileUnreadable
+	}
+	return ReasonSessionUnreadable
+}
+
+func isUnreadableReason(code string) bool {
+	switch strings.TrimSpace(code) {
+	case ReasonSessionUnreadable, ReasonCookieFileUnreadable:
+		return true
+	default:
+		return false
+	}
+}
+
 func authFailureFor(err error, session browserSession, attempted bool) error {
 	browser := SessionLabel(session.cookiesFromBrowser)
 	if isSessionUnreadableError(err) {
 		title, message := sessionUnreadableCopy(session)
 		return &AuthFailure{
-			Reason:           ReasonSessionUnreadable,
+			Reason:           unreadableReason(session),
 			Browser:          browser,
 			Title:            title,
 			Message:          message,
@@ -343,12 +360,26 @@ func (m *Manager) sessionForDownload(state *jobState) browserSession {
 
 // runAnalyzeWithSession attaches a configured session. Browser import runs
 // first; a cookie file is a fallback only when the browser store cannot be
-// read. If every signed-in source is unreadable, it retries once signed out
-// so public videos still work.
+// read. If every signed-in source is unreadable, Analyze stops. With no
+// sign-in method configured, it runs signed out.
 func (m *Manager) runAnalyzeWithSession(ctx context.Context, req engine.Request, runner analyzeRunner) (engine.Result, browserSession, error) {
 	session := m.browserSessionSnapshot()
+	attempts := session.signedInAttempts()
+	if len(attempts) == 0 {
+		unsigned := req
+		applyBrowserSession(&unsigned, browserSession{})
+		result, err := runner(ctx, unsigned)
+		if err == nil {
+			return result, session, nil
+		}
+		if isSigninRequiredError(err) || isSessionUnreadableError(err) {
+			return engine.Result{}, session, authFailureFor(err, session, false)
+		}
+		return engine.Result{}, session, err
+	}
 	var lastUnreadable error
-	for _, attempt := range session.signedInAttempts() {
+	var lastAttempt browserSession
+	for _, attempt := range attempts {
 		next := req
 		applyBrowserSession(&next, attempt)
 		result, err := runner(ctx, next)
@@ -357,6 +388,7 @@ func (m *Manager) runAnalyzeWithSession(ctx context.Context, req engine.Request,
 		}
 		if isSessionUnreadableError(err) {
 			lastUnreadable = err
+			lastAttempt = attempt
 			continue
 		}
 		if isSigninRequiredError(err) {
@@ -364,31 +396,29 @@ func (m *Manager) runAnalyzeWithSession(ctx context.Context, req engine.Request,
 		}
 		return engine.Result{}, session, err
 	}
-	unsigned := req
-	applyBrowserSession(&unsigned, browserSession{})
-	if lastUnreadable != nil {
-		retry, retryErr := runner(ctx, unsigned)
-		if retryErr == nil {
-			return retry, browserSession{}, nil
-		}
-		return engine.Result{}, session, authFailureFor(lastUnreadable, session, true)
-	}
-	result, err := runner(ctx, unsigned)
-	if err == nil {
-		return result, session, nil
-	}
-	if isSigninRequiredError(err) || isSessionUnreadableError(err) {
-		return engine.Result{}, session, authFailureFor(err, session, false)
-	}
-	return engine.Result{}, session, err
+	return engine.Result{}, session, authFailureFor(lastUnreadable, lastAttempt, true)
 }
 
 // runDownloadWithSession attaches the job's stored session (or the live
-// Settings snapshot for in-memory jobs). Cookie-file fallback and one
-// signed-out retry match Analyze.
+// Settings snapshot for in-memory jobs). Cookie-file fallback matches Analyze.
+// There is no automatic signed-out retry after an unreadable session.
 func (m *Manager) runDownloadWithSession(ctx context.Context, req engine.Request, handler engine.EventHandler, runner downloadRunner, session browserSession) (engine.Result, error) {
+	attempts := session.signedInAttempts()
+	if len(attempts) == 0 {
+		unsigned := req
+		applyBrowserSession(&unsigned, browserSession{})
+		result, err := runner(ctx, unsigned, handler)
+		if err == nil {
+			return result, nil
+		}
+		if isSigninRequiredError(err) || isSessionUnreadableError(err) {
+			return engine.Result{}, authFailureFor(err, session, false)
+		}
+		return engine.Result{}, err
+	}
 	var lastUnreadable error
-	for _, attempt := range session.signedInAttempts() {
+	var lastAttempt browserSession
+	for _, attempt := range attempts {
 		next := req
 		applyBrowserSession(&next, attempt)
 		result, err := runner(ctx, next, handler)
@@ -397,6 +427,7 @@ func (m *Manager) runDownloadWithSession(ctx context.Context, req engine.Request
 		}
 		if isSessionUnreadableError(err) {
 			lastUnreadable = err
+			lastAttempt = attempt
 			continue
 		}
 		if isSigninRequiredError(err) {
@@ -404,21 +435,5 @@ func (m *Manager) runDownloadWithSession(ctx context.Context, req engine.Request
 		}
 		return engine.Result{}, err
 	}
-	unsigned := req
-	applyBrowserSession(&unsigned, browserSession{})
-	if lastUnreadable != nil {
-		retry, retryErr := runner(ctx, unsigned, handler)
-		if retryErr == nil {
-			return retry, nil
-		}
-		return engine.Result{}, authFailureFor(lastUnreadable, session, true)
-	}
-	result, err := runner(ctx, unsigned, handler)
-	if err == nil {
-		return result, nil
-	}
-	if isSigninRequiredError(err) || isSessionUnreadableError(err) {
-		return engine.Result{}, authFailureFor(err, session, session.configured())
-	}
-	return engine.Result{}, err
+	return engine.Result{}, authFailureFor(lastUnreadable, lastAttempt, true)
 }
