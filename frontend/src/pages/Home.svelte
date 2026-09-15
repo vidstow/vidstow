@@ -1051,12 +1051,14 @@
     </div>
   {:else if playlist}
     {@const policy = playlistPolicyCopy()}
-    <div class="playlist-pane">
+    <div
+      class="playlist-pane"
+      in:panelSlide={{ duration: MOTION_OPEN }}
+      out:panelSlide={{ duration: MOTION_CLOSE }}
+    >
     <section
       class="dock"
       aria-label="Playlist"
-      in:panelSlide={{ duration: MOTION_OPEN }}
-      out:panelSlide={{ duration: MOTION_CLOSE }}
     >
       <div class="drow drow2 nofmt">
         <div class="thumb">

@@ -134,6 +134,8 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /\.dcodec,[^{]*\{[^}]*background: none;/);
   assert.doesNotMatch(home, /Best available up to/);
   assert.doesNotMatch(home, /doutcome"><b>/);
+  assert.match(home, /class="playlist-pane"[\s\S]{0,160}?in:panelSlide/);
+  assert.doesNotMatch(home, /aria-label="Playlist"[\s\S]{0,80}?in:panelSlide/);
   assert.match(home, /chip-idle[\s\S]*Analyze/);
   assert.match(home, /chip-wait[\s\S]*Stop/);
   assert.match(home, /class="hud-strip"/);
