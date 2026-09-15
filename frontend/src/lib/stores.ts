@@ -14,6 +14,8 @@ export const settings = writable<Settings>({
   perVideoSubfolder: true,
   outputOptions: {},
   automaticDiagnostics: '',
+  browserSession: '',
+  cookieFile: '',
 });
 
 export const ffmpeg = writable<FFmpegStatus>({
@@ -84,11 +86,36 @@ export function showError(err: unknown, fallback = 'Something went wrong') {
 }
 
 export function errorMessage(err: unknown, fallback: string): string {
-	if (err instanceof Error && err.message.trim()) return err.message;
-	if (typeof err === 'string' && err.trim()) return err;
-	if (err && typeof err === 'object' && 'message' in err) {
-		const message = String((err as { message?: unknown }).message ?? '').trim();
-		if (message) return message;
-	}
-	return fallback;
+  if (err instanceof Error && err.message.trim()) return err.message;
+  if (typeof err === 'string' && err.trim()) return err;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const message = String((err as { message?: unknown }).message ?? '').trim();
+    if (message) return message;
+  }
+  return fallback;
+}
+
+const AUTH_FAILURE_PREFIX = 'vidstow:auth:';
+
+export function parseAuthFailure(err: unknown): import('./types.js').AuthFailure | null {
+  const raw = errorMessage(err, '');
+  const index = raw.indexOf(AUTH_FAILURE_PREFIX);
+  if (index < 0) return null;
+  const payload = raw.slice(index + AUTH_FAILURE_PREFIX.length).trim();
+  try {
+    const parsed = JSON.parse(payload) as { reason?: unknown; title?: unknown; message?: unknown; browser?: unknown; sessionAttempted?: unknown };
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.reason !== 'string' || typeof parsed.title !== 'string' || typeof parsed.message !== 'string') {
+      return null;
+    }
+    return {
+      reason: parsed.reason,
+      title: parsed.title,
+      message: parsed.message,
+      ...(typeof parsed.browser === 'string' && parsed.browser ? { browser: parsed.browser } : {}),
+      ...(parsed.sessionAttempted === true ? { sessionAttempted: true } : {}),
+    };
+  } catch {
+    return null;
+  }
 }

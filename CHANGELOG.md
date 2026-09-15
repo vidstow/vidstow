@@ -14,15 +14,40 @@ does not exist yet.
 
 ### Added
 
-- No entries yet.
+- Signed-in downloads: optionally borrow a YouTube browser session (or a
+  cookie-file path) from Settings for age-restricted and account-gated videos
+  and for Liked, Watch Later, and other playlists that account can already
+  open. Cookie values are never stored. When a session is configured it is
+  attached on every analyze and download, including Full playlist /
+  AnalyzePlaylist. If the browser store cannot be read, VidStow tries the
+  cookie file when one is set. If neither can be read, it stops. With no
+  sign-in method configured, Analyze and download run signed out. Chrome
+  profiles that contain a few unusable cookie names still
+  import the rest (engine v0.3.1). Engine v0.3.2 fetches Liked, Watch Later, and other library playlists through signed-in
+  Innertube browse, and signed-in watch Analyze recovers formats without
+  treating ERROR stubs as a dead session or requiring the n-sig solver first.
 
 ### Changed
 
-- No entries yet.
+- When Queue cannot read the browser or cookie file used to sign in, it says
+  so in one line and offers **Open Settings** next to Retry.
 
 ### Fixed
 
-- No entries yet.
+- Cookie file fallback actually runs after a failed browser import. If that
+  file also cannot be read, VidStow stops instead of retrying signed out, and
+  the message names the cookie file.
+- Queued downloads reuse the browser from when they were admitted. Retry does
+  not switch browsers after a Settings change; start over from Home for that.
+  A cookie file chosen later in Settings is used on the next Retry. Queue says
+  so when a download still needs sign-in.
+- A watch URL with a leftover playlist (often `list=LL`) still opens the video
+  when that video can be read, even if the playlist needs sign-in. A playlist
+  URL by itself still asks for Settings.
+- Playlist Analyze now returns the same sign-in envelope (Open Settings) when
+  the engine reports authentication — Liked, Watch Later, and other lists that
+  need a session — instead of the generic “Could not read the playlist” /
+  unsupported card.
 
 ## [0.1.0-beta.6] - 2026-09-12
 

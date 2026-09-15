@@ -31,6 +31,8 @@ type Settings struct {
 	ConfirmBeforeDownload bool                   `json:"confirmBeforeDownload"`
 	OutputOptions         jobmodel.OutputOptions `json:"outputOptions"`
 	AutomaticDiagnostics  string                 `json:"automaticDiagnostics"`
+	BrowserSession        string                 `json:"browserSession,omitempty"`
+	CookieFile            string                 `json:"cookieFile,omitempty"`
 }
 
 // HistoryEntry is one completed download shown in the Downloads page.

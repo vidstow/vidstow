@@ -117,7 +117,7 @@ func TestAnalyzePlaylistChildrenAllUnsupportedUsesRawChildError(t *testing.T) {
 	if mapped == "That link is not a supported single YouTube video." {
 		t.Fatalf("playlist start mapped a child failure through the single-video analyzer copy: %q", mapped)
 	}
-	if !strings.Contains(mapped, "channel membership") {
+	if mapped != "A selected video needs a channel membership your account doesn't have." {
 		t.Fatalf("playlist start error = %q, want members-only copy", mapped)
 	}
 }
@@ -134,6 +134,25 @@ func TestFriendlyPlaylistStartErrorDoesNotUseSingleVideoCopy(t *testing.T) {
 	}
 	if !strings.Contains(got, "selected video") {
 		t.Fatalf("playlist start error = %q", got)
+	}
+}
+
+func TestPlaylistStartErrorForFrontendKeepsAuthEnvelope(t *testing.T) {
+	wrapped := fmt.Errorf("analyze playlist item 3: %w", &jobs.AuthFailure{
+		Reason:  jobs.ReasonSigninRequired,
+		Title:   "This video needs your YouTube sign-in.",
+		Message: "Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only videos your account can already watch.",
+	})
+	got := playlistStartErrorForFrontend(wrapped)
+	failure, ok := jobs.AsAuthFailure(got)
+	if !ok {
+		t.Fatalf("got %v", got)
+	}
+	if !strings.HasPrefix(got.Error(), jobs.AuthFailurePrefix) {
+		t.Fatalf("envelope = %q", got.Error())
+	}
+	if failure.Title != "This video needs your YouTube sign-in." {
+		t.Fatalf("title = %q", failure.Title)
 	}
 }
 

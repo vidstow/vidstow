@@ -119,6 +119,8 @@ export interface Settings {
   perVideoSubfolder: boolean;
   outputOptions: OutputOptions;
   automaticDiagnostics: '' | 'enabled' | 'disabled';
+  browserSession: string;
+  cookieFile: string;
 }
 
 // One caption track reported by analysis; auto marks auto-generated tracks.
@@ -172,6 +174,7 @@ export interface PlaylistSummary {
   available: number;
   unavailable: number;
   entries: PlaylistEntrySummary[];
+  sessionLabel?: string;
 }
 
 export interface InfoSummary {
@@ -189,6 +192,7 @@ export interface InfoSummary {
   access: AccessSummary;
   subtitles?: SubtitleLanguage[];
   plans: OutputPlan[];
+  sessionLabel?: string;
 }
 
 export interface AccessSummary {
@@ -266,4 +270,12 @@ export interface QueueEvent {
 export interface AppError {
   reason: string;
   message: string;
+}
+
+export interface AuthFailure {
+  reason: 'signin-required' | 'session-unreadable' | string;
+  browser?: string;
+  title: string;
+  message: string;
+  sessionAttempted?: boolean;
 }

@@ -470,6 +470,7 @@ type Manager struct {
 	inspectResume        resumeInspector
 	prepareResumeDiscard resumeDiscardPreparer
 	ffmpegLocation       string
+	session              browserSession
 	mu                   sync.Mutex
 	all                  map[string]*jobState
 	order                []string
@@ -2147,6 +2148,10 @@ func queueCapabilitiesFor(state *jobState, snap JobSnapshot) QueueJobCapabilitie
 		caps.StartAgain = failure.Category == "disk_full" || failure.Category == "permission_denied"
 		caps.ChangeFolder = failure.Category == "folder_unavailable" || failure.Category == "disk_full" || failure.Category == "permission_denied"
 		caps.OpenSource = snap.URL != "" && (failure.Category == "authentication_required" || failure.Category == "resource_unavailable")
+		// Session-unreadable is a local Settings problem; Open source / Copy link add clutter.
+		if isUnreadableReason(failureErrorCode(state, snap)) {
+			caps.OpenSource = false
+		}
 		caps.CopyLink = caps.OpenSource
 		return caps
 	case StatusCanceled:
@@ -2197,10 +2202,25 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 		failure.RecommendedAction = "Check your connection, then retry this item."
 		failure.Retryable = true
 	case "authentication_required":
+		code := failureErrorCode(state, snap)
+		if isUnreadableReason(code) {
+			copySession := sessionFromJob(state)
+			if code == ReasonCookieFileUnreadable {
+				copySession = browserSession{cookieFile: strings.TrimSpace(copySession.cookieFile)}
+				if copySession.cookieFile == "" {
+					copySession.cookieFile = "cookie-file"
+				}
+			}
+			title, message := sessionUnreadableCopy(copySession)
+			failure.MessageKey = "queue.failure.session_unreadable"
+			failure.Heading = title
+			failure.Message = message
+			failure.Retryable = true
+			break
+		}
 		failure.MessageKey = "queue.failure.authentication_required"
-		failure.Heading = "Download was refused"
-		failure.Message = "The page may still play in a browser. Try again."
-		failure.RecommendedAction = "Retry this item."
+		failure.Heading = "This download needs sign-in."
+		failure.Message = "Retry uses the same browser, and a cookie file from Settings if the browser can't be read. To change browsers, start over from Home."
 		failure.Retryable = true
 	case "could_not_start":
 		failure.MessageKey = "queue.failure.could_not_start"
@@ -2278,7 +2298,7 @@ func failureCategoryForCode(code string) string {
 	switch strings.TrimSpace(code) {
 	case "network", retryCodeMediaLinkExpired, retryCodeYouTubeChallengePreTransfer:
 		return "network_interrupted"
-	case "authentication":
+	case "authentication", ReasonSigninRequired, ReasonSessionUnreadable, ReasonCookieFileUnreadable:
 		return "authentication_required"
 	case "unsupported":
 		return "resource_unavailable"
@@ -4648,7 +4668,7 @@ func (m *Manager) run(state *jobState, worker *worker) {
 		return nil
 	}
 
-	result, err := runner(ctx, req, handler)
+	result, err := m.runDownloadWithSession(ctx, req, handler, runner, m.sessionForDownload(state))
 	diagnostic := terminalDownloadDiagnostic(err, sawDownload, sawPostprocess, time.Since(started))
 	if processingHeld {
 		<-m.processing
@@ -5027,6 +5047,12 @@ func humanError(err error) string {
 	if err == nil {
 		return "Failed"
 	}
+	if failure, ok := AsAuthFailure(err); ok {
+		if failure.Message != "" {
+			return failure.Message
+		}
+		return failure.Title
+	}
 	switch {
 	case errors.Is(err, syscall.ENOSPC):
 		return "Not enough disk space"
@@ -5172,6 +5198,9 @@ func errorReason(err error) string {
 	if isExpiredMediaLinkError(err) {
 		return retryCodeMediaLinkExpired
 	}
+	if failure, ok := AsAuthFailure(err); ok {
+		return failure.Reason
+	}
 	switch {
 	case errors.Is(err, syscall.ENOSPC):
 		return "disk_full"
@@ -5183,6 +5212,14 @@ func errorReason(err error) string {
 		return string(typed.Category)
 	}
 	return "internal"
+}
+
+func failureErrorCode(state *jobState, snap JobSnapshot) string {
+	code := strings.TrimSpace(snap.ErrorReason)
+	if state != nil && state.fromStateV2 && strings.TrimSpace(state.durable.LastErrorCode) != "" {
+		return strings.TrimSpace(state.durable.LastErrorCode)
+	}
+	return code
 }
 
 func clampFloat(v float64) float64 {
@@ -5218,6 +5255,9 @@ type PlaylistSummary struct {
 	Available       int                    `json:"available"`
 	Unavailable     int                    `json:"unavailable"`
 	Entries         []PlaylistEntrySummary `json:"entries"`
+	// SessionLabel is set when a configured browser/cookie session was
+	// attached for this playlist lookup. Never cookies.
+	SessionLabel string `json:"sessionLabel,omitempty"`
 }
 
 type PlaylistEntrySummary struct {
@@ -5247,6 +5287,9 @@ type InfoSummary struct {
 	Access          AccessSummary      `json:"access"`
 	Subtitles       []SubtitleLanguage `json:"subtitles,omitempty"`
 	Plans           []outputplan.Plan  `json:"plans"`
+	// SessionLabel is set when a configured browser/cookie session was
+	// attached for this analysis (e.g. "Chrome · Default"). Never cookies.
+	SessionLabel string `json:"sessionLabel,omitempty"`
 }
 
 // SubtitleLanguage is one caption track reported by analysis, used to render
@@ -5286,18 +5329,19 @@ func (m *Manager) AnalyzePlaylist(ctx context.Context, rawURL string) (PlaylistS
 	analysisCtx, cancel := context.WithCancel(ctx)
 	stopLifecycle := context.AfterFunc(lifecycleCtx, cancel)
 	defer func() { stopLifecycle(); cancel(); m.analysisWG.Done() }()
-	result, err := runner(analysisCtx, engine.Request{
+	result, session, err := m.runAnalyzeWithSession(analysisCtx, engine.Request{
 		URL: rawURL, Simulate: true,
 		Playlist:   engine.PlaylistOptions{Flat: true, End: MaxPlaylistEntries},
 		Filesystem: engine.FilesystemOptions{FfmpegLocation: ffmpegLocation},
-	})
+	}, runner)
 	if err != nil {
-		return PlaylistSummary{}, err
+		return PlaylistSummary{}, playlistAuthFailure(err)
 	}
 	summary, err := summarizePlaylist(result, rawURL)
 	if err != nil {
 		return PlaylistSummary{}, err
 	}
+	summary.SessionLabel = session.label()
 	expectedID := playlistIDFromURL(rawURL)
 	if expectedID == "" || summary.ID != expectedID {
 		return PlaylistSummary{}, errors.New("analyze playlist: playlist identity mismatch")
@@ -5528,7 +5572,7 @@ func (m *Manager) AnalyzeForAdmission(ctx context.Context, rawURL string) (InfoS
 			FfmpegLocation: ffmpegLocation,
 		},
 	}
-	result, err := runner(analysisCtx, req)
+	result, session, err := m.runAnalyzeWithSession(analysisCtx, req, runner)
 	if err != nil {
 		return InfoSummary{}, nil, err
 	}
@@ -5536,6 +5580,7 @@ func (m *Manager) AnalyzeForAdmission(ctx context.Context, rawURL string) (InfoS
 	if err != nil {
 		return InfoSummary{}, nil, err
 	}
+	summary.SessionLabel = session.label()
 	return summary, privatePlans, nil
 }
 

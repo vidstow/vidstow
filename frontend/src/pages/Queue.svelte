@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { api } from '../lib/api.js';
   import { errorMessage, modal, pendingUrl, queueView, route, showBanner, showError } from '../lib/stores.js';
   import ActionRequiredReviewDialog from '../lib/lifecycle-ui/ActionRequiredReviewDialog.svelte';
@@ -337,6 +338,11 @@
   onPauseAll={() => withPending('Pausing all…', pauseAll)}
   onResumeAll={resumeAll}
   onGoHome={() => route.set('home')}
+  onOpenSettings={async () => {
+    route.set('settings');
+    await tick();
+    document.getElementById('signin-settings-title')?.scrollIntoView({ block: 'start' });
+  }}
   onClearCompleted={clearCompleted}
   onCollectionAction={collectionAction}
   onAction={(event) => withPending(actionLabels[event.action] ?? 'Updating download…', async () => {

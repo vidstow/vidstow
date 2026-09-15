@@ -241,6 +241,8 @@ func (c *Coordinator) Admit(ctx context.Context, root *reservationfs.Root, reque
 	var committedReservation jobmodel.ReservationSet
 	var admittedOutput jobs.AdmittedOutput
 	err = c.deps.Store.Transaction(nil, func(state *jobmodel.State) error {
+		durableRequest.BrowserSession = strings.TrimSpace(state.Settings.BrowserSession)
+		durableRequest.CookieFile = strings.TrimSpace(state.Settings.CookieFile)
 		active := activeReservations(*state)
 		selected, selectErr := selector.Select(ctx, reservation.SelectionRequest{
 			GroupID: jobID,

@@ -1182,7 +1182,15 @@ func validTimestampPair(created, updated time.Time) bool {
 }
 func validRequest(r jobmodel.PersistedRequest) bool {
 	sourceOK := r.SourceURL == "" && safeVideoID(r.VideoID) || validSourceURL(r.SourceURL, r.VideoID)
-	return sourceOK && validText(r.VideoID, maxIDBytes, true) && validText(r.Title, maxText, true) && validText(r.Channel, maxText, false) && validText(r.Quality, maxShortText, true) && validIDBounded(r.PlanID, maxIDBytes, false) && validText(r.Duration, maxShortText, false)
+	return sourceOK &&
+		validText(r.VideoID, maxIDBytes, true) &&
+		validText(r.Title, maxText, true) &&
+		validText(r.Channel, maxText, false) &&
+		validText(r.Quality, maxShortText, true) &&
+		validIDBounded(r.PlanID, maxIDBytes, false) &&
+		validText(r.Duration, maxShortText, false) &&
+		validText(r.BrowserSession, maxShortText, false) &&
+		validText(r.CookieFile, maxPathBytes, false)
 }
 func validPlan(p jobmodel.PersistedPlan) bool {
 	return (p.ID == "" || validID(p.ID)) && validText(p.Kind, maxShortText, false) && validText(p.Label, maxText, false) && validText(p.Container, maxShortText, false) && validText(p.VideoCodec, maxShortText, false) && validText(p.AudioCodec, maxShortText, false) && validPrivateSelector(p.PrivateSelector)
@@ -1227,7 +1235,13 @@ func validHistory(h jobmodel.HistoryEntry) bool {
 
 func validSettings(s jobmodel.Settings) bool {
 	validDiagnostics := s.AutomaticDiagnostics == "" || s.AutomaticDiagnostics == "enabled" || s.AutomaticDiagnostics == "disabled"
-	return validDiagnostics && validText(s.DownloadFolder, maxPathBytes, false) && validText(s.FFmpegPath, maxPathBytes, false) && s.WindowWidth >= 0 && s.WindowWidth <= 10000 && s.WindowHeight >= 0 && s.WindowHeight <= 10000
+	return validDiagnostics &&
+		validText(s.DownloadFolder, maxPathBytes, false) &&
+		validText(s.FFmpegPath, maxPathBytes, false) &&
+		validText(s.BrowserSession, maxShortText, false) &&
+		validText(s.CookieFile, maxPathBytes, false) &&
+		s.WindowWidth >= 0 && s.WindowWidth <= 10000 &&
+		s.WindowHeight >= 0 && s.WindowHeight <= 10000
 }
 func validatePreconditionsInput(values []JobPrecondition) error {
 	if len(values) > maxPreconditions {

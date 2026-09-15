@@ -83,7 +83,7 @@ build.
 | Pasted batch | Review 2–20 individual public video or Short URLs together |
 | Video link that also names a playlist | Choose the single video or the full playlist |
 | Channels, search, and live streams | Not supported |
-| Private, signed-in, or cookie-based downloads | Not supported |
+| Private or signed-in videos the browser account can already watch | Optional Settings browser session or cookie-file path; cookie values are never stored |
 | Sites other than YouTube | Not supported by the VidStow app |
 
 Available qualities and containers depend on the video. Playlist downloads use

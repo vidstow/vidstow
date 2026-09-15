@@ -61,6 +61,7 @@
     onResumeAll?: () => void;
     onClearCompleted?: () => void;
     onGoHome?: () => void;
+    onOpenSettings?: () => void;
     onAction?: (event: LifecycleJobActionEvent) => void;
     onCollectionAction?: (event: QueueCollectionActionEvent) => void;
   }
@@ -72,6 +73,7 @@
     onPauseAll,
     onResumeAll,
     onGoHome,
+    onOpenSettings,
     onAction,
     onCollectionAction,
   }: Props = $props();
@@ -231,7 +233,8 @@
 
   function recoveryAction(job: LifecycleJobViewModel): LifecycleJobAction {
     if (['disk_full', 'permission_denied', 'folder_unavailable'].includes(job.failure?.category ?? '') && job.capabilities?.changeFolder) return 'change-folder';
-    if (['resource_unavailable', 'authentication_required'].includes(job.failure?.category ?? '') && job.capabilities?.openSource) return 'open-source';
+    if (job.failure?.category === 'authentication_required' && job.capabilities?.retry) return 'retry';
+    if (['resource_unavailable'].includes(job.failure?.category ?? '') && job.capabilities?.openSource) return 'open-source';
     return 'retry';
   }
 
@@ -501,6 +504,9 @@
             {#if fail}
               {#if job.capabilities?.retry}
                 <button type="button" class="app-btn" class:primary={recoveryAction(job) === 'retry'} disabled={!jobEnabled(job, 'retry')} onclick={() => trigger(job, 'retry')}>{@render icon('retry')} Retry</button>
+              {/if}
+              {#if job.failure?.category === 'authentication_required'}
+                <button type="button" class="app-btn" onclick={() => onOpenSettings?.()}>Open Settings</button>
               {/if}
               {#if job.capabilities?.changeFolder}
                 <button type="button" class="app-btn" class:primary={recoveryAction(job) === 'change-folder'} disabled={!jobEnabled(job, 'change-folder')} onclick={() => trigger(job, 'change-folder')}>{@render icon('folder')} Change folder</button>

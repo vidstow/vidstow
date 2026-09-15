@@ -487,8 +487,8 @@ describe('backend-authored capabilities', () => {
             id: 'refused', title: 'Public video', lifecycle: 'failed', occupiesSlot: false,
             failure: {
               category: 'authentication_required', messageKey: 'queue.failure.authentication_required',
-              heading: 'Download was refused',
-              message: 'The page may still play in a browser. Try again.', recommendedAction: 'Retry this item.',
+              heading: 'This download needs sign-in.',
+              message: 'Retry uses the same browser, and a cookie file from Settings if the browser can\'t be read. To change browsers, start over from Home.', recommendedAction: '',
               retryable: true, partialOutput: false,
             },
             capabilities: { retry: true, remove: true, openSource: true, copyLink: true }, commandToken: 'auth-token',
@@ -497,9 +497,41 @@ describe('backend-authored capabilities', () => {
       },
     });
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toHaveClass('primary');
+    expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open source' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open source' })).not.toHaveClass('primary');
+    expect(screen.getByText('This download needs sign-in.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+
+  test('session-unreadable inspector offers Retry and Open Settings', async () => {
+    const onOpenSettings = vi.fn<() => void>();
+    const user = userEvent.setup();
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'locked', title: 'Private video', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'authentication_required', messageKey: 'queue.failure.session_unreadable',
+              heading: "Couldn't use Chrome.",
+              message: 'Close Chrome, then retry.', recommendedAction: '',
+              retryable: true, partialOutput: false,
+            },
+            capabilities: { retry: true, remove: true }, commandToken: 'locked-token',
+          }],
+        }),
+        onOpenSettings,
+      },
+    });
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByText("Couldn't use Chrome.")).toBeInTheDocument();
+    expect(screen.getByText('Close Chrome, then retry.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use a cookie file' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalled();
   });
 
   test('unusable leftover paused rows offer Resume and Discard', async () => {
@@ -748,7 +780,7 @@ describe('restored historical attempts', () => {
     const user = userEvent.setup();
     const { container, rerender } = render(QueueOverview, { props: {
       model: queueModel({ jobs: [
-        { id: 'failed', title: 'Same video', qualityLabel: '480p', lifecycle: 'failed', occupiesSlot: false, capabilities: { retry: true }, commandToken: 'retry-token', failure: { category: 'authentication_required', messageKey: 'queue.failure.authentication_required', heading: 'Download was refused', message: 'Try again.', recommendedAction: 'Retry.', retryable: true, partialOutput: false, evidence: { stage: 'extraction', code: 'authentication', at: '2026-09-07T20:00:00Z' } } },
+        { id: 'failed', title: 'Same video', qualityLabel: '480p', lifecycle: 'failed', occupiesSlot: false, capabilities: { retry: true }, commandToken: 'retry-token', failure: { category: 'authentication_required', messageKey: 'queue.failure.authentication_required', heading: 'This download needs sign-in.', message: 'Try again.', recommendedAction: 'Retry.', retryable: true, partialOutput: false, evidence: { stage: 'extraction', code: 'authentication', at: '2026-09-07T20:00:00Z' } } },
         { id: 'canceled', title: 'Same video', qualityLabel: '1080p60', lifecycle: 'canceled', phase: 'cleaning-up', occupiesSlot: false, capabilities: { remove: true }, commandToken: 'remove-token' },
         { id: 'done', title: 'Completed video', qualityLabel: '360p', lifecycle: 'completed', occupiesSlot: false },
       ] }), onAction,
@@ -776,7 +808,7 @@ describe('restored historical attempts', () => {
     failedButton.focus();
     await user.keyboard(' ');
     expect(failedButton).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('Download was refused')).toBeVisible();
+    expect(screen.getByText('This download needs sign-in.')).toBeVisible();
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(container.querySelector('.qinsp .istats')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Remove Same video' }));
