@@ -12,7 +12,7 @@ var diagnosticsEventsEndpoint = "https://diagnostics.vidstow.workers.dev/v1/even
 const (
 	appVersion          = "0.1.0-beta.6"
 	engineModulePath    = "github.com/tejasa97/ytdlp-go"
-	pinnedEngineVersion = "v0.3.1"
+	pinnedEngineVersion = "v0.3.2"
 )
 
 // BuildInfo is the single backend-owned release identity exposed to the UI

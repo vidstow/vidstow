@@ -21,9 +21,10 @@ does not exist yet.
   attached on every analyze and download, including Full playlist /
   AnalyzePlaylist; if the session cannot be read, the attempt retries once
   signed out so public videos still work. Chrome profiles that contain a few
-  unusable cookie names still import the rest (engine v0.3.1). Engine fetch
-  for those library playlists lands with the ytdlp-go signed-in browse fix
-  once that release is tagged and pinned.
+  unusable cookie names still import the rest (engine v0.3.1). Engine v0.3.2
+  fetches Liked, Watch Later, and other library playlists through signed-in
+  Innertube browse, and signed-in watch Analyze recovers formats without
+  treating ERROR stubs as a dead session or requiring the n-sig solver first.
 
 ### Changed
 
