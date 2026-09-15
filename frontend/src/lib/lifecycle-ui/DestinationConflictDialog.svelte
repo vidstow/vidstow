@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import { trapModalFocus } from './modal.js';
+  import { MOTION_CLOSE, MOTION_OPEN, fadeOverlay, scaleDialog } from '../motion.js';
   import {
     isValidConflictToken,
     type DestinationConflictEventDetail,
@@ -47,8 +48,23 @@
 <svelte:window onkeydown={onKeydown} />
 
 {#if open}
-  <div class="overlay" role="presentation" onclick={onOverlayClick}>
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="lifecycle-conflict-title" tabindex="-1" use:trapModalFocus>
+  <div
+    class="overlay"
+    role="presentation"
+    onclick={onOverlayClick}
+    in:fadeOverlay={{ duration: MOTION_OPEN }}
+    out:fadeOverlay={{ duration: MOTION_CLOSE }}
+  >
+    <div
+      class="dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="lifecycle-conflict-title"
+      tabindex="-1"
+      use:trapModalFocus
+      in:scaleDialog={{ duration: MOTION_OPEN }}
+      out:scaleDialog={{ duration: MOTION_CLOSE }}
+    >
       <header class="dialog-header">
         <div>
           <h2 id="lifecycle-conflict-title">Choose a new filename</h2>
@@ -84,7 +100,7 @@
 
 <style>
   .overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: var(--sp-5); background: rgba(24, 25, 28, 0.58); backdrop-filter: blur(2px); }
-  .dialog { width: min(580px, 94vw); overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); }
+  .dialog { width: min(580px, 94vw); overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--r-lg); background: var(--surface-base); box-shadow: var(--shadow-modal); transform-origin: center; }
   .dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-5) var(--sp-6) var(--sp-3); }
   h2 { margin: 0; font-size: var(--fs-xl); font-weight: 700; letter-spacing: -0.02em; }
   .dialog-header p { max-width: 56ch; margin: var(--sp-1) 0 0; color: var(--text-secondary); font-size: var(--fs-sm); }

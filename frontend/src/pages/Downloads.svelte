@@ -12,6 +12,7 @@
     type HistoryCollectionRow,
     type HistoryRecord,
   } from '../lib/download-history.js';
+  import { MOTION_CLOSE, MOTION_OPEN, panelSlide } from '../lib/motion.js';
 
   let query = '';
   let selectedId: string | null = null;
@@ -163,6 +164,11 @@
               </div>
             </div>
             {#if expanded}
+              <div
+                class="dsubs"
+                in:panelSlide={{ duration: MOTION_OPEN }}
+                out:panelSlide={{ duration: MOTION_CLOSE }}
+              >
               {#each row.entries as entry, index (entry.id)}
                 {@const ep = episodeIndex(entry, index + 1)}
                 <div class="drow sub" class:selected={selectedId === entry.id}>
@@ -181,7 +187,11 @@
                     <button type="button" class="btn sm pri" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
                   </div>
                   {#if selectedId === entry.id}
-                    <div class="detail">
+                    <div
+                      class="detail"
+                      in:panelSlide={{ duration: MOTION_OPEN }}
+                      out:panelSlide={{ duration: MOTION_CLOSE }}
+                    >
                       <p class="path" title={entry.absolutePath}>{entry.absolutePath}</p>
                       <div class="dact">
                         <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5l11 11"/><path d="M17.5 6.5l-11 11"/></svg>Remove</button>
@@ -191,6 +201,7 @@
                   {/if}
                 </div>
               {/each}
+              </div>
             {/if}
           {:else}
             {@const entry = row.entry}
@@ -220,7 +231,11 @@
                 <button type="button" class="btn sm pri" aria-label="Open downloaded file" on:click={() => open(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5.5v13l11-6.5Z"/></svg>Open</button>
               </div>
               {#if expanded}
-                <div class="detail">
+                <div
+                  class="detail"
+                  in:panelSlide={{ duration: MOTION_OPEN }}
+                  out:panelSlide={{ duration: MOTION_CLOSE }}
+                >
                   <p class="path" title={entry.absolutePath}>{entry.absolutePath}</p>
                   <div class="dact">
                     <button type="button" class="btn sm ghost" aria-label="Remove from history" on:click={() => confirmRemoveHistory(entry)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5l11 11"/><path d="M17.5 6.5l-11 11"/></svg>Remove</button>

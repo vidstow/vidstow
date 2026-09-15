@@ -45,7 +45,7 @@
     height: 100%;
     border-radius: var(--r-full);
     background: var(--accent-500);
-    transition: width 180ms ease;
+    transition: width var(--motion-progress) ease;
   }
   .fill.success { background: var(--status-success); }
   .fill.indeterminate {

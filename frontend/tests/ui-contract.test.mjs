@@ -134,7 +134,8 @@ test('page titles and controls match the approved redesign', async () => {
   assert.match(home, /\.dcodec,[^{]*\{[^}]*background: none;/);
   assert.doesNotMatch(home, /Best available up to/);
   assert.doesNotMatch(home, /doutcome"><b>/);
-  assert.match(home, /Analyze\s*<\/button>/);
+  assert.match(home, /chip-idle[\s\S]*Analyze/);
+  assert.match(home, /chip-wait[\s\S]*Stop/);
   assert.match(home, /class="hud-strip"/);
   assert.match(home, /stop-slot/);
   assert.match(home, /Reading playlist…/);
