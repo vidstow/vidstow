@@ -190,7 +190,7 @@
       <div class="failure" role="alert" data-category={job.failure.category}>
         <strong>{job.failure.heading}</strong>
         <span>{job.failure.message}</span>
-        <span class="recommended">{job.failure.recommendedAction}</span>
+        {#if job.failure.recommendedAction}<span class="recommended">{job.failure.recommendedAction}</span>{/if}
         {#if job.failure.partialOutput}<small>Partial download data may remain until this item is removed or retried.</small>{/if}
       </div>
     {:else if message || queueLabel}

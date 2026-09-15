@@ -69,8 +69,8 @@ func TestFriendlyAnalyzeErrorAuthenticationUsesBatchCopy(t *testing.T) {
 		t.Fatalf("friendlyAnalyzeError() = %q", got)
 	}
 	failure := &jobs.AuthFailure{
-		Reason: jobs.ReasonSigninRequired,
-		Title:  "This video needs your YouTube sign-in.",
+		Reason:  jobs.ReasonSigninRequired,
+		Title:   "This video needs your YouTube sign-in.",
 		Message: "Sign in to YouTube in your browser, pick that browser in Settings, then try again. Only videos your account can already watch.",
 	}
 	if got := friendlyAnalyzeError(failure); got != "Needs sign-in. Pick a browser in Settings, then review again." {
@@ -78,14 +78,13 @@ func TestFriendlyAnalyzeErrorAuthenticationUsesBatchCopy(t *testing.T) {
 	}
 }
 
-
 func TestFriendlyAnalyzeErrorSessionUnreadableUsesBatchCopy(t *testing.T) {
 	failure := &jobs.AuthFailure{
 		Reason:  jobs.ReasonSessionUnreadable,
-		Title:   "Could not read the browser session.",
-		Message: "Check the browser choice in Settings, then try again.",
+		Title:   "Couldn't use Chrome.",
+		Message: "Close Chrome, then retry.",
 	}
-	if got := friendlyAnalyzeError(failure); got != "Session unreadable. Check the browser choice in Settings, then review again." {
+	if got := friendlyAnalyzeError(failure); got != "Couldn't use Chrome. Close Chrome, then retry." {
 		t.Fatalf("friendlyAnalyzeError() = %q", got)
 	}
 }

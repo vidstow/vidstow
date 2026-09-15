@@ -506,6 +506,34 @@ describe('backend-authored capabilities', () => {
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 
+  test('session-unreadable inspector offers Use a cookie file instead of Open Settings', async () => {
+    const onOpenSettings = vi.fn<(section?: 'signin' | 'cookie-file') => void>();
+    const user = userEvent.setup();
+    render(QueueOverview, {
+      props: {
+        model: queueModel({
+          jobs: [{
+            id: 'locked', title: 'Private video', lifecycle: 'failed', occupiesSlot: false,
+            failure: {
+              category: 'authentication_required', messageKey: 'queue.failure.session_unreadable',
+              heading: "Couldn't use Chrome.",
+              message: 'Close Chrome, then retry.', recommendedAction: '',
+              retryable: true, partialOutput: false,
+            },
+            capabilities: { retry: true, remove: true }, commandToken: 'locked-token',
+          }],
+        }),
+        onOpenSettings,
+      },
+    });
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByText("Couldn't use Chrome.")).toBeInTheDocument();
+    expect(screen.getByText('Close Chrome, then retry.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open Settings' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Use a cookie file' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('cookie-file');
+  });
+
   test('unusable leftover paused rows offer Resume and Discard', async () => {
     const onAction = vi.fn<(event: LifecycleJobActionEvent) => void>();
     const user = userEvent.setup();

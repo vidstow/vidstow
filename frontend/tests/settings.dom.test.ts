@@ -135,6 +135,7 @@ describe('Settings page', () => {
     expect(screen.getByPlaceholderText('Profile, e.g. Default')).toBeInTheDocument();
     expect(screen.getByText('For when the browser store cannot be read. Export with Get cookies.txt LOCALLY or with the engine, and keep the file private.')).toBeInTheDocument();
     expect(screen.getByText('No file chosen')).toBeInTheDocument();
+    expect(document.getElementById('cookie-file-fallback')).not.toBeNull();
 
     await user.selectOptions(screen.getByLabelText('Browser session'), 'chrome');
     await waitFor(() => expect(App.UpdateSettings).toHaveBeenCalledWith(expect.objectContaining({ browserSession: 'chrome' })));

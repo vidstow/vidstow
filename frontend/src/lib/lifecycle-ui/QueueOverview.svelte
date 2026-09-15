@@ -61,7 +61,7 @@
     onResumeAll?: () => void;
     onClearCompleted?: () => void;
     onGoHome?: () => void;
-    onOpenSettings?: () => void;
+    onOpenSettings?: (section?: 'signin' | 'cookie-file') => void;
     onAction?: (event: LifecycleJobActionEvent) => void;
     onCollectionAction?: (event: QueueCollectionActionEvent) => void;
   }
@@ -505,7 +505,9 @@
               {#if job.capabilities?.retry}
                 <button type="button" class="app-btn" class:primary={recoveryAction(job) === 'retry'} disabled={!jobEnabled(job, 'retry')} onclick={() => trigger(job, 'retry')}>{@render icon('retry')} Retry</button>
               {/if}
-              {#if job.failure?.category === 'authentication_required'}
+              {#if job.failure?.messageKey === 'queue.failure.session_unreadable'}
+                <button type="button" class="app-btn" onclick={() => onOpenSettings?.('cookie-file')}>Use a cookie file</button>
+              {:else if job.failure?.category === 'authentication_required'}
                 <button type="button" class="app-btn" onclick={() => onOpenSettings?.()}>Open Settings</button>
               {/if}
               {#if job.capabilities?.changeFolder}

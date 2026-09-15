@@ -2204,10 +2204,10 @@ func queueFailureFor(state *jobState, snap JobSnapshot) QueueFailure {
 	case "authentication_required":
 		code := failureErrorCode(state, snap)
 		if code == ReasonSessionUnreadable {
+			title, message := sessionUnreadableCopy(sessionFromJob(state))
 			failure.MessageKey = "queue.failure.session_unreadable"
-			failure.Heading = "Could not read the browser session."
-			failure.Message = "Check the browser choice in Settings, then try again."
-			failure.RecommendedAction = "Open Settings, then retry this item."
+			failure.Heading = title
+			failure.Message = message
 			failure.Retryable = true
 			break
 		}

@@ -172,6 +172,39 @@ func SessionLabel(spec string) string {
 	return name + " · " + profile
 }
 
+func browserFamilyName(spec string) string {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return ""
+	}
+	browser, _, _ := strings.Cut(spec, ":")
+	browser = strings.ToLower(strings.TrimSpace(browser))
+	if browser == "" || browser == "off" || browser == "none" {
+		return ""
+	}
+	return browserDisplayName(browser)
+}
+
+func sessionFromJob(state *jobState) browserSession {
+	if state == nil {
+		return browserSession{}
+	}
+	return browserSession{
+		cookiesFromBrowser: strings.TrimSpace(state.durable.Request.BrowserSession),
+		cookieFile:         strings.TrimSpace(state.durable.Request.CookieFile),
+	}
+}
+
+func sessionUnreadableCopy(session browserSession) (title, message string) {
+	if name := browserFamilyName(session.cookiesFromBrowser); name != "" {
+		return "Couldn't use " + name + ".", "Close " + name + ", then retry."
+	}
+	if strings.TrimSpace(session.cookieFile) != "" {
+		return "Couldn't use the cookie file.", "Choose another file, then retry."
+	}
+	return "Couldn't use the browser.", "Close it, then retry."
+}
+
 func browserDisplayName(browser string) string {
 	switch strings.ToLower(strings.TrimSpace(browser)) {
 	case "chrome", "chromium":
@@ -220,11 +253,12 @@ func isSigninRequiredError(err error) bool {
 func authFailureFor(err error, session browserSession, attempted bool) error {
 	browser := SessionLabel(session.cookiesFromBrowser)
 	if isSessionUnreadableError(err) {
+		title, message := sessionUnreadableCopy(session)
 		return &AuthFailure{
 			Reason:           ReasonSessionUnreadable,
 			Browser:          browser,
-			Title:            "Could not read the browser session.",
-			Message:          "Check the browser choice in Settings, then try again.",
+			Title:            title,
+			Message:          message,
 			SessionAttempted: attempted,
 		}
 	}

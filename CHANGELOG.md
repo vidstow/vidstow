@@ -28,7 +28,9 @@ does not exist yet.
 
 ### Changed
 
-- No entries yet.
+- When Queue cannot read the browser used to sign in, it says so in one line
+  and offers **Use a cookie file**, which opens that Settings row. Retry still
+  uses the same browser.
 
 ### Fixed
 

@@ -1907,7 +1907,7 @@ func friendlyAnalyzeError(err error) string {
 	}
 	if failure, ok := jobs.AsAuthFailure(err); ok {
 		if failure.Reason == jobs.ReasonSessionUnreadable {
-			return "Session unreadable. Check the browser choice in Settings, then review again."
+			return friendlyAuthFailureLine(failure, "Couldn't use the browser. Close it, then retry.")
 		}
 		return "Needs sign-in. Pick a browser in Settings, then review again."
 	}
@@ -1956,7 +1956,7 @@ func friendlyPlaylistStartError(err error) string {
 	}
 	if failure, ok := jobs.AsAuthFailure(err); ok {
 		if failure.Reason == jobs.ReasonSessionUnreadable {
-			return "Session unreadable. Check the browser choice in Settings, then review again."
+			return friendlyAuthFailureLine(failure, "Couldn't use the browser. Close it, then retry.")
 		}
 		return "Needs sign-in. Pick a browser in Settings, then review again."
 	}
@@ -1981,6 +1981,17 @@ func friendlyPlaylistStartError(err error) string {
 		}
 	}
 	return "Could not add this playlist to the queue."
+}
+
+func friendlyAuthFailureLine(failure *jobs.AuthFailure, fallback string) string {
+	if failure == nil {
+		return fallback
+	}
+	line := strings.TrimSpace(strings.TrimSpace(failure.Title) + " " + strings.TrimSpace(failure.Message))
+	if line != "" {
+		return line
+	}
+	return fallback
 }
 
 func isMembersOnlyMedia(err error) bool {

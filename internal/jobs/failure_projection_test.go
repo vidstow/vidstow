@@ -25,7 +25,7 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 		{name: "network", code: "network", category: "network_interrupted", retry: true, messageKey: "queue.failure.network_interrupted"},
 		{name: "rate limited", code: "network", httpStatus: 429, category: "rate_limited", retry: true, heading: "YouTube asked VidStow to slow down", messageKey: "queue.failure.rate_limited"},
 		{name: "authentication", code: "authentication", category: "authentication_required", retry: true, openSource: true, heading: "This download needs sign-in.", messageKey: "queue.failure.authentication_required"},
-		{name: "session unreadable", code: ReasonSessionUnreadable, category: "authentication_required", retry: true, openSource: false, heading: "Could not read the browser session.", messageKey: "queue.failure.session_unreadable"},
+		{name: "session unreadable", code: ReasonSessionUnreadable, category: "authentication_required", retry: true, openSource: false, heading: "Couldn't use the browser.", messageKey: "queue.failure.session_unreadable"},
 		{name: "unavailable", code: "unsupported", category: "resource_unavailable", retry: true, openSource: true, messageKey: "queue.failure.resource_unavailable"},
 		{name: "invalid input", code: "invalid_input", category: "could_not_start", retry: true, heading: "Download could not start", messageKey: "queue.failure.could_not_start"},
 		{name: "destination exists", code: "destination-exists", category: "destination_exists", retry: true, heading: "File already in the folder", messageKey: "queue.failure.destination_exists"},
@@ -52,7 +52,10 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 			if failure.Category != test.category || failure.MessageKey != test.messageKey || failure.Retryable != test.retry || !failure.PartialOutput {
 				t.Fatalf("failure = %#v", failure)
 			}
-			if failure.Heading == "" || failure.Message == "" || failure.RecommendedAction == "" {
+			if failure.Heading == "" || failure.Message == "" {
+				t.Fatalf("failure copy is incomplete: %#v", failure)
+			}
+			if test.messageKey != "queue.failure.session_unreadable" && failure.RecommendedAction == "" {
 				t.Fatalf("failure copy is incomplete: %#v", failure)
 			}
 			if test.heading != "" && failure.Heading != test.heading {
@@ -63,6 +66,24 @@ func TestQueueFailureProjectionAndCapabilities(t *testing.T) {
 				t.Fatalf("capabilities = %#v", caps)
 			}
 		})
+	}
+}
+
+func TestQueueSessionUnreadableCopyNamesBrowser(t *testing.T) {
+	state := &jobState{
+		snap:        JobSnapshot{Status: StatusFailed, ErrorReason: ReasonSessionUnreadable},
+		durable:     jobmodel.DurableJob{LastErrorCode: ReasonSessionUnreadable, Request: jobmodel.PersistedRequest{BrowserSession: "chrome:Default"}},
+		fromStateV2: true,
+	}
+	failure := queueFailureFor(state, state.snap)
+	if failure.Heading != "Couldn't use Chrome." || failure.Message != "Close Chrome, then retry." || failure.RecommendedAction != "" {
+		t.Fatalf("chrome copy = %#v", failure)
+	}
+
+	state.durable.Request = jobmodel.PersistedRequest{CookieFile: "/tmp/cookies.txt"}
+	failure = queueFailureFor(state, state.snap)
+	if failure.Heading != "Couldn't use the cookie file." || failure.Message != "Choose another file, then retry." {
+		t.Fatalf("cookie-file copy = %#v", failure)
 	}
 }
 

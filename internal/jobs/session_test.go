@@ -178,8 +178,8 @@ func TestAnalyzePlaylistSessionUnreadableKeepsSessionCopy(t *testing.T) {
 	if !ok || failure.Reason != ReasonSessionUnreadable {
 		t.Fatalf("err = %#v", err)
 	}
-	if failure.Title != "Could not read the browser session." {
-		t.Fatalf("title = %q", failure.Title)
+	if failure.Title != "Couldn't use Chrome." || failure.Message != "Close Chrome, then retry." {
+		t.Fatalf("copy = %#v", failure)
 	}
 }
 
@@ -322,8 +322,8 @@ func TestAnalyzeSessionUnreadableStillDeniedReturnsEnvelope(t *testing.T) {
 	if !ok || failure.Reason != ReasonSessionUnreadable {
 		t.Fatalf("err = %#v", err)
 	}
-	if failure.Title != "Could not read the browser session." {
-		t.Fatalf("title = %q", failure.Title)
+	if failure.Title != "Couldn't use Safari." || failure.Message != "Close Safari, then retry." {
+		t.Fatalf("copy = %#v", failure)
 	}
 }
 

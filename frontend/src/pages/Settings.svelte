@@ -461,7 +461,7 @@
         </div>
       </div>
 
-      <div class="srow">
+      <div class="srow" id="cookie-file-fallback">
         <div class="scopy">
           <strong>Cookie file fallback</strong>
           <span>For when the browser store cannot be read. Export with Get cookies.txt LOCALLY or with the engine, and keep the file private.</span>
@@ -630,6 +630,7 @@
     border-top: 1px solid #1F1F23;
     min-height: 56px;
   }
+  #cookie-file-fallback { scroll-margin-top: 16px; }
   .sgroup h2 + .srow { border-top: 0; }
   .srow.stack {
     flex-direction: column;

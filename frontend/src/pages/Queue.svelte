@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { api } from '../lib/api.js';
   import { errorMessage, modal, pendingUrl, queueView, route, showBanner, showError } from '../lib/stores.js';
   import ActionRequiredReviewDialog from '../lib/lifecycle-ui/ActionRequiredReviewDialog.svelte';
@@ -337,9 +338,11 @@
   onPauseAll={() => withPending('Pausing all…', pauseAll)}
   onResumeAll={resumeAll}
   onGoHome={() => route.set('home')}
-  onOpenSettings={() => {
+  onOpenSettings={async (section) => {
     route.set('settings');
-    queueMicrotask(() => document.getElementById('signin-settings-title')?.scrollIntoView({ block: 'start' }));
+    await tick();
+    const id = section === 'cookie-file' ? 'cookie-file-fallback' : 'signin-settings-title';
+    document.getElementById(id)?.scrollIntoView({ block: 'start' });
   }}
   onClearCompleted={clearCompleted}
   onCollectionAction={collectionAction}
