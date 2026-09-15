@@ -5,6 +5,7 @@
   // disabled and are clamped away while FFmpeg is missing.
   import { createEventDispatcher, onMount } from 'svelte';
   import { COLLECTION_LANGUAGES } from '../subtitle-languages.js';
+  import { slidingPill } from '../motion.js';
   import type { OutputOptions, SubtitleLanguage } from '../types.js';
 
   export let value: OutputOptions = {};
@@ -212,7 +213,7 @@
   >
     <span class="elab">Subtitles{#if !allowSubtitles}<span class="only">Video only</span>{/if}</span>
     <div class="ectl">
-      <div class="triad" role="radiogroup" aria-label="Subtitle mode">
+      <div class="triad" role="radiogroup" aria-label="Subtitle mode" use:slidingPill={`${mode}:${subtitleChoiceBlocked}`}>
         <button
           type="button"
           class:on={mode === ''}
@@ -485,6 +486,9 @@
     border-radius: 8px;
     background: var(--surface-base);
   }
+  .triad :global(.sliding-pill) {
+    border-radius: 6px;
+  }
   .triad button {
     height: 24px;
     padding: 0 10px;
@@ -496,16 +500,16 @@
     background: transparent;
   }
   .triad button.on {
-    background: var(--surface-raised);
+    background: transparent;
     color: var(--text-primary);
   }
   .triad button.on.file {
     color: #93C5FD;
-    background: var(--accent-soft);
+    background: transparent;
   }
   .erow.disabled .triad button.on,
   .erow.disabled .triad button.on.file {
-    background: var(--surface-raised);
+    background: transparent;
     color: var(--text-secondary);
   }
   .triad button:disabled { cursor: default; }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { trapModalFocus } from './modal.js';
+  import { MOTION_OPEN, fadeOverlay, scaleDialog } from '../motion.js';
 
   interface Props {
     onOpenDataFolder?: () => void;
@@ -8,7 +9,7 @@
   let { onOpenDataFolder }: Props = $props();
 </script>
 
-<div class="overlay" role="presentation">
+<div class="overlay" role="presentation" in:fadeOverlay={{ duration: MOTION_OPEN }}>
   <div
     class="dialog"
     role="dialog"
@@ -17,6 +18,7 @@
     aria-describedby="cannot-save-description"
     tabindex="-1"
     use:trapModalFocus
+    in:scaleDialog={{ duration: MOTION_OPEN }}
   >
     <header>
       <h2 id="cannot-save-title">VidStow cannot save this session</h2>
@@ -50,6 +52,7 @@
     border-radius: 10px;
     background: var(--surface-base);
     box-shadow: var(--shadow-modal);
+    transform-origin: center;
   }
   header {
     padding: 18px 20px 0;
